@@ -11,9 +11,17 @@ GITHUB_USER="${GITHUB_USER:-MamadaliyevAzizbek}"
 
 if ! "$GH" auth status &>/dev/null; then
   echo "GitHub'ga kirmagansiz. Quyidagi buyruqni ishga tushiring:"
-  echo "  $GH auth login -h github.com -p https -w"
+  echo "  $GH auth login -h github.com -p https -w -s workflow"
   exit 1
 fi
+
+# Workflow fayllarini push qilish uchun workflow scope kerak
+if ! "$GH" auth status 2>&1 | grep -q 'workflow'; then
+  echo ">> workflow ruxsati qo'shilmoqda (brauzerda tasdiqlang)..."
+  "$GH" auth refresh -h github.com -s workflow
+fi
+
+"$GH" auth setup-git
 
 echo ">> Repo yaratilmoqda (agar yo'q bo'lsa)..."
 if ! "$GH" repo view "$GITHUB_USER/$REPO_NAME" &>/dev/null; then
