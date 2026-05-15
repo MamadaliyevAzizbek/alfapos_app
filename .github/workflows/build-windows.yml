@@ -1,0 +1,44 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package release (ZIP)
+        shell: pwsh
+        run: |
+          $src = "build/windows/x64/runner/Release"
+          $zip = "alfapos_app-windows-x64.zip"
+          if (-not (Test-Path $src/alfapos_app.exe)) {
+            Write-Error "alfapos_app.exe topilmadi: $src"
+          }
+          Compress-Archive -Path "$src/*" -DestinationPath $zip -Force
+          Write-Host "Yaratildi: $zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alfapos-windows-release
+          path: alfapos_app-windows-x64.zip
+          retention-days: 30

@@ -1,0 +1,8 @@
+# Build outputs – avoid "stale file outside allowed root paths"
+build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+.dart_tool/
+*.iml
