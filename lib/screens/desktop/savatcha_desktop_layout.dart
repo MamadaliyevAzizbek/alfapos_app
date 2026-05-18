@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
+import '../../utils/catalog_product_price_label.dart';
 import '../../widgets/product_tile.dart';
 
 /// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
@@ -34,6 +35,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final int? selectedCashRegisterId;
   final ValueChanged<Map<String, dynamic>>? onCashRegisterSelected;
   final bool showPurchasePriceOnCards;
+  final bool showUsdEquivalentOnCards;
   /// `purchase` | `wholesale` — katalog kartochkasidagi asosiy narx.
   final String? catalogSellPriceType;
   final VoidCallback onClearCart;
@@ -84,6 +86,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.selectedCashRegisterId,
     this.onCashRegisterSelected,
     this.showPurchasePriceOnCards = false,
+    this.showUsdEquivalentOnCards = false,
     this.catalogSellPriceType,
     required this.onClearCart,
     required this.onProductTap,
@@ -364,6 +367,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                           usdRate: usdExchangeRate,
                           catalogSellPriceType: catalogSellPriceType,
                           showPurchasePrice: showPurchasePriceOnCards,
+                          showUsdEquivalent: showUsdEquivalentOnCards,
                           onTap: () => onProductTap(catalogProducts[i]),
                         ),
                       ),
@@ -690,6 +694,7 @@ class _DesktopProductCard extends StatelessWidget {
   final double usdRate;
   final String? catalogSellPriceType;
   final bool showPurchasePrice;
+  final bool showUsdEquivalent;
   final VoidCallback onTap;
 
   const _DesktopProductCard({
@@ -697,14 +702,20 @@ class _DesktopProductCard extends StatelessWidget {
     required this.usdRate,
     this.catalogSellPriceType,
     this.showPurchasePrice = false,
+    this.showUsdEquivalent = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final unit = Product.unitDisplayShort(product.unit);
+    final unit = Product.unitDisplayShort(product.unitDisplayLabel);
     final qty = product.initialQuantity;
-    final primary = _primaryPrice(product, catalogSellPriceType, usdRate);
+    final primary = CatalogProductPriceLabel.primary(
+      product,
+      sellType: catalogSellPriceType,
+      usdRate: usdRate,
+      showUsdEquivalent: showUsdEquivalent,
+    );
     final purchase = showPurchasePrice ? _purchaseLabel(product) : null;
 
     return Material(
@@ -780,28 +791,6 @@ class _DesktopProductCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static String _primaryPrice(Product p, String? sellType, double rate) {
-    switch (sellType) {
-      case 'purchase':
-        final cost = p.costPriceUzs;
-        if (cost != null && cost > 0) {
-          return formatThousands(cost);
-        }
-        break;
-      case 'wholesale':
-        return formatThousands(p.wholesalePiecePriceNum.round());
-    }
-    if (p.sellingPriceCurrency.toLowerCase() == 'usd') {
-      return p.priceFormatted;
-    }
-    final sell = p.sellUnitPriceNum.round();
-    if (rate > 0) {
-      final usd = p.sellUnitPriceNum / rate;
-      return '${formatThousands(sell)} (\$${usd.toStringAsFixed(2)})';
-    }
-    return formatThousands(sell);
   }
 
   static String? _purchaseLabel(Product p) {

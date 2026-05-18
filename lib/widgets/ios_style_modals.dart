@@ -75,6 +75,7 @@ class AppModals {
     String saveLabel = 'Saqlash',
     Color? saveBackgroundColor,
     Color? saveForegroundColor,
+    bool isSaving = false,
     double maxScrollHeightFactor = 0.5,
   }) {
     final maxH = MediaQuery.sizeOf(context).height * maxScrollHeightFactor;
@@ -87,6 +88,7 @@ class AppModals {
                 saveLabel: saveLabel,
                 saveBackgroundColor: saveBackgroundColor,
                 saveForegroundColor: saveForegroundColor,
+                isSaving: isSaving,
               )
             : null);
 
@@ -220,12 +222,13 @@ class AppModals {
   /// Pastki varaq: chap — kontur + ko'k matn, o'ng — to'ldirilgan (iOS pill).
   /// [saveBackgroundColor] / [saveForegroundColor] — masalan xavfli amal uchun qizil.
   static Widget sheetPillCancelSaveRow({
-    required VoidCallback onCancel,
-    required VoidCallback onSave,
+    VoidCallback? onCancel,
+    VoidCallback? onSave,
     String cancelLabel = 'Bekor qilish',
     String saveLabel = 'Saqlash',
     Color? saveBackgroundColor,
     Color? saveForegroundColor,
+    bool isSaving = false,
   }) {
     const radius = 28.0;
     final saveBg = saveBackgroundColor ?? AppTheme.primary;
@@ -234,7 +237,7 @@ class AppModals {
       children: [
         Expanded(
           child: OutlinedButton(
-            onPressed: onCancel,
+            onPressed: isSaving ? null : onCancel,
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.primary,
               padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 14),
@@ -252,7 +255,7 @@ class AppModals {
         const SizedBox(width: 12),
         Expanded(
           child: FilledButton(
-            onPressed: onSave,
+            onPressed: isSaving ? null : onSave,
             style: FilledButton.styleFrom(
               backgroundColor: saveBg,
               foregroundColor: saveFg,
@@ -262,10 +265,16 @@ class AppModals {
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
             ),
-            child: Text(
-              saveLabel,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-            ),
+            child: isSaving
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: saveFg),
+                  )
+                : Text(
+                    saveLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
           ),
         ),
       ],

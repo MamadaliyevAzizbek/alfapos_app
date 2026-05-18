@@ -1,0 +1,15 @@
+ALFAPOS — Windows (x64)
+
+1. ZIP ni to'liq oching (masalan: C:\Alfapos\).
+2. alfapos_app.exe ni shu papkadan ishga tushiring.
+   MUHIM: exe ni boshqa joyga yolg'iz ko'chirmang — yonidagi .dll va data\ papkasi kerak.
+3. Birinchi marta Windows Firewall so'rasa — «Ruxsat berish» (Private va Public).
+4. Antivirus exe ni bloklasa — istisno qo'shing.
+5. Kirish: Kompaniya ID, login, parol (app.alfapos.uz serveri).
+
+Agar tarmoq xatosi chiqsa:
+- Internet va vaqtni tekshiring
+- VPN/proksini o'chiring
+- windows\scripts\allow_alfapos_firewall.ps1 ni administrator sifatida ishga tushiring
+
+Versiya: pubspec.yaml dagi version maydoni.

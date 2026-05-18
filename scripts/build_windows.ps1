@@ -20,8 +20,15 @@ if (-not (Test-Path $ExePath)) {
     throw "Build muvaffaqiyatsiz: $ExePath topilmadi"
 }
 
+$readme = Join-Path $ProjectRoot "release\WINDOWS_OCHISH.txt"
+if (Test-Path $readme) {
+    Copy-Item $readme (Join-Path $ReleaseDir "WINDOWS_OCHISH.txt") -Force
+}
+
+$OutDir = Join-Path $ProjectRoot "release\alfapos-windows-release"
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $ZipName = "alfapos_app-windows-x64.zip"
-$ZipPath = Join-Path $ProjectRoot $ZipName
+$ZipPath = Join-Path $OutDir $ZipName
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
 Compress-Archive -Path (Join-Path $ReleaseDir "*") -DestinationPath $ZipPath -Force
 

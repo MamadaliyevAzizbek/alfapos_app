@@ -47,6 +47,52 @@ void main() {
     expect(p.wholesalePriceDisplayText, contains('so'));
   });
 
+  test('mergeWithLocalFallback keeps local fields when API response is partial', () {
+    const fromApi = Product(
+      id: '42',
+      name: 'default_variant',
+      priceUzs: 0,
+      quantityInfo: '0 dona',
+    );
+    const local = Product(
+      id: 'local_1',
+      name: 'Cola 0.5',
+      priceUzs: 15000,
+      costPriceUzs: 10000,
+      barcode: '8600123456789',
+      additionalBarcodes: ['8600999888777'],
+      quantityInfo: '25 dona',
+      unit: 'dona',
+      category: 'Ichimliklar',
+      initialQuantity: 25,
+      wholesalePriceUzs: 12000,
+      wholesalePriceCurrency: 'uzs',
+    );
+    final merged = fromApi.mergeWithLocalFallback(local);
+    expect(merged.id, '42');
+    expect(merged.name, 'Cola 0.5');
+    expect(merged.priceUzs, 15000);
+    expect(merged.costPriceUzs, 10000);
+    expect(merged.barcode, '8600123456789');
+    expect(merged.additionalBarcodes, ['8600999888777']);
+    expect(merged.initialQuantity, 25);
+    expect(merged.wholesalePriceUzs, 12000);
+    expect(merged.category, 'Ichimliklar');
+  });
+
+  test('ulgurji narx — barcha variantlardan parse', () {
+    final p = Product.fromApiJson({
+      'productID': 9,
+      'title': 'Test',
+      'selling_price': 20000,
+      'variants': [
+        {'id': 1, 'selling_price': 20000},
+        {'id': 2, 'wholesalePrice': 11000, 'wholesalePriceCurrency': 'uzs'},
+      ],
+    });
+    expect(p.wholesalePriceUzs, 11000);
+  });
+
   test('mergePreservingPrices keeps local wholesale when list row lacks it', () {
     const fromList = Product(
       id: '1',

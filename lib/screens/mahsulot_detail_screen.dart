@@ -18,22 +18,44 @@ class MahsulotDetailScreen extends StatefulWidget {
 
 class _MahsulotDetailScreenState extends State<MahsulotDetailScreen> {
   late Product _product;
-  bool _loadingPrices = true;
 
   @override
   void initState() {
     super.initState();
-    _product = widget.product;
-    _loadFullProduct();
+    _product = ProductsProvider.instance.getProductById(widget.product.id) ?? widget.product;
+    ProductsProvider.instance.addListener(_onCatalogUpdated);
+    _enrichInBackground();
   }
 
-  Future<void> _loadFullProduct() async {
-    final full = await ProductsProvider.instance.resolveProductForDetail(widget.product);
-    if (!mounted) return;
-    setState(() {
-      _product = full;
-      _loadingPrices = false;
-    });
+  @override
+  void dispose() {
+    ProductsProvider.instance.removeListener(_onCatalogUpdated);
+    super.dispose();
+  }
+
+  void _onCatalogUpdated() {
+    final cached = ProductsProvider.instance.getProductById(_product.id);
+    if (cached == null) return;
+    final merged = cached.mergeWithLocalFallback(_product);
+    if (!mounted || _productEqualsForDisplay(_product, merged)) return;
+    setState(() => _product = merged);
+  }
+
+  /// Serverdan to‘ldirish — fon rejimida, «Yuklanmoqda» ko‘rsatilmaydi.
+  Future<void> _enrichInBackground() async {
+    final full = await ProductsProvider.instance.resolveProductForDetail(_product);
+    if (!mounted || identical(full, _product)) return;
+    if (_productEqualsForDisplay(_product, full)) return;
+    setState(() => _product = full);
+  }
+
+  bool _productEqualsForDisplay(Product a, Product b) {
+    return a.wholesalePriceDisplayText == b.wholesalePriceDisplayText &&
+        a.priceFormatted == b.priceFormatted &&
+        a.purchasePriceDisplayText == b.purchasePriceDisplayText &&
+        a.name == b.name &&
+        a.barcode == b.barcode &&
+        a.initialQuantity == b.initialQuantity;
   }
 
   @override
@@ -110,9 +132,9 @@ class _MahsulotDetailScreenState extends State<MahsulotDetailScreen> {
               ),
               child: Column(
                 children: [
-                  _detailRow(context, "O'lchov birlik", product.unit ?? '—'),
+                  _detailRow(context, "O'lchov birlik", product.unitDisplayLabel),
                   _divider(),
-                  _detailRow(context, "Ombordagi miqdor", '${product.initialQuantity} ${product.unit ?? 'dona'}'),
+                  _detailRow(context, "Ombordagi miqdor", product.stockDisplayText),
                   _divider(),
                   _detailRow(context, "Mahsulot turi", product.category ?? 'Standart'),
                   _divider(),
@@ -139,9 +161,7 @@ class _MahsulotDetailScreenState extends State<MahsulotDetailScreen> {
                   _detailRow(
                     context,
                     "Ulgurji narxi",
-                    _loadingPrices && !product.hasWholesalePrice
-                        ? 'Yuklanmoqda…'
-                        : product.wholesalePriceDisplayText,
+                    product.wholesalePriceDisplayText,
                     valueColor: product.hasWholesalePrice ? const Color(0xFF2E7D32) : null,
                   ),
                   if (product.quantityInPack && product.quantityPerPack > 1) ...[

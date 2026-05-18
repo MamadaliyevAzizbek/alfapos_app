@@ -9,6 +9,7 @@ class CatalogProductPriceLabel {
     Product p, {
     String? sellType,
     double usdRate = 12600,
+    bool showUsdEquivalent = false,
   }) {
     switch (sellType) {
       case 'purchase':
@@ -20,11 +21,20 @@ class CatalogProductPriceLabel {
       case 'wholesale':
         return '${formatThousands(p.wholesalePiecePriceNum.round())} so\'m';
     }
+
     if (p.sellingPriceCurrency.toLowerCase() == 'usd') {
+      if (showUsdEquivalent) {
+        return p.priceFormatted;
+      }
+      if (usdRate > 0) {
+        final som = (p.sellUnitPriceNum * usdRate).round();
+        return '${formatThousands(som)} so\'m';
+      }
       return p.priceFormatted;
     }
+
     final sell = p.sellUnitPriceNum.round();
-    if (usdRate > 0) {
+    if (showUsdEquivalent && usdRate > 0) {
       final usd = p.sellUnitPriceNum / usdRate;
       return '${formatThousands(sell)} (\$${usd.toStringAsFixed(2)})';
     }

@@ -16,6 +16,7 @@ class CategoriesProvider extends ChangeNotifier {
   final _controller = StreamController<List<String>>.broadcast();
   bool _loaded = false;
   String? _loadError;
+  final Set<String> _addingKeys = {};
 
   List<String> get items => List.unmodifiable(_items);
 
@@ -109,15 +110,38 @@ class CategoriesProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addCategory(String name) async {
+  /// `true` — qo‘shildi (optimistik + server). `false` — bo‘sh, dublikat yoki allaqachon qo‘shilmoqda.
+  Future<bool> addCategory(String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
-    if (_items.any((c) => c.toLowerCase() == trimmed.toLowerCase())) return;
+    if (trimmed.isEmpty) return false;
+    final key = trimmed.toLowerCase();
+    if (_items.any((c) => c.toLowerCase() == key)) return false;
+    if (_addingKeys.contains(key)) return false;
+
+    _addingKeys.add(key);
+    _items = [..._items, trimmed];
+    _rawList = [
+      ..._rawList,
+      {'id': 'local_$key', 'name': trimmed},
+    ];
+    _controller.add(items);
+    notifyListeners();
+
     try {
       await CategoriesApi.createCategory(trimmed);
-      await loadFromApi();
-    } catch (_) {
+      unawaited(loadFromApi());
+      return true;
+    } catch (e) {
+      _items.removeWhere((c) => c.toLowerCase() == key);
+      _rawList.removeWhere((e) {
+        final n = (e['name'] as String? ?? e['title'] as String? ?? '').trim().toLowerCase();
+        return n == key;
+      });
+      _controller.add(items);
+      notifyListeners();
       rethrow;
+    } finally {
+      _addingKeys.remove(key);
     }
   }
 

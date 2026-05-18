@@ -8,8 +8,10 @@ import '../models/product.dart';
 import '../providers/clients_provider.dart';
 import '../services/api_service.dart';
 import '../providers/categories_provider.dart';
+import '../providers/products_provider.dart';
 import '../utils/filter_options_parser.dart';
 import '../utils/product_search.dart';
+import '../utils/barcode_product_lookup.dart';
 import '../utils/sales_products.dart';
 import '../utils/hold_orders_response.dart';
 import '../utils/sales_payment_types.dart';
@@ -47,6 +49,8 @@ class SalesSessionProvider extends ChangeNotifier {
   bool sellAtPurchasePrice = false;
   /// Katalog kartochkasida kelish narxini ko'rsatish.
   bool showPurchasePrice = false;
+  /// Katalogda qavs ichida dollar ekvivalenti ($…) — default o‘chiq.
+  bool showUsdEquivalent = false;
 
   List<Product> salesProducts = [];
   bool productsLoading = false;
@@ -286,7 +290,8 @@ class SalesSessionProvider extends ChangeNotifier {
         'brandId': brandId ?? '',
       };
       final res = await SalesApi.getSalesProducts(body: body);
-      final page = SalesProducts.fromSalesResponse(res);
+      var page = SalesProducts.fromSalesResponse(res);
+      page = ProductsProvider.instance.withCatalogStockAll(page);
       if (reset) {
         salesProducts = page;
       } else {
@@ -326,17 +331,37 @@ class SalesSessionProvider extends ChangeNotifier {
   Future<Product?> findByBarcode(String code) async {
     final q = code.trim();
     if (q.isEmpty) return null;
-    try {
-      final res = await SalesApi.barcodeSearch(
-        searchValue: q,
-        branchId: branchId ?? 1,
-      );
-      return SalesProducts.fromBarcodeResult(res);
-    } catch (_) {
-      _lastSearch = q;
-      await loadProducts(reset: true, searchValue: q);
-      return takePendingBarcodeProduct();
+
+    final unified = await BarcodeProductLookup.resolve(
+      query: q,
+      salesScreenProducts: salesProducts,
+      branchId: branchId ?? 1,
+    );
+    if (unified != null) {
+      _upsertSalesProduct(unified);
+      return unified;
     }
+
+    _lastSearch = q;
+    await loadProducts(reset: true, searchValue: q);
+    final pending = takePendingBarcodeProduct();
+    if (pending != null) return pending;
+
+    return BarcodeProductLookup.resolve(
+      query: q,
+      salesScreenProducts: salesProducts,
+      branchId: branchId ?? 1,
+    );
+  }
+
+  void _upsertSalesProduct(Product product) {
+    final i = salesProducts.indexWhere((p) => p.id == product.id);
+    if (i >= 0) {
+      salesProducts[i] = product;
+    } else {
+      salesProducts.insert(0, product);
+    }
+    notifyListeners();
   }
 
   void setCategoryFilter(String? id) {
@@ -390,6 +415,7 @@ class SalesSessionProvider extends ChangeNotifier {
     required bool sellWholesale,
     required bool sellPurchase,
     required bool showPurchaseOnCards,
+    required bool showUsdOnCards,
   }) {
     categoryId = category;
     brandId = brand;
@@ -399,6 +425,7 @@ class SalesSessionProvider extends ChangeNotifier {
     if (sellWholesale) sellAtPurchasePrice = false;
     if (sellPurchase) sellAtWholesalePrice = false;
     showPurchasePrice = showPurchaseOnCards;
+    showUsdEquivalent = showUsdOnCards;
     notifyListeners();
   }
 
@@ -410,6 +437,7 @@ class SalesSessionProvider extends ChangeNotifier {
       sellWholesale: false,
       sellPurchase: false,
       showPurchaseOnCards: false,
+      showUsdOnCards: false,
     );
   }
 

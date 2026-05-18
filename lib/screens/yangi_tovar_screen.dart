@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../core/api_client.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/input_formatters.dart';
@@ -15,6 +16,7 @@ import '../services/api_service.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../core/desktop_runtime.dart';
 import '../utils/platform_layout.dart';
+import '../widgets/add_category_sheet.dart';
 import '../widgets/ios_style_modals.dart';
 
 class YangiTovarScreen extends StatefulWidget {
@@ -65,7 +67,9 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     CategoriesProvider.instance.addListener(_onCategoriesChanged);
     CategoriesProvider.instance.loadFromStorage();
     _loadUnitsFromApi();
-    final p = widget.product;
+    final p = widget.product != null
+        ? (ProductsProvider.instance.getProductById(widget.product!.id) ?? widget.product)
+        : null;
     if (p != null) {
       _nameController.text = p.name;
       _barcodeController.text = p.barcode ?? '';
@@ -573,6 +577,8 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       if (!mounted) return;
       AppNotify.success(context, 'Saqlandi. Serverga yuborilmoqda…');
       Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) AppNotify.error(context, e.message);
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Xatolik: $e');
     } finally {
@@ -1020,41 +1026,9 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     );
   }
 
-  void _showAddCategoryDialog() {
-    final controller = TextEditingController();
-    IosStyleModals.showSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showGrabber: true,
-      child: Builder(
-        builder: (ctx) => IosStyleModals.sheetKeyboardForm(
-          context: ctx,
-          onCancel: () => Navigator.pop(ctx),
-          onSave: () async {
-            final name = controller.text.trim();
-            if (name.isNotEmpty) {
-              await CategoriesProvider.instance.addCategory(name);
-              if (ctx.mounted) Navigator.pop(ctx);
-              setState(() => _category = name);
-            }
-          },
-          cancelLabel: Strings.bekorQilish,
-          saveLabel: Strings.saqlash,
-          body: [
-            const Text(Strings.yangiKategoriya, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Kategoriya nomi',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _showAddCategoryDialog() async {
+    final name = await AddCategorySheet.show(context);
+    if (name != null && mounted) setState(() => _category = name);
   }
 
   List<Widget> _buildAdditionalBarcodeFields() {

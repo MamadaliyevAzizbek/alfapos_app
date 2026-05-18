@@ -77,6 +77,12 @@ class Product {
 
   bool get hasStock => availableStockQuantity > 0;
 
+  /// UI uchun tozalangan birlik (API Map yoki saqlangan xom matn emas).
+  String get unitDisplayLabel => Product.sanitizeUnitLabel(unit) ?? 'dona';
+
+  /// Ombor qatori: «12 dona» — hech qachon xom JSON ko‘rinmaydi.
+  String get stockDisplayText => '$availableStockQuantity $unitDisplayLabel';
+
   /// 1 dona sotish narxi
   num get pieceSellPriceNum => sellingPriceApi ?? priceUzs;
 
@@ -130,43 +136,107 @@ class Product {
       (wholesalePriceUzs != null && wholesalePriceUzs! > 0) ||
       (wholesalePriceApi != null && wholesalePriceApi! > 0);
 
-  /// Ro'yxat API ulgurji bermasa — lokal/saqlangan qiymatni saqlash.
-  Product mergePreservingPrices(Product fallback) {
-    if (hasWholesalePrice || !fallback.hasWholesalePrice) return this;
+  static bool _isUsableDisplayName(String? s) {
+    if (s == null || s.trim().isEmpty || s.trim() == '—') return false;
+    return !_isVariantLikeTitle(s);
+  }
+
+  static bool _hasNonEmptyText(String? s) => s != null && s.trim().isNotEmpty;
+
+  static bool _isCategoryIdOnly(String? s) {
+    if (s == null || s.trim().isEmpty) return true;
+    return int.tryParse(s.trim()) != null;
+  }
+
+  /// Server javobi qisman bo‘lsa — foydalanuvchi kiritgan lokal qiymatlarni saqlaydi.
+  /// [preferServerStock] — ro‘yxat yangilanganda serverdagi ombor miqdori (0 ham) ustun.
+  Product mergeWithLocalFallback(Product local, {bool preferServerStock = false}) {
+    final serverId = !id.startsWith('local_') && id.isNotEmpty ? id : local.id;
+    final mergedName = _isUsableDisplayName(name) ? name : local.name;
+    final mergedBarcode = _hasNonEmptyText(barcode) ? barcode : local.barcode;
+    final mergedAdditional = (additionalBarcodes != null && additionalBarcodes!.isNotEmpty)
+        ? additionalBarcodes
+        : local.additionalBarcodes;
+    final mergedSell = priceUzs > 0 ? priceUzs : local.priceUzs;
+    final mergedCost = (costPriceUzs != null && costPriceUzs! > 0) ? costPriceUzs : local.costPriceUzs;
+    final mergedQty = preferServerStock
+        ? initialQuantity
+        : (initialQuantity > 0 ? initialQuantity : local.initialQuantity);
+    final mergedImage = _hasNonEmptyText(imageUrl) ? imageUrl : local.imageUrl;
+    final mergedUnitRaw = _hasNonEmptyText(unit) ? unit : local.unit;
+    final mergedUnit = sanitizeUnitLabel(mergedUnitRaw) ?? mergedUnitRaw ?? 'dona';
+    final mergedQtyInfoRaw = preferServerStock
+        ? quantityInfo
+        : (mergedQty > 0
+            ? (initialQuantity > 0 ? quantityInfo : local.quantityInfo)
+            : (_hasNonEmptyText(quantityInfo) ? quantityInfo : local.quantityInfo));
+    final mergedQtyInfo = _sanitizeQuantityInfo(mergedQtyInfoRaw, mergedQty, mergedUnit)!;
+    final mergedCategory = (!_isCategoryIdOnly(category) && _hasNonEmptyText(category))
+        ? category
+        : (local.category ?? category);
+    final mergedDescription = _hasNonEmptyText(description) ? description : local.description;
+    final mergedVariantId = (variantId != null && variantId! > 0) ? variantId : local.variantId;
+    final mergedSku = _hasNonEmptyText(sku) ? sku : local.sku;
+
+    final mergedSellPack = (sellPricePerPack != null && sellPricePerPack! > 0)
+        ? sellPricePerPack
+        : local.sellPricePerPack;
+    final mergedCostPack = (costPricePerPack != null && costPricePerPack! > 0)
+        ? costPricePerPack
+        : local.costPricePerPack;
+    final mergedQtyPerPack = quantityPerPack > 1 ? quantityPerPack : local.quantityPerPack;
+    final mergedQtyInPack = quantityInPack || local.quantityInPack;
+
+    final mergedSellCur = priceUzs > 0 ? sellingPriceCurrency : local.sellingPriceCurrency;
+    final mergedPurchaseCur =
+        (costPriceUzs != null && costPriceUzs! > 0) ? purchasePriceCurrency : local.purchasePriceCurrency;
+    final mergedSellApi = priceUzs > 0 ? sellingPriceApi : local.sellingPriceApi;
+    final mergedPurchaseApi =
+        (costPriceUzs != null && costPriceUzs! > 0) ? purchasePriceApi : local.purchasePriceApi;
+
+    final mergedWholesaleUzs = hasWholesalePrice ? wholesalePriceUzs : local.wholesalePriceUzs;
+    final mergedWholesaleApi = wholesalePriceApi ?? local.wholesalePriceApi;
+    final mergedWholesaleCur =
+        hasWholesalePrice ? wholesalePriceCurrency : local.wholesalePriceCurrency;
+
     return Product(
-      id: id,
-      name: name,
-      imageUrl: imageUrl,
-      priceUzs: priceUzs,
-      costPriceUzs: costPriceUzs,
-      sku: sku,
-      barcode: barcode,
-      additionalBarcodes: additionalBarcodes,
-      variantId: variantId,
-      quantityInfo: quantityInfo,
-      unit: unit,
-      category: category,
-      description: description,
-      quantityInPack: quantityInPack,
-      quantityPerPack: quantityPerPack,
-      costPricePerPack: costPricePerPack,
-      sellPricePerPack: sellPricePerPack,
-      wholesalePriceUzs: fallback.wholesalePriceUzs,
-      reorderLevel: reorderLevel,
-      initialQuantity: initialQuantity,
-      sellingPriceCurrency: sellingPriceCurrency,
-      purchasePriceCurrency: purchasePriceCurrency,
-      sellingPriceApi: sellingPriceApi,
-      purchasePriceApi: purchasePriceApi,
-      wholesalePriceCurrency: fallback.wholesalePriceCurrency,
-      wholesalePriceApi: fallback.wholesalePriceApi,
+      id: serverId,
+      name: mergedName.isEmpty ? local.name : mergedName,
+      imageUrl: mergedImage,
+      priceUzs: mergedSell,
+      costPriceUzs: mergedCost,
+      sku: mergedSku,
+      barcode: mergedBarcode,
+      additionalBarcodes: mergedAdditional,
+      variantId: mergedVariantId,
+      quantityInfo: mergedQtyInfo,
+      unit: mergedUnit,
+      category: mergedCategory,
+      description: mergedDescription,
+      quantityInPack: mergedQtyInPack,
+      quantityPerPack: mergedQtyPerPack,
+      costPricePerPack: mergedCostPack,
+      sellPricePerPack: mergedSellPack,
+      wholesalePriceUzs: mergedWholesaleUzs,
+      reorderLevel: reorderLevel > 0 ? reorderLevel : local.reorderLevel,
+      initialQuantity: mergedQty,
+      sellingPriceCurrency: mergedSellCur,
+      purchasePriceCurrency: mergedPurchaseCur,
+      sellingPriceApi: mergedSellApi,
+      purchasePriceApi: mergedPurchaseApi,
+      wholesalePriceCurrency: mergedWholesaleCur,
+      wholesalePriceApi: mergedWholesaleApi,
     );
   }
 
+  /// Ro'yxat API ulgurji bermasa — lokal/saqlangan qiymatni saqlash.
+  Product mergePreservingPrices(Product fallback) => mergeWithLocalFallback(fallback);
+
   /// Chek va boshqa joylarda birlikni qisqartmada ko'rsatish (API chekdagiga mos: sht, kg, ...)
   static String unitDisplayShort(String? unit) {
-    if (unit == null || unit.trim().isEmpty) return 'sht';
-    final lower = unit.trim().toLowerCase();
+    final clean = sanitizeUnitLabel(unit);
+    if (clean == null || clean.isEmpty) return 'sht';
+    final lower = clean.toLowerCase();
     if (lower.length <= 5 && !lower.contains(' ')) return lower;
     if (lower.contains('kilo') || lower == 'kg') return 'kg';
     if (lower.contains('dona') || lower.contains('piece') || lower.contains('шт') || lower.contains('sht') || lower.contains('ta')) return 'sht';
@@ -174,7 +244,68 @@ class Product {
     if (lower.contains('pachka')) return 'pachka';
     if (lower.contains('litr') || lower == 'l' || lower == 'л') return 'l';
     if (lower.contains('gram') || lower == 'g') return 'g';
-    return unit.trim();
+    return clean;
+  }
+
+  /// API `unit` maydoni: string, Map yoki xato saqlangan `{id: ...}` matn.
+  static String? sanitizeUnitLabel(String? unit) {
+    if (unit == null) return null;
+    final fromJson = _unitLabelFromJson(unit);
+    if (fromJson != null && fromJson.isNotEmpty) return fromJson;
+    final t = unit.trim();
+    if (t.isEmpty || _looksLikeSerializedMap(t)) return _unitLabelFromSerializedMapString(t);
+    return t;
+  }
+
+  static String? _unitLabelFromJson(dynamic v) {
+    if (v == null) return null;
+    if (v is String) {
+      final s = v.trim();
+      if (s.isEmpty || _looksLikeSerializedMap(s)) {
+        return _unitLabelFromSerializedMapString(s);
+      }
+      return s;
+    }
+    if (v is Map) {
+      final m = Map<String, dynamic>.from(v);
+      for (final key in ['short_name', 'shortname', 'shortName', 'name', 'title', 'label', 'unit']) {
+        final label = _stringFromJson(m[key]);
+        if (label != null && label.isNotEmpty && !_looksLikeSerializedMap(label)) {
+          return label.trim();
+        }
+      }
+      return null;
+    }
+    final s = v.toString().trim();
+    if (s.isEmpty || _looksLikeSerializedMap(s)) return _unitLabelFromSerializedMapString(s);
+    return s;
+  }
+
+  static String? _unitLabelFromSerializedMapString(String s) {
+    final short = RegExp(r'short_name:\s*([^,}]+)', caseSensitive: false).firstMatch(s);
+    if (short != null) {
+      final v = short.group(1)!.trim();
+      if (v.isNotEmpty) return v;
+    }
+    final name = RegExp(r'name:\s*([^,}]+)', caseSensitive: false).firstMatch(s);
+    if (name != null) {
+      final v = name.group(1)!.trim();
+      if (v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  static String _quantityInfoLabel(int qty, String unitLabel) {
+    final u = unitLabel.isEmpty ? 'dona' : unitLabel;
+    return '$qty $u';
+  }
+
+  static String? _sanitizeQuantityInfo(String? info, int qty, String unitLabel) {
+    if (info == null || info.trim().isEmpty) return _quantityInfoLabel(qty, unitLabel);
+    if (_looksLikeSerializedMap(info) || info.contains('company_id')) {
+      return _quantityInfoLabel(qty, unitLabel);
+    }
+    return info;
   }
 
   /// Barcode qidiruvda ishlatish uchun: faqat raqamlar (bo'shliq, tire va h.k. olib tashlanadi)
@@ -323,8 +454,15 @@ class Product {
 
   static String? _stringFromJson(dynamic v) {
     if (v == null) return null;
-    if (v is String) return v.isEmpty ? null : v;
-    return v.toString();
+    if (v is String) {
+      final s = v.trim();
+      if (s.isEmpty || _looksLikeSerializedMap(s)) return null;
+      return s;
+    }
+    if (v is Map) return null;
+    final s = v.toString().trim();
+    if (s.isEmpty || _looksLikeSerializedMap(s)) return null;
+    return s;
   }
 
   /// Variant sarlavhasi (default_variant) mahsulot nomi sifatida qabul qilinmasin.
@@ -518,8 +656,12 @@ class Product {
       barcode: _stringFromJson(json['barcode']),
       additionalBarcodes: _additionalBarcodeListFromJson(json['additionalBarcodes']),
       variantId: json['variantId'] as int?,
-      quantityInfo: json['quantityInfo'] as String? ?? '0 sht',
-      unit: json['unit'] as String?,
+      quantityInfo: _sanitizeQuantityInfo(
+        json['quantityInfo'] as String?,
+        json['initialQuantity'] as int? ?? 0,
+        sanitizeUnitLabel(json['unit'] as String?) ?? 'dona',
+      )!,
+      unit: sanitizeUnitLabel(json['unit'] as String?),
       category: json['category'] as String?,
       description: json['description'] as String?,
       quantityInPack: json['quantityInPack'] as bool? ?? false,
@@ -632,7 +774,10 @@ class Product {
 
     // Birlik: barcha joyda qisqartma (unitIdToShortName), yangi mahsulotda to'liq nom; API da unit_id yoki unit_name
     final int unitId = _intFromJson(m['unit_id']);
-    final unitFromName = _stringFromJson(m['unit']) ?? _stringFromJson(m['unit_name']) ?? _stringFromJson(m['measure']) ?? _stringFromJson(m['unit_type']);
+    final unitFromName = _unitLabelFromJson(m['unit']) ??
+        _unitLabelFromJson(m['unit_name']) ??
+        _unitLabelFromJson(m['measure']) ??
+        _unitLabelFromJson(m['unit_type']);
     String unit = '';
     if (unitIdToShortName != null && unitIdToShortName.containsKey(unitId)) {
       unit = unitIdToShortName[unitId]!;
@@ -641,7 +786,18 @@ class Product {
       unit = unitIdToName[unitId]!;
     }
     if (unit.isEmpty && unitFromName != null && unitFromName.isNotEmpty) unit = unitFromName;
-    if (unit.isEmpty) unit = unitId == 2 ? 'dona' : (unitId == 1 ? 'kg' : 'dona');
+    if (variants != null && unit.isEmpty) {
+      for (final v in variants) {
+        if (v is! Map) continue;
+        final vMap = Map<String, dynamic>.from(v as Map);
+        final fromV = _unitLabelFromJson(vMap['unit']) ?? _unitLabelFromJson(vMap['unit_name']);
+        if (fromV != null && fromV.isNotEmpty) {
+          unit = fromV;
+          break;
+        }
+      }
+    }
+    unit = sanitizeUnitLabel(unit) ?? (unitId == 2 ? 'dona' : (unitId == 1 ? 'kg' : 'dona'));
 
     // Barcode: avval product (m) darajasida, keyin variants ichidan — list API har xil formatda yuborishi mumkin
     String? barcode = _barcodeLikeFromJson(m['barcode']) ??
@@ -740,39 +896,63 @@ class Product {
     int? wholesalePriceUzs = _intOrNullFromJson(
       m['wholesale_price'] ?? m['wholesalePrice'] ?? m['wholesale_price_uzs'] ?? m['price_wholesale'],
     );
-    if ((wholesalePriceUzs == null || wholesalePriceUzs == 0) && firstVariantMap != null) {
-      wholesalePriceUzs = _intOrNullFromJson(
-        firstVariantMap['wholesale_price'] ?? firstVariantMap['wholesalePrice'],
+    String? wholesaleCurrencyHint;
+    num? wholesalePriceApi;
+    void applyWholesaleFromMap(Map<String, dynamic> src) {
+      final uzs = _intOrNullFromJson(
+        src['wholesale_price'] ?? src['wholesalePrice'] ?? src['wholesale_price_uzs'] ?? src['price_wholesale'],
       );
+      if (uzs != null && uzs > 0) {
+        wholesalePriceUzs = uzs;
+        wholesaleCurrencyHint ??= _stringFromJson(src['wholesalePriceCurrency'] ?? src['wholesale_price_currency']);
+        return;
+      }
+      final api = _numPreserveFromJson(src['wholesalePrice'] ?? src['wholesale_price']);
+      if (api != null && api > 0) {
+        wholesalePriceApi = api;
+        wholesalePriceUzs = api.round();
+        wholesaleCurrencyHint ??= _stringFromJson(src['wholesalePriceCurrency'] ?? src['wholesale_price_currency']);
+      }
+    }
+
+    if (wholesalePriceUzs == null || wholesalePriceUzs == 0) {
+      applyWholesaleFromMap(m);
+    }
+    if ((wholesalePriceUzs == null || wholesalePriceUzs == 0) && variants != null) {
+      for (final v in variants) {
+        if (v is! Map) continue;
+        applyWholesaleFromMap(Map<String, dynamic>.from(v as Map));
+        if (wholesalePriceUzs != null && wholesalePriceUzs! > 0) break;
+      }
     }
     if ((wholesalePriceUzs == null || wholesalePriceUzs == 0) && variantDetail0 != null) {
-      wholesalePriceUzs = _intOrNullFromJson(
-        variantDetail0['wholesale_price'] ?? variantDetail0['wholesalePrice'],
-      );
+      applyWholesaleFromMap(variantDetail0);
     }
     final wholesalePriceCurrency = _normalizePriceCurrency(
       m['wholesalePriceCurrency'] ??
           m['wholesale_price_currency'] ??
+          wholesaleCurrencyHint ??
           firstVariantMap?['wholesalePriceCurrency'] ??
           firstVariantMap?['wholesale_price_currency'] ??
           variantDetail0?['wholesalePriceCurrency'] ??
           variantDetail0?['wholesale_price_currency'],
     );
-    num? wholesalePriceApi;
     if (wholesalePriceCurrency == 'usd') {
-      wholesalePriceApi = _numPreserveFromJson(
-        m['wholesalePrice'] ??
-            m['wholesale_price'] ??
-            firstVariantMap?['wholesalePrice'] ??
-            firstVariantMap?['wholesale_price'] ??
-            variantDetail0?['wholesalePrice'] ??
-            variantDetail0?['wholesale_price'],
-      );
-      if (wholesalePriceApi != null) {
-        wholesalePriceUzs = wholesalePriceApi!.round();
+      final usd = wholesalePriceApi ??
+          _numPreserveFromJson(
+            m['wholesalePrice'] ??
+                m['wholesale_price'] ??
+                firstVariantMap?['wholesalePrice'] ??
+                firstVariantMap?['wholesale_price'] ??
+                variantDetail0?['wholesalePrice'] ??
+                variantDetail0?['wholesale_price'],
+          );
+      if (usd != null) {
+        wholesalePriceApi = usd;
+        wholesalePriceUzs = usd.round();
       }
-    } else if (wholesalePriceUzs == null || wholesalePriceUzs == 0) {
-      wholesalePriceApi = _numPreserveFromJson(
+    } else if ((wholesalePriceUzs == null || wholesalePriceUzs == 0) && wholesalePriceApi == null) {
+      final api = _numPreserveFromJson(
         m['wholesalePrice'] ??
             m['wholesale_price'] ??
             firstVariantMap?['wholesalePrice'] ??
@@ -780,8 +960,9 @@ class Product {
             variantDetail0?['wholesalePrice'] ??
             variantDetail0?['wholesale_price'],
       );
-      if (wholesalePriceApi != null && wholesalePriceApi! > 0) {
-        wholesalePriceUzs = wholesalePriceApi!.round();
+      if (api != null && api > 0) {
+        wholesalePriceApi = api;
+        wholesalePriceUzs = api.round();
       }
     }
     // API: units_per_package null yoki 1 = faqat dona; > 1 = pachka mavjud (1.4)
@@ -822,8 +1003,8 @@ class Product {
       barcode: barcode,
       additionalBarcodes: additionalBarcodes,
       variantId: variantId,
-      quantityInfo: '$initialQuantity ${unit == 'dona' ? 'dona' : unit}',
-      unit: unit.isEmpty ? 'dona' : unit,
+      quantityInfo: _quantityInfoLabel(initialQuantity, unit),
+      unit: unit,
       category: categoryStr,
       description: _stringFromJson(m['description']),
       quantityInPack: quantityInPack,

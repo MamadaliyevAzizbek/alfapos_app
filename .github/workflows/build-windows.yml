@@ -32,9 +32,14 @@ jobs:
         shell: pwsh
         run: |
           $src = "build/windows/x64/runner/Release"
-          $zip = "alfapos_app-windows-x64.zip"
+          $outDir = "release/alfapos-windows-release"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $zip = "$outDir/alfapos_app-windows-x64.zip"
           if (-not (Test-Path "$src/alfapos_app.exe")) {
             Write-Error "alfapos_app.exe topilmadi: $src"
+          }
+          if (Test-Path "release/WINDOWS_OCHISH.txt") {
+            Copy-Item "release/WINDOWS_OCHISH.txt" "$src/WINDOWS_OCHISH.txt" -Force
           }
           Compress-Archive -Path "$src/*" -DestinationPath $zip -Force
           Write-Host "Yaratildi: $zip ($(Get-Item $zip).Length bytes)"

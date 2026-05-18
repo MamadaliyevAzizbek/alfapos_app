@@ -18,6 +18,7 @@ import '../core/seller_preferences.dart';
 import '../widgets/product_tile.dart';
 import 'tranzaksiya_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
+import '../utils/barcode_product_lookup.dart';
 import '../utils/product_search.dart' as product_search;
 import '../utils/platform_layout.dart';
 import '../core/input_formatters.dart';
@@ -62,6 +63,8 @@ class SavatchaScreen extends StatefulWidget {
 }
 
 class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMixin {
+  StreamSubscription<List<CartItem>>? _cartSub;
+  StreamSubscription<List<Product>>? _productsSub;
   final _searchController = TextEditingController();
   final _catalogSearchFocus = FocusNode();
   final _discountPercentController = TextEditingController();
@@ -98,7 +101,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _sales.hideZeroStock ||
       _sales.sellAtWholesalePrice ||
       _sales.sellAtPurchasePrice ||
-      _sales.showPurchasePrice;
+      _sales.showPurchasePrice ||
+      _sales.showUsdEquivalent;
 
   bool get _useSalesCatalog =>
       !isDesktopPosLayout && _sales.initError == null && _sales.salesProducts.isNotEmpty;
@@ -107,6 +111,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     var list = _useSalesCatalog
         ? List<Product>.from(_sales.catalogProductsVisible)
         : List<Product>.from(_products.items);
+    list = ProductsProvider.instance.withCatalogStockAll(list);
     final q = _query.trim();
     if (q.isNotEmpty) {
       list = product_search.filterCatalogProducts(list, q);
@@ -148,8 +153,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   @override
   void initState() {
     super.initState();
-    _cart.stream.listen((_) => setState(() {}));
-    _products.stream.listen((_) => setState(() {}));
+    _cartSub = _cart.stream.listen((_) {
+      if (mounted) setState(() {});
+    });
+    _productsSub = _products.stream.listen((_) {
+      if (mounted) setState(() {});
+    });
     _sales.addListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
     if (isDesktopPosLayout) {
@@ -240,6 +249,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   @override
   void dispose() {
+    _cartSub?.cancel();
+    _productsSub?.cancel();
     _barcodeSearchDebounce?.cancel();
     _catalogSearchDebounce?.cancel();
     _catalogSearchRefocusTimer?.cancel();
@@ -511,6 +522,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                                     p,
                                     sellType: sellType,
                                     usdRate: usd,
+                                    showUsdEquivalent: _sales.showUsdEquivalent,
                                   ),
                                   secondaryPriceLabel: _sales.showPurchasePrice
                                       ? CatalogProductPriceLabel.purchaseLine(p)
@@ -652,44 +664,26 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (q.isEmpty || _barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
     try {
-      if (_useSalesCatalog) {
-        var barcodeHits = product_search.filterProductsByBarcodeQuery(_sales.salesProducts, q);
-        if (barcodeHits.length == 1) {
-          _addProductToCart(barcodeHits.single);
-          _clearSearchField();
-          return;
-        }
+      final found = await BarcodeProductLookup.resolve(
+        query: q,
+        salesScreenProducts: _sales.salesProducts,
+        branchId: _sales.branchId ?? 1,
+      );
+      if (found != null) {
+        _addProductToCart(found);
+        _clearSearchField();
+        return;
+      }
 
-        final fromSales = await _sales.findByBarcode(q);
-        if (fromSales != null) {
-          _addProductToCart(fromSales);
-          _clearSearchField();
-          return;
+      final localHits = [
+        ...product_search.filterProductsByBarcodeQuery(_products.items, q),
+        ...product_search.filterProductsByBarcodeQuery(_sales.salesProducts, q),
+      ];
+      if (localHits.length > 1) {
+        if (mounted) {
+          AppNotify.info(context, 'Bir nechta mahsulot topildi — ro‘yxatdan tanlang');
         }
-        if (barcodeHits.length > 1) return;
-      } else {
-        if (_products.items.isEmpty || _products.isLoaded == false) {
-          try {
-            await _products.loadFromStorage();
-          } catch (_) {}
-        }
-
-        var barcodeHits = product_search.filterProductsByBarcodeQuery(_products.items, q);
-        if (barcodeHits.length == 1) {
-          _addProductToCart(barcodeHits.single);
-          _clearSearchField();
-          return;
-        }
-
-        if (barcodeHits.isEmpty) {
-          final fromApi = await _products.findProductByBarcode(q);
-          if (fromApi != null) {
-            _addProductToCart(fromApi);
-            _clearSearchField();
-            return;
-          }
-        }
-        if (barcodeHits.length > 1) return;
+        return;
       }
 
       if (!mounted) return;
@@ -847,6 +841,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           setState(() {});
         },
         showPurchasePriceOnCards: _sales.showPurchasePrice,
+        showUsdEquivalentOnCards: _sales.showUsdEquivalent,
         catalogSellPriceType: _sales.activeSellPriceType,
         sellerName: _sellerName.isNotEmpty ? _sellerName : 'Sotuvchi',
         cartGrandTotal: _cartGrandTotal,
@@ -1088,21 +1083,27 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (_barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
     try {
-      final localHits = product_search.filterProductsByBarcodeQuery(_sales.salesProducts, q);
-      if (localHits.length == 1) {
-        _addProductToCart(localHits.single);
+      final found = await BarcodeProductLookup.resolve(
+        query: q,
+        salesScreenProducts: _sales.salesProducts,
+        branchId: _sales.branchId ?? 1,
+      );
+      if (found != null) {
+        _addProductToCart(found);
         _clearSearchField();
         return;
       }
 
-      final fromApi = await _sales.findByBarcode(q);
-      if (fromApi != null) {
-        _addProductToCart(fromApi);
-        _clearSearchField();
+      final localHits = [
+        ...product_search.filterProductsByBarcodeQuery(_products.items, q),
+        ...product_search.filterProductsByBarcodeQuery(_sales.salesProducts, q),
+      ];
+      if (localHits.length > 1) {
+        if (mounted) {
+          AppNotify.info(context, 'Bir nechta mahsulot topildi — ro‘yxatdan tanlang');
+        }
         return;
       }
-
-      if (localHits.length > 1) return;
 
       if (mounted) {
         AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");

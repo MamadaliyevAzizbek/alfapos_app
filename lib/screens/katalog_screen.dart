@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
@@ -11,6 +13,7 @@ import 'mahsulot_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/product_search.dart' as product_search;
 import '../utils/platform_layout.dart';
+import '../widgets/add_category_sheet.dart';
 import '../widgets/ios_style_modals.dart';
 import 'desktop/desktop_shell_scope.dart';
 import '../services/app_data_sync.dart';
@@ -31,6 +34,8 @@ class KatalogScreen extends StatefulWidget {
 enum _ProductFilter { all, active, inactive }
 
 class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProviderStateMixin, DesktopShellSyncMixin {
+  StreamSubscription<List<Product>>? _productsSub;
+  StreamSubscription<List<String>>? _categoriesSub;
   final _searchController = TextEditingController();
   String _query = '';
   String? _lockedProductId;
@@ -60,9 +65,15 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() => setState(() {}));
-    _products.stream.listen((_) => setState(() {}));
-    _categories.stream.listen((_) => setState(() {}));
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _productsSub = _products.stream.listen((_) {
+      if (mounted) setState(() {});
+    });
+    _categoriesSub = _categories.stream.listen((_) {
+      if (mounted) setState(() {});
+    });
     _products.loadFromStorage();
   }
 
@@ -73,6 +84,8 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    _productsSub?.cancel();
+    _categoriesSub?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -366,13 +379,17 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                             itemCount: products.length,
                             itemBuilder: (context, index) {
                               final p = products[index];
+                              final latest = _products.getProductById(p.id) ?? p;
                               return ProductTile(
                                 product: p,
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => MahsulotDetailScreen(product: p),
-                                  ),
-                                ),
+                                onTap: () {
+                                  _products.prefetchProductForDetail(latest);
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => MahsulotDetailScreen(product: latest),
+                                    ),
+                                  );
+                                },
                                 onMenu: () => _showProductMenu(context, p),
                               );
                             },
@@ -544,49 +561,9 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     );
   }
 
-  void _showAddCategory(BuildContext context) {
-    final controller = TextEditingController();
-    IosStyleModals.showSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showGrabber: true,
-      child: Builder(
-        builder: (ctx) => IosStyleModals.sheetKeyboardForm(
-          context: ctx,
-          onCancel: () => Navigator.pop(ctx),
-          onSave: () async {
-            final name = controller.text.trim();
-            if (name.isNotEmpty) {
-              await _categories.addCategory(name);
-              if (ctx.mounted) Navigator.pop(ctx);
-              setState(() {});
-            }
-          },
-          cancelLabel: Strings.bekorQilish,
-          saveLabel: Strings.saqlash,
-          body: [
-            const Text(Strings.yangiKategoriya, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Kategoriya nomi',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onSubmitted: (_) async {
-                final name = controller.text.trim();
-                if (name.isNotEmpty) {
-                  await _categories.addCategory(name);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                  setState(() {});
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _showAddCategory(BuildContext context) async {
+    final name = await AddCategorySheet.show(context);
+    if (name != null && mounted) setState(() {});
   }
 
   void _showEditCategory(BuildContext context, String oldName) {

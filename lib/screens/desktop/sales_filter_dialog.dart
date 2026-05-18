@@ -100,6 +100,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   late bool _sellAtWholesale;
   late bool _sellAtPurchase;
   late bool _showPurchasePrice;
+  late bool _showUsdEquivalent;
   bool _loadingLists = false;
 
   SalesSessionProvider get _sales => SalesSessionProvider.instance;
@@ -113,6 +114,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     _sellAtWholesale = _sales.sellAtWholesalePrice;
     _sellAtPurchase = _sales.sellAtPurchasePrice;
     _showPurchasePrice = _sales.showPurchasePrice;
+    _showUsdEquivalent = _sales.showUsdEquivalent;
     if (_sales.categories.isEmpty || _sales.brands.isEmpty) {
       unawaited(_reloadLists());
     }
@@ -132,6 +134,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
       _sellAtWholesale = false;
       _sellAtPurchase = false;
       _showPurchasePrice = false;
+      _showUsdEquivalent = false;
     });
   }
 
@@ -148,6 +151,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
       sellWholesale: _sellAtWholesale,
       sellPurchase: _sellAtPurchase,
       showPurchaseOnCards: _showPurchasePrice,
+      showUsdOnCards: _showUsdEquivalent,
     );
     Navigator.pop(context, true);
   }
@@ -272,6 +276,11 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
             label: "Kelish narxini ko'rsatish",
             value: _showPurchasePrice,
             onChanged: (v) => setState(() => _showPurchasePrice = v),
+          ),
+          _FilterToggle(
+            label: 'Dollar ekvivalentini ko\'rsatish (\$)',
+            value: _showUsdEquivalent,
+            onChanged: (v) => setState(() => _showUsdEquivalent = v),
           ),
         ],
       ),

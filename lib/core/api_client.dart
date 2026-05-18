@@ -47,36 +47,11 @@ class ApiClient {
     };
     ApiHttp.debugLog('POST $uri body=${payload.keys} company_id=${payload['company_id']}');
     try {
-      http.Response response;
-      try {
-        response = await ApiHttp.post(
-          uri,
-          headers: await _headers(withAuth: false, includeCompanyHeader: false),
-          body: jsonEncode(payload),
-        );
-      } on SocketException {
-        if (Platform.isWindows) {
-          ApiHttp.resetClient();
-          response = await ApiHttp.post(
-            uri,
-            headers: await _headers(withAuth: false, includeCompanyHeader: false),
-            body: jsonEncode(payload),
-          );
-        } else {
-          rethrow;
-        }
-      } on HandshakeException {
-        if (Platform.isWindows) {
-          ApiHttp.resetClient();
-          response = await ApiHttp.post(
-            uri,
-            headers: await _headers(withAuth: false, includeCompanyHeader: false),
-            body: jsonEncode(payload),
-          );
-        } else {
-          rethrow;
-        }
-      }
+      final response = await ApiHttp.post(
+        uri,
+        headers: await _headers(withAuth: false, includeCompanyHeader: false),
+        body: jsonEncode(payload),
+      );
       ApiHttp.debugLog('login status=${response.statusCode} len=${response.body.length}');
       return _handleResponse(response);
     } on SocketException catch (e) {

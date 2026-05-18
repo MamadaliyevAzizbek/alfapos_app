@@ -172,7 +172,7 @@ class ProductTile extends StatelessWidget {
                     ],
                     const SizedBox(height: 2),
                     Text(
-                      'Miqdor: ${product.initialQuantity} ${product.unit ?? 'dona'}',
+                      'Miqdor: ${product.stockDisplayText}',
                       style: const TextStyle(
                         fontSize: 13,
                         color: AppTheme.textSecondary,

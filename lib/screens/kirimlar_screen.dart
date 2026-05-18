@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../core/input_formatters.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
+import '../providers/products_provider.dart';
 import '../providers/receive_session_provider.dart';
 import '../services/api_service.dart';
 import '../utils/product_search.dart' as product_search;
@@ -39,12 +40,18 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
   void initState() {
     super.initState();
     _session.addListener(_onSession);
+    ProductsProvider.instance.addListener(_onCatalogUpdated);
     _init();
   }
 
   Future<void> _init() async {
+    await ProductsProvider.instance.loadFromStorage();
     await _session.loadInit();
     if (mounted) await _searchProducts('');
+  }
+
+  void _onCatalogUpdated() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -55,6 +62,7 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     _searchDebounce?.cancel();
     _searchController.dispose();
     _session.removeListener(_onSession);
+    ProductsProvider.instance.removeListener(_onCatalogUpdated);
     super.dispose();
   }
 
@@ -81,6 +89,7 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
       } else {
         list = await _session.searchProducts(q);
       }
+      list = ProductsProvider.instance.withCatalogStockAll(list);
       if (mounted) {
         setState(() {
           _products = list;
@@ -115,7 +124,7 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     setState(() => _query = q);
     final p = await _session.findByBarcode(q);
     if (p != null) {
-      _session.addToCart(p);
+      _session.addToCart(ProductsProvider.instance.withCatalogStock(p));
       _searchController.clear();
       setState(() => _query = '');
       if (mounted) AppNotify.success(context, '${p.name} savatga qo\'shildi');
@@ -125,7 +134,7 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     if (!mounted) return;
     final list = product_search.filterProductsByBarcodeQuery(_products, q);
     if (list.length == 1) {
-      _session.addToCart(list.single);
+      _session.addToCart(ProductsProvider.instance.withCatalogStock(list.single));
       _searchController.clear();
       setState(() => _query = '');
       AppNotify.success(context, '${list.single.name} savatga qo\'shildi');
@@ -140,9 +149,12 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
   }
 
   void _addProduct(Product p) {
-    _session.addToCart(p);
-    AppNotify.success(context, '${p.name} savatga qo\'shildi');
+    final aligned = ProductsProvider.instance.withCatalogStock(p);
+    _session.addToCart(aligned);
+    AppNotify.success(context, '${aligned.name} savatga qo\'shildi');
   }
+
+  Product _displayProduct(Product p) => ProductsProvider.instance.withCatalogStock(p);
 
   List<Product> get _filtered {
     final q = _query.trim();
@@ -207,7 +219,9 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => const KirimSavatScreen()),
-                        ).then((_) => setState(() {})),
+                        ).then((_) {
+                          if (mounted) _searchProducts(_query);
+                        }),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -326,7 +340,9 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const KirimSavatScreen()),
-                  ).then((_) => setState(() {})),
+                  ).then((_) {
+                    if (mounted) _searchProducts(_query);
+                  }),
                   icon: const Icon(Icons.shopping_cart_rounded),
                   label: Text('Savat ($count)'),
                   style: FilledButton.styleFrom(
@@ -359,7 +375,7 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
       padding: EdgeInsets.fromLTRB(16, 0, 16, _session.cartCount > 0 ? 8 : 16),
       itemCount: list.length,
       itemBuilder: (context, index) {
-        final p = list[index];
+        final p = _displayProduct(list[index]);
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
           child: ListTile(
@@ -370,7 +386,7 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
             ),
             title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(
-              'Omborda: ${p.initialQuantity} ${p.unit ?? 'dona'} · Kelish: ${p.costPriceUzs ?? 0}',
+              'Omborda: ${p.stockDisplayText} · Kelish: ${p.costPriceUzs ?? 0}',
             ),
             trailing: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary),
             onTap: () => _addProduct(p),

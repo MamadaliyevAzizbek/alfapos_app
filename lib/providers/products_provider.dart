@@ -124,6 +124,8 @@ class ProductsProvider extends ChangeNotifier {
           continue;
         }
         try {
+          // Navbatdagi mahsulot ham dublikat bo‘lsa serverga yuborilmaydi.
+          _assertBarcodesUnique(product);
           if (job.isCreate || _isLocalOnlyProductId(product.id)) {
             await _syncCreateToServer(product);
           } else {
@@ -132,6 +134,18 @@ class ProductsProvider extends ChangeNotifier {
           queue.removeAt(0);
           await ProductCatalogStorage.saveSyncQueue(queue);
           await _persistCatalog();
+        } on ApiException catch (e) {
+          if (e.statusCode == 422) {
+            queue.removeAt(0);
+            await ProductCatalogStorage.saveSyncQueue(queue);
+            assert(() {
+              // ignore: avoid_print
+              print('Sync navbat: dublikat shtrix kod — serverga yuborilmadi (${product.id})');
+              return true;
+            }());
+            continue;
+          }
+          break;
         } catch (_) {
           break;
         }
@@ -416,13 +430,14 @@ class ProductsProvider extends ChangeNotifier {
         unitIdToShortName: _unitIdToShortName,
       );
       if (quantityHint != null) {
-        p = p.mergePreservingPrices(quantityHint);
+        p = p.mergeWithLocalFallback(quantityHint);
       }
       if (p.id.isEmpty) return null;
       _items.removeWhere((e) => e.id == p.id);
       _items.insert(0, p);
       _controller.add(items);
       notifyListeners();
+      unawaited(_persistCatalog());
       return p;
     } catch (_) {
       return null;
@@ -503,7 +518,9 @@ class ProductsProvider extends ChangeNotifier {
                 unitIdToShortName: _unitIdToShortName,
               );
               final prev = previousById[p.id];
-              if (prev != null) p = p.mergePreservingPrices(prev);
+              if (prev != null) {
+                p = p.mergeWithLocalFallback(prev, preferServerStock: true);
+              }
               return p;
             } catch (_) {
               return null;
@@ -600,12 +617,24 @@ class ProductsProvider extends ChangeNotifier {
           rethrow;
         }
       }
-      final merged = _mergeProductFromApiResponse(res, quantityHint: product);
+      var merged = _mergeProductFromApiResponse(res, quantityHint: product);
       _items.removeWhere((e) => e.id == oldId);
       if (merged == null) {
         _upsertCachedProduct(product);
-      } else if (merged.id != oldId) {
-        await _repointSyncJobs(oldId, merged.id);
+        await _persistCatalog();
+      } else {
+        Product result = merged;
+        final idNum = int.tryParse(result.id);
+        if (idNum != null) {
+          try {
+            final fresh = await ProductsApi.getProduct(idNum);
+            final hydrated = _mergeProductFromApiResponse(fresh, quantityHint: product);
+            if (hydrated != null) result = hydrated;
+          } catch (_) {}
+        }
+        if (result.id != oldId) {
+          await _repointSyncJobs(oldId, result.id);
+        }
       }
     } catch (_) {
       rethrow;
@@ -681,14 +710,16 @@ class ProductsProvider extends ChangeNotifier {
         return true;
       }());
       var merged = _mergeProductFromApiResponse(response, quantityHint: product);
-      if (merged == null && (useMultipart || deleteImage)) {
+      if (merged == null || useMultipart || deleteImage) {
         try {
           final fresh = await ProductsApi.getProduct(idNum);
-          merged = _mergeProductFromApiResponse(fresh, quantityHint: product);
+          final hydrated = _mergeProductFromApiResponse(fresh, quantityHint: product);
+          if (hydrated != null) merged = hydrated;
         } catch (_) {}
       }
       if (merged == null) {
         _upsertCachedProduct(product);
+        await _persistCatalog();
       }
     } catch (_) {
       rethrow;
@@ -703,13 +734,30 @@ class ProductsProvider extends ChangeNotifier {
     }
   }
 
-  /// «Mahsulot haqida»: ro'yxatda ulgurji bo'lmasa serverdan to'ldirish.
+  /// Kirim/sotuv API mahsulotini katalogdagi ombor miqdori bilan bir xil qiladi.
+  Product withCatalogStock(Product fromReceivingApi) {
+    final catalog = getProductById(fromReceivingApi.id);
+    if (catalog == null) return fromReceivingApi;
+    return catalog.mergeWithLocalFallback(fromReceivingApi);
+  }
+
+  List<Product> withCatalogStockAll(Iterable<Product> products) =>
+      products.map(withCatalogStock).toList();
+
+  /// Katalogdan ochishdan oldin ulgurji narxni fon rejimida to'ldirish (ixtiyoriy).
+  void prefetchProductForDetail(Product product) {
+    if (product.hasWholesalePrice) return;
+    unawaited(resolveProductForDetail(product));
+  }
+
+  /// «Mahsulot haqida»: katalog + server — fon rejimida to'ldirish.
   Future<Product> resolveProductForDetail(Product hint) async {
-    final cached = getProductById(hint.id) ?? hint;
-    if (cached.hasWholesalePrice) return cached;
+    final fromCache = getProductById(hint.id);
+    var base = fromCache != null ? fromCache.mergeWithLocalFallback(hint) : hint;
+    if (base.hasWholesalePrice) return base;
 
     final idNum = int.tryParse(hint.id);
-    if (idNum == null) return cached;
+    if (idNum == null) return base;
 
     await _ensureUnitsLoaded();
     Product? fromServer;
@@ -739,8 +787,8 @@ class ProductsProvider extends ChangeNotifier {
       } catch (_) {}
     }
 
-    if (fromServer == null) return cached;
-    final merged = fromServer.mergePreservingPrices(cached);
+    if (fromServer == null) return base;
+    final merged = fromServer.mergeWithLocalFallback(base);
     _upsertCachedProduct(merged);
     return merged;
   }

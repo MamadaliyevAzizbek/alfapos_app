@@ -11,6 +11,9 @@ import 'api_config.dart';
 class AlfaposHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
+    if (ApiHttp._creatingHttpClient) {
+      return super.createHttpClient(context);
+    }
     return ApiHttp.createHttpClient(securityContext: context);
   }
 }
@@ -18,6 +21,9 @@ class AlfaposHttpOverrides extends HttpOverrides {
 /// Barcha platformalar uchun HTTPS klient (mobil bilan bir xil ishonchlilik).
 class ApiHttp {
   static http.Client? _client;
+
+  /// [HttpClient] konstruktori [HttpOverrides] orqali qaytib kelmasligi uchun.
+  static bool _creatingHttpClient = false;
 
   static http.Client get shared {
     _client ??= IOClient(createHttpClient());
@@ -28,18 +34,27 @@ class ApiHttp {
 
   /// Desktop: tizim sertifikatlari, proksi, SSL.
   static HttpClient createHttpClient({SecurityContext? securityContext}) {
-    final context = securityContext ?? SecurityContext(withTrustedRoots: true);
-    final client = HttpClient(context: context);
+    _creatingHttpClient = true;
+    try {
+      final context = securityContext ?? SecurityContext(withTrustedRoots: true);
+      final client = HttpClient(context: context);
+      _configureHttpClient(client);
+      return client;
+    } finally {
+      _creatingHttpClient = false;
+    }
+  }
+
+  static void _configureHttpClient(HttpClient client) {
     client.connectionTimeout = timeout;
     client.idleTimeout = timeout;
     client.autoUncompress = true;
     client.findProxy = HttpClient.findProxyFromEnvironment;
-    client.userAgent = 'AlfaposPOS/1.0.6 (${Platform.operatingSystem})';
+    client.userAgent = 'AlfaposPOS/1.0.7 (${Platform.operatingSystem})';
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       client.badCertificateCallback = (cert, host, port) =>
           host == 'app.alfapos.uz' || host.endsWith('.alfapos.uz');
     }
-    return client;
   }
 
   /// SSL/proksi holatini yangilash (bir marta qayta ulanish).
@@ -48,20 +63,51 @@ class ApiHttp {
     _client = null;
   }
 
-  /// Ilova ochilganda SSL zanjirini ishga tushirish (Windows).
+  static bool get _retryTransientNetwork =>
+      !kIsWeb && (Platform.isWindows || Platform.isMacOS);
+
+  /// Windows/macOS: birinchi SSL/proksi urinishi muvaffaqiyatsiz bo‘lsa qayta urinish.
+  static Future<T> withTransientRetry<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } on SocketException {
+      if (!_retryTransientNetwork) rethrow;
+      resetClient();
+      return await action();
+    } on HandshakeException {
+      if (!_retryTransientNetwork) rethrow;
+      resetClient();
+      return await action();
+    } on TlsException {
+      if (!_retryTransientNetwork) rethrow;
+      resetClient();
+      return await action();
+    } on http.ClientException {
+      if (!_retryTransientNetwork) rethrow;
+      resetClient();
+      return await action();
+    }
+  }
+
+  /// Ilova ochilganda SSL zanjirini ishga tushirish (Windows/macOS).
   static Future<void> warmUp() async {
     if (kIsWeb) return;
-    try {
-      final client = createHttpClient();
+    final attempts = Platform.isWindows ? 2 : 1;
+    for (var i = 0; i < attempts; i++) {
       try {
-        final req = await client.headUrl(Uri.parse(ApiConfig.baseUrl));
-        final res = await req.close().timeout(const Duration(seconds: 12));
-        await res.drain();
-      } finally {
-        client.close(force: true);
+        final client = createHttpClient();
+        try {
+          final req = await client.headUrl(Uri.parse(ApiConfig.baseUrl));
+          final res = await req.close().timeout(const Duration(seconds: 12));
+          await res.drain();
+        } finally {
+          client.close(force: true);
+        }
+        return;
+      } catch (e) {
+        debugLog('warmUp attempt ${i + 1}: $e');
+        if (i + 1 < attempts) resetClient();
       }
-    } catch (e) {
-      debugLog('warmUp: $e');
     }
   }
 
@@ -91,7 +137,9 @@ class ApiHttp {
   }
 
   static Future<http.Response> get(Uri uri, {Map<String, String>? headers}) {
-    return shared.get(uri, headers: headers).timeout(timeout);
+    return withTransientRetry(
+      () => shared.get(uri, headers: headers).timeout(timeout),
+    );
   }
 
   static Future<http.Response> post(
@@ -99,15 +147,21 @@ class ApiHttp {
     Map<String, String>? headers,
     Object? body,
   }) {
-    return shared.post(uri, headers: headers, body: body).timeout(timeout);
+    return withTransientRetry(
+      () => shared.post(uri, headers: headers, body: body).timeout(timeout),
+    );
   }
 
   static Future<http.Response> delete(Uri uri, {Map<String, String>? headers}) {
-    return shared.delete(uri, headers: headers).timeout(timeout);
+    return withTransientRetry(
+      () => shared.delete(uri, headers: headers).timeout(timeout),
+    );
   }
 
   static Future<http.StreamedResponse> send(http.BaseRequest request) {
-    return shared.send(request).timeout(timeout);
+    return withTransientRetry(
+      () => shared.send(request).timeout(timeout),
+    );
   }
 
   static void debugLog(String message) {
