@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alfapos-windows-release
-          path: alfapos_app-windows-x64.zip
+          path: release/alfapos-windows-release/alfapos_app-windows-x64.zip
           retention-days: 90
 
       - name: Publish GitHub Release (push main, workflow_dispatch yoki tag)
@@ -57,6 +57,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
+          $zip = "release/alfapos-windows-release/alfapos_app-windows-x64.zip"
+          if (-not (Test-Path $zip)) { Write-Error "ZIP topilmadi: $zip" }
           $line = (Get-Content pubspec.yaml | Select-String '^version:').Line
           $ver = $line -replace 'version:\s*','' -replace '\+.*',''
           if ("${{ github.ref }}" -like 'refs/tags/v*') {
@@ -64,7 +66,7 @@ jobs:
           } else {
             $tag = "windows-$ver-build${{ github.run_number }}"
           }
-          gh release create $tag "alfapos_app-windows-x64.zip" `
+          gh release create $tag $zip `
             --title "AlfaPOS Windows $ver" `
             --notes "Windows x64 (Release). ZIP ichida alfapos_app.exe — papkani to'liq chiqarib, exe ni ishga tushiring." `
             --prerelease
