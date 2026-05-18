@@ -180,23 +180,6 @@ class _AsosiyScreenState extends State<AsosiyScreen> {
                 ),
               ),
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                  child: _GlassMetricCard(
-                    title: Strings.bugungiUmumiySofFoyda,
-                    amount: dashboard.todayDaromadUzs != null
-                        ? DailySalesFormat.formatWithCurrency(dashboard.todayDaromadUzs!, currency)
-                        : sales.netProfitFormatted(currency),
-                    color: (dashboard.todayDaromadUzs ?? sales.netProfitUzs) >= 0
-                        ? Colors.green.shade700
-                        : Colors.red.shade700,
-                    subtitle: dashboard.todayDaromadUzs != null
-                        ? 'API: Bugungi daromad'
-                        : 'Sotish − kelish narxi (marja)',
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
                   child: SizedBox(height: safePadding.bottom + 16)),
             ],
           ),

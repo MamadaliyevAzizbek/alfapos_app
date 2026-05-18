@@ -1,16 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
+import '../core/input_formatters.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
-import '../providers/products_provider.dart';
+import '../providers/receive_session_provider.dart';
 import '../services/api_service.dart';
+import '../utils/product_search.dart' as product_search;
+import '../utils/receive_products.dart';
 import '../widgets/product_tile.dart';
-import '../widgets/ios_style_modals.dart';
-import 'katalog_screen.dart';
+import 'kirim_qoralamalar_screen.dart';
+import 'kirim_savat_screen.dart';
+import 'kirim_tarix_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
+import '../utils/platform_layout.dart';
+import 'desktop/desktop_shell_scope.dart';
 
-/// Menu → Kirimlar: mahsulotlar API dan (POST /receives/products), kirim faqat API ga (POST /receives/store).
+/// Kirim — web /receives bilan bir xil: taminotchi, savat, barcode, store.
 class KirimlarScreen extends StatefulWidget {
   const KirimlarScreen({super.key});
 
@@ -18,269 +26,133 @@ class KirimlarScreen extends StatefulWidget {
   State<KirimlarScreen> createState() => _KirimlarScreenState();
 }
 
-class _KirimlarScreenState extends State<KirimlarScreen> {
+class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMixin {
   final _searchController = TextEditingController();
+  final _session = ReceiveSessionProvider.instance;
   String _query = '';
   List<Product> _products = [];
-  bool _loading = true;
-  String? _error;
-  /// API dan GET /receives/payment-types — birinchi to'lov turi id (kirim store da payments uchun)
-  int _paymentTypeId = 1;
+  bool _loadingProducts = false;
+  String? _productsError;
+  Timer? _searchDebounce;
 
-  /// API: products[] va variants[] — har bir product ga product_id bo'yicha variant ni birlashtiradi
-  static List<Map<String, dynamic>> _mergeProductsWithVariants(Map<String, dynamic> res) {
-    final productsRaw = res['products'] ?? res['data'];
-    List<dynamic> productsList = [];
-    if (productsRaw is List<dynamic>) productsList = productsRaw;
-    if (productsList.isEmpty) return [];
-
-    final variantsRaw = res['variants'] ?? [];
-    final List<Map<String, dynamic>> variants = variantsRaw is List<dynamic>
-        ? variantsRaw.map((e) => e is Map ? Map<String, dynamic>.from(e as Map) : <String, dynamic>{}).where((m) => m.isNotEmpty).toList()
-        : [];
-
-    final List<Map<String, dynamic>> result = [];
-    for (final p in productsList) {
-      if (p is! Map) continue;
-      final product = Map<String, dynamic>.from(p as Map);
-      final productId = product['productID'] ?? product['id'];
-      if (productId == null) continue;
-      final productIdInt = productId is int ? productId : int.tryParse(productId.toString());
-      Map<String, dynamic>? variant;
-      for (final v in variants) {
-        final vid = v['product_id'];
-        if (vid == null) continue;
-        final vInt = vid is int ? vid : int.tryParse(vid.toString());
-        if (vInt == productIdInt) {
-          variant = v;
-          break;
-        }
-      }
-      final merged = Map<String, dynamic>.from(product);
-      if (variant != null && variant.isNotEmpty) {
-        merged.addAll(variant);
-        merged['quantity'] = variant['availableQuantity'];
-        merged['variants'] = [variant];
-      }
-      result.add(merged);
-    }
-    return result;
+  @override
+  void initState() {
+    super.initState();
+    _session.addListener(_onSession);
+    _init();
   }
 
-  Future<void> _loadPaymentTypes() async {
-    try {
-      final res = await ReceivesApi.getPaymentTypes();
-      final list = res['payment_types'] as List<dynamic>? ??
-          res['data'] as List<dynamic>? ??
-          res['paymentTypes'] as List<dynamic>? ??
-          [];
-      if (list.isNotEmpty && list.first is Map) {
-        final first = list.first as Map;
-        final id = first['id'] ?? first['payment_type_id'];
-        if (id != null) {
-          final n = id is int ? id : int.tryParse(id.toString());
-          if (n != null && mounted) setState(() => _paymentTypeId = n);
-        }
-      }
-    } catch (_) {}
+  Future<void> _init() async {
+    await _session.loadInit();
+    if (mounted) await _searchProducts('');
   }
 
-  Future<void> _loadFromApi() async {
+  @override
+  Future<void> onDesktopShellSync() => _init();
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _session.removeListener(_onSession);
+    super.dispose();
+  }
+
+  void _onSession() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _searchProducts(String q) async {
     if (!mounted) return;
     setState(() {
-      _loading = true;
-      _error = null;
+      _loadingProducts = true;
+      _productsError = null;
     });
-    _loadPaymentTypes();
     try {
-      final res = await ReceivesApi.getReceivesProducts(body: {
-        'rowLimit': 500,
-        'orderType': 'receiving',
-      });
-      final rows = _mergeProductsWithVariants(res);
-      final list = rows
-          .map((e) {
-            try {
-              return Product.fromApiJson(
-                e,
-                unitIdToName: null,
-                unitIdToShortName: null,
-              );
-            } catch (_) {
-              return null;
-            }
-          })
-          .whereType<Product>()
-          .where((p) => p.id.isNotEmpty)
-          .toList();
+      List<Product> list;
+      if (q.trim().isEmpty) {
+        final res = await ReceivesApi.getReceivesProducts(body: {
+          'orderType': 'receiving',
+          'rowLimit': 200,
+          'offset': 0,
+          if (_session.branchId != null) 'currentBranch': _session.branchId,
+        });
+        list = ReceiveProducts.productsFromApiResponse(res);
+      } else {
+        list = await _session.searchProducts(q);
+      }
       if (mounted) {
         setState(() {
           _products = list;
-          _loading = false;
-          _error = null;
+          _loadingProducts = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _products = [];
-          _loading = false;
-          _error = e.toString();
+          _loadingProducts = false;
+          _productsError = e.toString();
         });
       }
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadFromApi();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  List<Product> get _filtered =>
-      KatalogScreen.filterProductsByQuery(_products, _query);
-
-  void _openScanner() {
-    showCompactScanner(context, onResult: (barcode) {
-      if (barcode == null || barcode.isEmpty || !mounted) return;
-      final q = barcode.trim();
-      _searchController.text = q;
-      setState(() => _query = q);
+  void _onSearchChanged(String v) {
+    setState(() => _query = v);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (_searchController.text.trim() == v.trim()) {
+        _searchProducts(v.trim());
+      }
     });
   }
 
-  Future<void> _addKirim(Product p) async {
-    final controller = TextEditingController();
-    final result = await IosStyleModals.showSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showGrabber: true,
-      child: Builder(
-        builder: (ctx) => SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                p.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "Ombordagi miqdor: ${p.initialQuantity} ${p.unit ?? 'dona'}",
-                style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary, height: 1.3),
-              ),
-              const SizedBox(height: 18),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: Strings.kirimMiqdori,
-                  filled: true,
-                  fillColor: AppTheme.cardBg,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-                  ),
-                  floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(height: 18),
-              IosStyleModals.sheetPillCancelSaveRow(
-                cancelLabel: Strings.bekorQilish,
-                saveLabel: Strings.saqlash,
-                onCancel: () => Navigator.pop(ctx, false),
-                onSave: () {
-                  final v = int.tryParse(controller.text.trim());
-                  if (v != null && v > 0) {
-                    Navigator.pop(ctx, true);
-                  } else {
-                    AppNotify.info(ctx, "Kirim miqdorini kiriting (1 yoki undan katta)");
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (result != true || !mounted) return;
-    final add = int.tryParse(controller.text.trim()) ?? 0;
-    if (add <= 0) return;
-    final costPrice = p.costPriceUzs ?? 0;
-    final totalReceive = costPrice * add;
-    final productId = int.tryParse(p.id);
-    if (productId == null) {
-      if (mounted) {
-        AppNotify.warning(context, "Mahsulot ID aniqlanmadi");
-      }
+  Future<void> _onBarcode(String barcode) async {
+    final q = barcode.trim();
+    if (q.isEmpty) return;
+    _searchController.text = q;
+    setState(() => _query = q);
+    final p = await _session.findByBarcode(q);
+    if (p != null) {
+      _session.addToCart(p);
+      _searchController.clear();
+      setState(() => _query = '');
+      if (mounted) AppNotify.success(context, '${p.name} savatga qo\'shildi');
       return;
     }
-    // API doc: orderType receiving, salesOrReceivingType supplier, cart, payments, supplier (null yoki { id })
-    final receiveBody = {
-      'orderType': 'receiving',
-      'salesOrReceivingType': 'supplier',
-      'status': 'done',
-      'subTotal': totalReceive,
-      'tax': 0,
-      'discount': 0,
-      'grandTotal': totalReceive,
-      'dueAmount': 0,
-      'profit': 0,
-      'cart': [
-        {
-          'productID': productId,
-          'variantID': p.variantId ?? 1,
-          'quantity': add,
-          'price': costPrice,
-          'productTitle': p.name,
-          'variantTitle': 'default_variant',
-          'orderType': 'receiving',
-          'discount': 0,
-          'taxID': null,
-          'calculatedPrice': totalReceive,
-          'cartItemNote': '',
-        },
-      ],
-      'payments': [
-        {'paymentID': _paymentTypeId, 'paid': totalReceive},
-      ],
-      'supplier': null,
-    };
-    try {
-      await ReceivesApi.storeReceive(receiveBody);
-      if (!mounted) return;
-      await _loadFromApi();
-      await ProductsProvider.instance.loadFromApi();
-      if (mounted) {
-        AppNotify.success(context, "${p.name}: +$add qo'shildi. Kirim API ga yozildi.");
-      }
-    } catch (e) {
-      if (mounted) {
-        AppNotify.error(context, "Kirim saqlanmadi: $e");
-      }
+    await _searchProducts(q);
+    if (!mounted) return;
+    final list = product_search.filterProductsByBarcodeQuery(_products, q);
+    if (list.length == 1) {
+      _session.addToCart(list.single);
+      _searchController.clear();
+      setState(() => _query = '');
+      AppNotify.success(context, '${list.single.name} savatga qo\'shildi');
     }
+  }
+
+  void _openScanner() {
+    showCompactScanner(context, onResult: (barcode) async {
+      if (barcode == null || barcode.isEmpty || !mounted) return;
+      await _onBarcode(barcode);
+    });
+  }
+
+  void _addProduct(Product p) {
+    _session.addToCart(p);
+    AppNotify.success(context, '${p.name} savatga qo\'shildi');
+  }
+
+  List<Product> get _filtered {
+    final q = _query.trim();
+    if (q.isEmpty) return _products;
+    return product_search.filterProductsByQuery(_products, q);
   }
 
   @override
   Widget build(BuildContext context) {
+    final supplier = _session.selectedSupplier;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -290,135 +162,221 @@ class _KirimlarScreenState extends State<KirimlarScreen> {
         title: const Text(Strings.kirimlar),
         actions: [
           IconButton(
+            icon: const Icon(Icons.history_rounded),
+            tooltip: 'Tarix',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const KirimTarixScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmark_outline_rounded),
+            tooltip: 'Saqlanganlar',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const KirimQoralamalarScreen()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading ? null : _loadFromApi,
-            tooltip: "Qayta yuklash",
+            onPressed: _session.initLoading ? null : _init,
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (v) => setState(() => _query = v),
-                    decoration: const InputDecoration(
-                      hintText: "Mahsulot qidirish",
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        color: AppTheme.textSecondary,
-                      ),
+      body: _session.initLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _session.initError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_session.initError!, textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        FilledButton(onPressed: _init, child: const Text('Qayta yuklash')),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Material(
-                  color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: _openScanner,
-                    borderRadius: BorderRadius.circular(12),
-                    child: const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Icon(
-                        Icons.qr_code_scanner_rounded,
-                        color: Colors.white,
-                        size: 26,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                )
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: InkWell(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const KirimSavatScreen()),
+                        ).then((_) => setState(() {})),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFD6E8FF)),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                _error!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.red.shade700,
-                                  fontSize: 14,
+                              const Icon(Icons.local_shipping_outlined, color: AppTheme.primary),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  supplier?.name ?? 'Yetkazib beruvchi (yakunlashda tanlanadi)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: supplier != null ? AppTheme.textPrimary : AppTheme.textSecondary,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 16),
-                              ElevatedButton.icon(
-                                onPressed: _loadFromApi,
-                                icon: const Icon(Icons.refresh_rounded, size: 20),
-                                label: const Text("Qayta yuklash"),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryLight,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Savat: ${_session.cartCount}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primary,
+                                    fontSize: 13,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      )
-                    : _filtered.isEmpty
-                        ? Center(
-                            child: Text(
-                              "Mahsulot topilmadi",
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _onSearchChanged,
+                              onSubmitted: _searchProducts,
+                              decoration: const InputDecoration(
+                                hintText: 'Mahsulot yoki shtrix kod',
+                                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textSecondary),
                               ),
                             ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: _filtered.length,
-                            itemBuilder: (context, index) {
-                              final p = _filtered[index];
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  leading: Container(
-                                    width: 56,
-                                    height: 56,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.cardBg,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: ProductTile.buildProductImage(
-                                      p,
-                                      boxSize: 56,
-                                    ),
-                                  ),
-                                  title: Text(
-                                    p.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    "Omborda: ${p.initialQuantity} ${p.unit ?? 'dona'}",
-                                  ),
-                                  trailing: const Icon(
-                                    Icons.add_circle_outline_rounded,
-                                    color: AppTheme.primary,
-                                  ),
-                                  onTap: () => _addKirim(p),
-                                ),
-                              );
-                            },
                           ),
+                          if (!isDesktopPosLayout) ...[
+                            const SizedBox(width: 10),
+                            Material(
+                              color: AppTheme.primary,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InkWell(
+                                onTap: _openScanner,
+                                borderRadius: BorderRadius.circular(12),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(14),
+                                  child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 26),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Expanded(child: _buildProductList()),
+                  ],
+                ),
+      bottomNavigationBar: _session.cartCount > 0 ? _buildCartBottomBar() : null,
+    );
+  }
+
+  Widget _buildCartBottomBar() {
+    final count = _session.cartCount;
+    final total = _session.cartTotalUzs;
+    return Material(
+      elevation: 8,
+      color: Colors.white,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Savat: $count ta mahsulot',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
+                  Text(
+                    '${formatThousands(total)} so\'m',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const KirimSavatScreen()),
+                  ).then((_) => setState(() {})),
+                  icon: const Icon(Icons.shopping_cart_rounded),
+                  label: Text('Savat ($count)'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildProductList() {
+    if (_loadingProducts) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_productsError != null) {
+      return Center(child: Text(_productsError!, textAlign: TextAlign.center));
+    }
+    final list = _filtered;
+    if (list.isEmpty) {
+      return const Center(
+        child: Text('Mahsulot topilmadi', style: TextStyle(color: AppTheme.textSecondary)),
+      );
+    }
+    return ListView.builder(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, _session.cartCount > 0 ? 8 : 16),
+      itemCount: list.length,
+      itemBuilder: (context, index) {
+        final p = list[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: ListTile(
+            leading: SizedBox(
+              width: 56,
+              height: 56,
+              child: ProductTile.buildProductImage(p, boxSize: 56),
+            ),
+            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              'Omborda: ${p.initialQuantity} ${p.unit ?? 'dona'} · Kelish: ${p.costPriceUzs ?? 0}',
+            ),
+            trailing: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary),
+            onTap: () => _addProduct(p),
+          ),
+        );
+      },
     );
   }
 }

@@ -5,6 +5,7 @@ import '../core/input_formatters.dart';
 import '../services/api_service.dart';
 import 'api_chek_detail_screen.dart';
 import '../widgets/ios_style_modals.dart';
+import 'desktop/desktop_shell_scope.dart';
 
 /// API reports (reports/sales) — hisobotlar ekrani
 class HisobotlarScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class HisobotlarScreen extends StatefulWidget {
   State<HisobotlarScreen> createState() => _HisobotlarScreenState();
 }
 
-class _HisobotlarScreenState extends State<HisobotlarScreen> {
+class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSyncMixin {
   DateTime _dateFrom = DateTime.now().subtract(const Duration(days: 30));
   DateTime _dateTo = DateTime.now();
   final TextEditingController _searchController = TextEditingController();
@@ -134,6 +135,12 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> {
     }
     body['filtersData'] = filters;
     return body;
+  }
+
+  @override
+  Future<void> onDesktopShellSync() async {
+    await _loadFilters();
+    await _load();
   }
 
   /// MOBILE_API.md bo‘yicha: POST /api/v1/reports/sales, body: filtersData, rowLimit, rowOffset

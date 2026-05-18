@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
+import '../utils/customer_filter_options.dart';
+import '../utils/customer_groups_list.dart';
 import '../core/api_client.dart';
+import '../utils/customer_store_body.dart';
 
 const String _keyDebtEntries = 'alfapos_client_debt_entries';
 
@@ -32,6 +35,16 @@ class Client {
   final String? duePaymentDate;
   /// API: qarz limiti — debt_limit; -1 = qora ro'yxat
   final int? debtLimit;
+  final num? ordersDueDebt;
+  final num? journalNetDebt;
+  final int? customerGroupId;
+  final String? customerGroupName;
+  final String? supplierName;
+  final int? supplierId;
+  /// POST /sales/customers — guruh chegirma foizi
+  final num? customerGroupDiscount;
+  /// selling | purchase | wholesale — guruh foizi qaysi narx ustidan
+  final String? customerGroupDiscountPriceType;
 
   const Client({
     required this.id,
@@ -43,6 +56,14 @@ class Client {
     this.balance,
     this.duePaymentDate,
     this.debtLimit,
+    this.ordersDueDebt,
+    this.journalNetDebt,
+    this.customerGroupId,
+    this.customerGroupName,
+    this.supplierName,
+    this.supplierId,
+    this.customerGroupDiscount,
+    this.customerGroupDiscountPriceType,
   });
 
   static Client fromApiJson(Map<String, dynamic> json) {
@@ -75,6 +96,20 @@ class Client {
     final name = (fullName != null && fullName.isNotEmpty)
         ? fullName
         : ((first.toString() + ' ' + last.toString()).trim().isEmpty ? (json['name'] as String? ?? '') : (first.toString() + ' ' + last.toString()).trim());
+
+    String? _strLabel(dynamic v) {
+      if (v == null) return null;
+      if (v is Map) return null;
+      final s = v.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
+    String? _nestedLabel(dynamic o) {
+      if (o is! Map) return null;
+      final m = Map<String, dynamic>.from(o);
+      return _strLabel(m['title'] ?? m['name'] ?? m['full_name'] ?? m['label']);
+    }
+
     return Client(
       id: idStr,
       name: name.isEmpty ? '—' : name,
@@ -85,8 +120,88 @@ class Client {
       balance: _numOrNull(json['balance']),
       duePaymentDate: json['due_payment_date'] as String?,
       debtLimit: _intOrNull(json['debt_limit']),
+      ordersDueDebt: _numOrNull(json['orders_due_debt']),
+      journalNetDebt: _numOrNull(json['journal_net_debt']),
+      customerGroupId: _intOrNull(json['customer_group'] ?? json['customer_group_id']),
+      customerGroupName: _strLabel(json['customer_group_title'] ??
+              json['group_name'] ??
+              json['customer_group_name'] ??
+              json['group_title']) ??
+          _nestedLabel(json['customer_group'] ?? json['group']),
+      supplierName: _strLabel(json['supplier_name'] ??
+              json['supplier_title'] ??
+              json['taminotchi'] ??
+              json['default_supplier_name']) ??
+          _nestedLabel(json['supplier'] ?? json['default_supplier']),
+      supplierId: _intOrNull(json['supplier_id'] ?? json['default_supplier_id']),
+      customerGroupDiscount: _groupDiscountFromJson(json),
+      customerGroupDiscountPriceType: _priceTypeFromJson(json),
     );
   }
+
+  static num? _parseNum(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    final s = v.toString().trim();
+    if (s.isEmpty) return null;
+    return num.tryParse(s);
+  }
+
+  static num? _groupDiscountFromJson(Map<String, dynamic> json) {
+    final direct = _parseNum(json['customer_group_discount'] ??
+        json['group_discount'] ??
+        json['customerGroupDiscount'] ??
+        json['discount_percent']);
+    if (direct != null && direct != 0) return direct;
+    final group = json['customer_group'] ?? json['group'];
+    if (group is Map) {
+      return CustomerGroupsListParser.groupDiscount(Map<String, dynamic>.from(group));
+    }
+    return direct;
+  }
+
+  static String? _priceTypeFromJson(Map<String, dynamic> json) {
+    for (final key in [
+      'group_markup_price_base',
+      'customer_group_discount_price_type',
+      'discount_price_type',
+      'group_discount_price_type',
+      'price_type',
+      'group_discount_on',
+      'discount_on',
+    ]) {
+      final v = json[key];
+      if (v != null && v.toString().trim().isNotEmpty) {
+        return v.toString().trim();
+      }
+    }
+    final group = json['customer_group'] ?? json['group'];
+    if (group is Map) {
+      return CustomerStoreBody.priceTypeFromGroup(Map<String, dynamic>.from(group));
+    }
+    return null;
+  }
+}
+
+/// Filterlar — POST /contacts/customers (web bilan bir xil).
+class CustomersListFilters {
+  final String groupId;
+  final String statusId;
+  final String debtBalance;
+  final bool blacklistOnly;
+
+  const CustomersListFilters({
+    this.groupId = 'all',
+    this.statusId = 'all',
+    this.debtBalance = 'all',
+    this.blacklistOnly = false,
+  });
+
+  List<Map<String, String>> toFiltersData() => [
+        {'key': 'customerGroups', 'value': groupId},
+        {'key': 'customerStatuses', 'value': statusId},
+        {'key': 'customerDebtBalance', 'value': debtBalance},
+      ];
 }
 
 class ClientsProvider extends ChangeNotifier {
@@ -98,6 +213,15 @@ class ClientsProvider extends ChangeNotifier {
 
   List<Client> _items = [];
   bool _loaded = false;
+  bool _loading = false;
+  bool _hasMore = true;
+  int _rowOffset = 0;
+  static const int pageSize = 20;
+  String _lastSearch = '';
+  CustomersListFilters _lastFilters = const CustomersListFilters();
+  num _listTotalDebt = 0;
+  num _listTotalBalance = 0;
+  int _listCount = 0;
   String? _loadError;
   Map<String, dynamic>? _lastRawCustomers;
   DateTime? _lastLoadedAt;
@@ -105,6 +229,11 @@ class ClientsProvider extends ChangeNotifier {
   static const Duration _cacheTtl = Duration(seconds: 45);
 
   List<Client> get items => List.unmodifiable(_items);
+  bool get isLoading => _loading;
+  bool get hasMore => _hasMore;
+  num get listTotalDebt => _listTotalDebt;
+  num get listTotalBalance => _listTotalBalance;
+  int get listCount => _listCount > 0 ? _listCount : _items.length;
   String? get loadError => _loadError;
   Map<String, dynamic>? get lastRawCustomers => _lastRawCustomers;
 
@@ -121,44 +250,90 @@ class ClientsProvider extends ChangeNotifier {
     return [];
   }
 
-  Future<void> loadFromApi({bool force = false}) async {
-    final now = DateTime.now();
-    final freshEnough = _lastLoadedAt != null && now.difference(_lastLoadedAt!) < _cacheTtl;
-    if (!force && _loaded && _items.isNotEmpty && freshEnough) return;
-    if (_inFlightLoad != null) return _inFlightLoad!;
+  Future<void> loadFromApi({
+    bool force = false,
+    String searchValue = '',
+    CustomersListFilters filters = const CustomersListFilters(),
+  }) async {
+    await loadCustomersPage(
+      reset: true,
+      force: force,
+      searchValue: searchValue,
+      filters: filters,
+    );
+  }
 
-    final future = _loadFromApiInternal();
+  Future<void> loadCustomersPage({
+    bool reset = true,
+    bool force = false,
+    String searchValue = '',
+    CustomersListFilters filters = const CustomersListFilters(),
+  }) async {
+    if (!reset && (!_hasMore || _loading)) return;
+
+    final now = DateTime.now();
+    final sameQuery = searchValue == _lastSearch &&
+        filters.groupId == _lastFilters.groupId &&
+        filters.statusId == _lastFilters.statusId &&
+        filters.debtBalance == _lastFilters.debtBalance &&
+        filters.blacklistOnly == _lastFilters.blacklistOnly;
+    final freshEnough = _lastLoadedAt != null && now.difference(_lastLoadedAt!) < _cacheTtl;
+    if (!force && reset && _loaded && _items.isNotEmpty && freshEnough && sameQuery) return;
+
+    if (reset) {
+      _rowOffset = 0;
+      _hasMore = true;
+      _lastSearch = searchValue;
+      _lastFilters = filters;
+    }
+
+    if (_inFlightLoad != null && reset) {
+      await _inFlightLoad;
+      if (!force && sameQuery && _loaded) return;
+    }
+
+    _loading = true;
+    _loadError = null;
+    notifyListeners();
+
+    final future = _fetchPage(reset: reset, searchValue: searchValue, filters: filters);
     _inFlightLoad = future;
     try {
       await future;
     } finally {
       _inFlightLoad = null;
+      _loading = false;
     }
   }
 
-  Future<void> _loadFromApiInternal() async {
-    _loadError = null;
+  Future<void> _fetchPage({
+    required bool reset,
+    required String searchValue,
+    required CustomersListFilters filters,
+  }) async {
     try {
-      // Qarzi va balansi bilan to'liq ro'yxat: POST /contacts/customers
+      final body = <String, dynamic>{
+        'rowLimit': pageSize,
+        'rowOffset': _rowOffset,
+        'searchValue': searchValue,
+        'columnKey': 'first_name',
+        'columnSortedBy': 'asc',
+        'filtersData': filters.toFiltersData(),
+      };
+      if (filters.blacklistOnly) body['debt_limit'] = true;
+
       Map<String, dynamic> res;
       try {
-        res = await ContactsApi.getCustomers(body: {
-          'rowLimit': 5000,
-          'rowOffset': 0,
-          // Ba'zi backend implementatsiyalarida columnName/columnKey talab qilinadi
-          'columnKey': 'id',
-          'columnSortedBy': 'DESC',
-          'searchValue': '',
-          'reqType': '',
-          'filtersData': [],
-        });
+        res = await ContactsApi.getCustomers(body: body);
       } on ApiException catch (_) {
-        // POST muvaffaqiyatsiz bo'lsa — GET /contacts/customers-list (datarows, balance, due_amount)
+        if (_rowOffset > 0) rethrow;
         res = await ContactsApi.getCustomersList();
       }
+
       _lastRawCustomers = res;
-      final list = _extractList(res);
-      _items = list
+      _parseListTotals(res);
+
+      final page = _extractList(res)
           .map((e) {
             try {
               return Client.fromApiJson(Map<String, dynamic>.from(e as Map));
@@ -169,66 +344,292 @@ class ClientsProvider extends ChangeNotifier {
           .whereType<Client>()
           .where((c) => c.id.isNotEmpty)
           .toList();
+
+      if (reset) {
+        _items = page;
+      } else {
+        final seen = _items.map((c) => c.id).toSet();
+        _items = [..._items, ...page.where((c) => !seen.contains(c.id))];
+      }
+
+      _rowOffset += page.length;
+      _hasMore = page.length >= pageSize;
       _loaded = true;
       _lastLoadedAt = DateTime.now();
       notifyListeners();
     } on ApiException catch (e) {
       _loadError = e.message;
-      _loaded = true;
-      _items = [];
+      if (reset) _items = [];
       notifyListeners();
     } catch (e, st) {
       _loadError = 'Mijozlar yuklanmadi';
-      _loaded = true;
-      _items = [];
+      if (reset) _items = [];
       notifyListeners();
       assert(() {
         // ignore: avoid_print
-        print('ClientsProvider.loadFromApi error: $e\n$st');
+        print('ClientsProvider.loadCustomersPage error: $e\n$st');
         return true;
       }());
     }
   }
 
-  Future<void> add(Client client) async {
+  void _parseListTotals(Map<String, dynamic> res) {
+    num toNum(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v;
+      return double.tryParse(v.toString()) ?? 0;
+    }
+
+    _listTotalDebt = toNum(res['totalDebt'] ?? res['total_debt']);
+    _listTotalBalance = toNum(res['totalBalance'] ?? res['total_balance']);
+    final c = res['count'];
+    _listCount = c is int ? c : int.tryParse(c?.toString() ?? '') ?? 0;
+  }
+
+  List<Map<String, dynamic>>? _groupsCache;
+  DateTime? _groupsCacheAt;
+  Future<List<Map<String, dynamic>>>? _groupsFetchInFlight;
+  static const _groupsCacheTtl = Duration(seconds: 45);
+
+  void invalidateGroupsCache() {
+    _groupsCache = null;
+    _groupsCacheAt = null;
+  }
+
+  /// POST /groups-list → form-options / customer-groups (foiz bilan).
+  Future<List<Map<String, dynamic>>> _fetchCustomerGroupsImpl() async {
+    try {
+      final res = await ContactsApi.postGroupsList();
+      final rows = CustomerGroupsListParser.parseRows(res);
+      final normalized = _normalizeGroupRows(rows);
+      if (normalized.any((g) => CustomerGroupsListParser.groupDiscount(g) != 0)) {
+        return normalized;
+      }
+    } catch (_) {}
+
+    for (final fetcher in [
+      () => ContactsApi.getCustomerFormOptions(),
+      () => ContactsApi.getCustomerGroups(),
+      () => ContactsApi.getGroupsShort(),
+    ]) {
+      try {
+        final res = await fetcher();
+        final rows = CustomerGroupsListParser.groupsFromResponse(res);
+        if (rows.isNotEmpty) {
+          final normalized = _normalizeGroupRows(rows);
+          if (normalized.isNotEmpty) return normalized;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final res = await ContactsApi.postGroupsList();
+      final rows = CustomerGroupsListParser.parseRows(res);
+      if (rows.isNotEmpty) return _normalizeGroupRows(rows);
+    } catch (_) {}
+
+    return [];
+  }
+
+  List<Map<String, dynamic>> _normalizeGroupRows(List<Map<String, dynamic>> rows) {
+    return rows
+        .map((g) {
+          final id = CustomerGroupsListParser.groupIdFrom(g);
+          if (id == null) return null;
+          return {
+            'id': id,
+            'title': CustomerGroupsListParser.groupTitle(g),
+            'name': CustomerGroupsListParser.groupTitle(g),
+            'discount': CustomerGroupsListParser.groupDiscount(g),
+            'is_default': CustomerGroupsListParser.groupIsDefault(g) ? 1 : 0,
+          };
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _getCustomerGroupsCached() async {
+    if (_groupsCache != null &&
+        _groupsCacheAt != null &&
+        DateTime.now().difference(_groupsCacheAt!) < _groupsCacheTtl) {
+      return _groupsCache!;
+    }
+
+    if (_groupsFetchInFlight != null) return _groupsFetchInFlight!;
+
+    _groupsFetchInFlight = _fetchCustomerGroupsImpl();
+    try {
+      final list = await _groupsFetchInFlight!;
+      _groupsCache = list;
+      _groupsCacheAt = DateTime.now();
+      return list;
+    } finally {
+      _groupsFetchInFlight = null;
+    }
+  }
+
+  /// «Mijoz guruhlari» tabi.
+  Future<List<Map<String, dynamic>>> loadCustomerGroupsTable() => _getCustomerGroupsCached();
+
+  Future<List<Map<String, dynamic>>> fetchCustomerGroups() => _getCustomerGroupsCached();
+
+  /// Savatda mijoz guruhi foizini aniqlash uchun oxirgi guruhlar ro'yxati.
+  List<Map<String, dynamic>> get cachedCustomerGroups => _groupsCache ?? const [];
+
+  /// GET customer-groups (+ POST customers) javobidan filtr variantlari.
+  Future<CustomerListFilterMeta> fetchCustomerFilterMeta() async {
+    Map<String, dynamic>? groupsRes;
+    Map<String, dynamic>? customersRes;
+
+    try {
+      groupsRes = await ContactsApi.getCustomerGroups();
+    } catch (_) {}
+
+    if (CustomerFilterOptionsParser.parseGroupsFromResponse(groupsRes ?? {}).isEmpty) {
+      try {
+        groupsRes = await ContactsApi.getGroupsShort();
+      } catch (_) {}
+    }
+
+    try {
+      customersRes = await ContactsApi.getCustomers(body: {
+        'rowLimit': 1,
+        'rowOffset': 0,
+        'searchValue': '',
+        'columnKey': 'first_name',
+        'columnSortedBy': 'asc',
+        'filtersData': const CustomersListFilters().toFiltersData(),
+      });
+    } catch (_) {}
+
+    return CustomerFilterOptionsParser.fromResponses(
+      groupsResponse: groupsRes,
+      customersResponse: customersRes,
+    );
+  }
+
+  CustomerListFilterMeta filterMetaFromLastResponse() {
+    return CustomerFilterOptionsParser.fromResponses(customersResponse: _lastRawCustomers);
+  }
+
+  Future<void> deleteClient(String clientId) async {
+    final idNum = int.tryParse(clientId);
+    if (idNum == null) return;
+    await ContactsApi.deleteCustomer(idNum);
+    _items.removeWhere((c) => c.id == clientId);
+    notifyListeners();
+  }
+
+  Future<Client?> refreshCustomer(String clientId) async {
+    final idNum = int.tryParse(clientId);
+    if (idNum == null) return null;
+    final res = await ContactsApi.getCustomer(idNum);
+    final customer = res['customer'] as Map<String, dynamic>? ?? res;
+    final fresh = Client.fromApiJson(Map<String, dynamic>.from(customer));
+    final idx = _items.indexWhere((e) => e.id == fresh.id);
+    if (idx >= 0) _items[idx] = fresh;
+    notifyListeners();
+    return fresh;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchBalanceTransactions(String clientId) async {
+    final idNum = int.tryParse(clientId);
+    if (idNum == null) return [];
+    final res = await ContactsApi.getCustomerBalanceTransactions(idNum);
+    final raw = res['datarows'] ?? res['data'] ?? res['transactions'];
+    if (raw is List) {
+      return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return [];
+  }
+
+  Future<void> updateCustomerBalance(
+    String clientId, {
+    required num amount,
+    required String type,
+    String description = '',
+  }) async {
+    final idNum = int.tryParse(clientId);
+    if (idNum == null) return;
+    await ContactsApi.updateCustomerBalance(idNum, amount: amount, type: type, description: description);
+    await refreshCustomer(clientId);
+  }
+
+  Future<void> addJournalDebt(
+    String clientId, {
+    required num amount,
+    required String type,
+    String description = '',
+    int? paymentTypeId,
+  }) async {
+    final idNum = int.tryParse(clientId);
+    if (idNum == null) return;
+    final body = <String, dynamic>{
+      'amount': amount,
+      'type': type,
+      'description': description,
+    };
+    await ContactsApi.storeCustomerDebt(idNum, body, paymentTypeId: paymentTypeId);
+    await refreshCustomer(clientId);
+  }
+
+  Future<void> add(
+    Client client, {
+    String? groupDiscountPriceType,
+  }) async {
     try {
       final nameParts = client.name.trim().split(RegExp(r'\s+'));
       final firstName = nameParts.isNotEmpty ? nameParts.first : client.name;
       final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
-      await ContactsApi.storeCustomer({
-        'first_name': firstName,
-        'last_name': lastName,
-        'email': client.email ?? '',
-        'phone_number': client.phone ?? '',
-        'address': client.address ?? '',
-        'customer_group': 1,
-      });
-      await loadFromApi();
+      await ContactsApi.storeCustomer(
+        CustomerStoreBody.build(
+          firstName: firstName,
+          lastName: lastName,
+          phone: client.phone,
+          address: client.address,
+          customerGroupId: client.customerGroupId ?? 1,
+          groupDiscountPriceType: groupDiscountPriceType,
+          email: client.email ?? '',
+        ),
+      );
+      await loadFromApi(force: true);
     } catch (_) {
       rethrow;
     }
   }
 
-  Future<void> updateClient(Client client) async {
+  Future<void> updateClient(
+    Client client, {
+    String? groupDiscountPriceType,
+  }) async {
     try {
       final idNum = int.tryParse(client.id);
       if (idNum == null) return;
       final nameParts = client.name.trim().split(RegExp(r'\s+'));
       final firstName = nameParts.isNotEmpty ? nameParts.first : client.name;
       final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
-      await ContactsApi.updateCustomer(idNum, {
-        'first_name': firstName,
-        'last_name': lastName,
-        'email': client.email ?? '',
-        'phone_number': client.phone ?? '',
-        'address': client.address ?? '',
-      });
-      final i = _items.indexWhere((e) => e.id == client.id);
-      if (i >= 0) {
-        _items[i] = client;
-        notifyListeners();
-      } else {
-        await loadFromApi();
+      final priceType = groupDiscountPriceType ?? client.customerGroupDiscountPriceType;
+      await ContactsApi.updateCustomer(
+        idNum,
+        CustomerStoreBody.build(
+          firstName: firstName,
+          lastName: lastName,
+          phone: client.phone,
+          address: client.address,
+          customerGroupId: client.customerGroupId ?? 1,
+          groupDiscountPriceType: priceType,
+          email: client.email ?? '',
+        ),
+      );
+      final fresh = await refreshCustomer(client.id);
+      if (fresh == null) {
+        final i = _items.indexWhere((e) => e.id == client.id);
+        if (i >= 0) {
+          _items[i] = client;
+          notifyListeners();
+        } else {
+          await loadFromApi(force: true);
+        }
       }
     } catch (_) {
       rethrow;
@@ -331,8 +732,36 @@ class ClientsProvider extends ChangeNotifier {
     }
   }
 
-  /// Faqat API orqali — POST /contacts/customers/{id}/debt/store.
-  /// Hujjatga mos: payment holatida payment_type_id ham yuboriladi.
+  /// Umumiy to'lash — POST /contacts/customers/{id}/bulk-due-payment (cheklar FIFO, keyin jurnal).
+  Future<Map<String, dynamic>> payBulkDue(
+    String clientId, {
+    required num amount,
+    required Object paymentMethod,
+  }) async {
+    final idNum = int.tryParse(clientId);
+    if (idNum == null) {
+      throw ApiException('Mijoz ID noto\'g\'ri', 400);
+    }
+    final res = await ContactsApi.bulkDuePayment(
+      idNum,
+      amount: amount,
+      paymentMethod: paymentMethod,
+    );
+    try {
+      final customerRes = await ContactsApi.getCustomer(idNum);
+      final customer = customerRes['customer'] as Map<String, dynamic>?;
+      if (customer != null) {
+        final fresh = Client.fromApiJson(Map<String, dynamic>.from(customer));
+        final idx = _items.indexWhere((e) => e.id == fresh.id);
+        if (idx >= 0) _items[idx] = fresh;
+      }
+    } catch (_) {}
+    notifyListeners();
+    return res;
+  }
+
+  /// Faqat API orqali — POST /contacts/customers/{id}/debt/store (jurnal qarz/to'lov).
+  /// Umumiy to'lash uchun [payBulkDue] ishlating.
   Future<void> addDebt(
     String clientId,
     int amount,

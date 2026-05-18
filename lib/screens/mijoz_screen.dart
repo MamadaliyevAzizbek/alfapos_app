@@ -1,13 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../providers/clients_provider.dart';
+import '../providers/sales_session_provider.dart';
+import '../widgets/customer_debt_balance_badge.dart';
 import '../widgets/ios_style_modals.dart';
 import 'yangi_mijoz_screen.dart';
 
 class MijozScreen extends StatefulWidget {
-  const MijozScreen({super.key});
+  /// To'lov ekranidan: API qidiruv (POST /sales/customers), eski to'liq ekran UI.
+  final bool forSalesPayment;
+
+  const MijozScreen({super.key, this.forSalesPayment = false});
 
   @override
   State<MijozScreen> createState() => _MijozScreenState();
@@ -20,11 +27,18 @@ class _MijozScreenState extends State<MijozScreen> {
   String _query = '';
   Map<String, int> _debtMap = {};
   int _visibleCount = _pageSize;
+  List<Client> _apiResults = [];
+  bool _apiLoading = false;
+  Timer? _apiDebounce;
+
+  bool get _useApiSearch => widget.forSalesPayment;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (!_useApiSearch) {
+      _load();
+    }
   }
 
   Future<void> _load({bool force = false}) async {
@@ -37,11 +51,45 @@ class _MijozScreenState extends State<MijozScreen> {
 
   @override
   void dispose() {
+    _apiDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  List<Client> get _filtered => _clients.search(_query);
+  void _onSearchChanged(String v) {
+    setState(() {
+      _query = v;
+      _visibleCount = _pageSize;
+    });
+    if (!_useApiSearch) return;
+    _apiDebounce?.cancel();
+    final q = v.trim();
+    if (q.length < 2) {
+      setState(() {
+        _apiResults = [];
+        _apiLoading = false;
+      });
+      return;
+    }
+    _apiDebounce = Timer(const Duration(milliseconds: 300), () async {
+      setState(() => _apiLoading = true);
+      final list = await SalesSessionProvider.instance.searchCustomers(q);
+      if (!mounted) return;
+      setState(() {
+        _apiResults = list;
+        _apiLoading = false;
+      });
+    });
+  }
+
+  List<Client> get _filtered => _useApiSearch ? _apiResults : _clients.search(_query);
+
+  bool get _showEmptyHint {
+    if (_useApiSearch) {
+      return _query.trim().length < 2 && !_apiLoading;
+    }
+    return _filtered.isEmpty;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,13 +110,29 @@ class _MijozScreenState extends State<MijozScreen> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             child: TextField(
               controller: _searchController,
-              onChanged: (v) => setState(() {
-                _query = v;
-                _visibleCount = _pageSize;
-              }),
-              decoration: const InputDecoration(
-                hintText: "Mijoz ismi yoki telefon raqami",
-                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+              autofocus: _useApiSearch,
+              onChanged: _onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Mijoz ismi yoki telefon raqami',
+                prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                suffixIcon: _apiLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                        ),
+                      )
+                    : _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged('');
+                            },
+                          )
+                        : null,
               ),
             ),
           ),
@@ -79,7 +143,7 @@ class _MijozScreenState extends State<MijozScreen> {
               child: ElevatedButton.icon(
                 onPressed: () => _showAddClient(context),
                 icon: const Icon(Icons.add_rounded, size: 22),
-                label: const Text("Yangi mijoz yaratish"),
+                label: const Text('Yangi mijoz yaratish'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
@@ -92,7 +156,7 @@ class _MijozScreenState extends State<MijozScreen> {
             ),
           ),
           Expanded(
-            child: list.isEmpty
+            child: _showEmptyHint
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
@@ -106,7 +170,7 @@ class _MijozScreenState extends State<MijozScreen> {
                           ),
                           const SizedBox(height: 20),
                           const Text(
-                            "Mijoz qidirish",
+                            'Mijoz qidirish',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
@@ -116,8 +180,10 @@ class _MijozScreenState extends State<MijozScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            "Mijoz nomi yoki raqamini kiriting yoki yangi mijoz yarating",
-                            style: TextStyle(
+                            _useApiSearch
+                                ? 'Kamida 2 ta belgi kiriting yoki yangi mijoz yarating'
+                                : 'Mijoz nomi yoki raqamini kiriting yoki yangi mijoz yarating',
+                            style: const TextStyle(
                               fontSize: 14,
                               color: AppTheme.textSecondary,
                             ),
@@ -138,59 +204,18 @@ class _MijozScreenState extends State<MijozScreen> {
                             child: OutlinedButton.icon(
                               onPressed: () => setState(() => _visibleCount += _pageSize),
                               icon: const Icon(Icons.expand_more_rounded),
-                              label: const Text("Yana yuklash"),
+                              label: const Text('Yana yuklash'),
                             ),
                           ),
                         );
                       }
                       final c = visibleList[index];
-                      final debt = _debtMap[c.id] ?? (c.dueAmount != null ? c.dueAmount!.round() : 0);
-                      final balanceInt = (c.balance ?? 0).round();
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: AppTheme.primaryLight,
-                            child: Icon(Icons.person_rounded, color: AppTheme.primary),
-                          ),
-                          title: Text(c.name),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (c.phone != null && c.phone!.isNotEmpty) Text(c.phone!),
-                              if (debt > 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    "Qarz: ${formatThousands(debt)}",
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.primary,
-                                    ),
-                                  ),
-                                ),
-                              if (balanceInt != 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Text(
-                                    "Balans: ${formatThousands(balanceInt)}",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      color: balanceInt > 0 ? Colors.green.shade700 : Colors.red.shade700,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          trailing: debt > 0
-                              ? IconButton(
-                                  icon: const Icon(Icons.receipt_long_rounded, color: AppTheme.primary),
-                                  onPressed: () => _showDebtHistory(context, c),
-                                )
-                              : null,
-                          onTap: () => Navigator.pop(context, c),
-                        ),
+                      return _ClientCard(
+                        client: c,
+                        debt: _debtMap[c.id] ?? (c.dueAmount != null ? c.dueAmount!.round() : 0),
+                        useApiBadge: _useApiSearch,
+                        onDebtHistory: () => _showDebtHistory(context, c),
+                        onTap: () => Navigator.pop(context, c),
                       );
                     },
                   ),
@@ -225,7 +250,7 @@ class _MijozScreenState extends State<MijozScreen> {
                 children: [
                   IosStyleModals.grabber(),
                   Text(
-                    "${client.name} — qarz (chek bilan)",
+                    '${client.name} — qarz (chek bilan)',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -260,11 +285,13 @@ class _MijozScreenState extends State<MijozScreen> {
                                 dt = DateTime.tryParse(e.dateTime);
                               } catch (_) {}
                               final dateStr = dt != null
-                                  ? "${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}"
+                                  ? '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'
                                   : e.dateTime;
                               return ListTile(
                                 leading: const Icon(Icons.receipt_rounded, color: AppTheme.primary),
-                                title: Text("Chek #${e.receiptId.startsWith('POS') ? e.receiptId : 'POS${e.receiptId}'}"),
+                                title: Text(
+                                  "Chek #${e.receiptId.startsWith('POS') ? e.receiptId : 'POS${e.receiptId}'}",
+                                ),
                                 subtitle: Text(dateStr),
                                 trailing: Text(
                                   "${formatThousands(e.amount)} so'm",
@@ -286,12 +313,83 @@ class _MijozScreenState extends State<MijozScreen> {
     );
   }
 
-  /// Mijozlar bo'limidagi [YangiMijozScreen] bilan bir xil to'liq ekran forma (savatcha → to'lovda ham shu).
   Future<void> _showAddClient(BuildContext context) async {
     final client = await Navigator.push<Client>(
       context,
       MaterialPageRoute(builder: (_) => const YangiMijozScreen()),
     );
     if (client != null && mounted) Navigator.pop(context, client);
+  }
+}
+
+class _ClientCard extends StatelessWidget {
+  final Client client;
+  final int debt;
+  final bool useApiBadge;
+  final VoidCallback onDebtHistory;
+  final VoidCallback onTap;
+
+  const _ClientCard({
+    required this.client,
+    required this.debt,
+    required this.useApiBadge,
+    required this.onDebtHistory,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final balanceInt = (client.balance ?? 0).round();
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const CircleAvatar(
+          backgroundColor: AppTheme.primaryLight,
+          child: Icon(Icons.person_rounded, color: AppTheme.primary),
+        ),
+        title: Text(client.name),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (client.phone != null && client.phone!.isNotEmpty) Text(client.phone!),
+            if (useApiBadge) ...[
+              const SizedBox(height: 6),
+              CustomerDebtBalanceBadge(client: client),
+            ] else ...[
+              if (debt > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Qarz: ${formatThousands(debt)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ),
+              if (balanceInt != 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Balans: ${formatThousands(balanceInt)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: balanceInt > 0 ? Colors.green.shade700 : Colors.red.shade700,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+        trailing: !useApiBadge && debt > 0
+            ? IconButton(
+                icon: const Icon(Icons.receipt_long_rounded, color: AppTheme.primary),
+                onPressed: onDebtHistory,
+              )
+            : null,
+        onTap: onTap,
+      ),
+    );
   }
 }

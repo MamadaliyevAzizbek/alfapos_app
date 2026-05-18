@@ -1,0 +1,248 @@
+import 'package:flutter/foundation.dart';
+
+import '../core/input_formatters.dart';
+import 'cash_register_utils.dart';
+
+/// GET /sales/hold-orders javobini xavfsiz parse qilish.
+/// Noto'g'ri `orders` / umumiy `data` dan boshqa ro'yxatlarni aralashtirmaydi.
+class HoldOrdersResponse {
+  HoldOrdersResponse._();
+
+  static List<Map<String, dynamic>> parseList(Map<String, dynamic> res) {
+    final list = _extractList(res);
+    final holds = <Map<String, dynamic>>[];
+    for (final row in list) {
+      if (row is! Map) continue;
+      final m = Map<String, dynamic>.from(row);
+      if (_isHoldRow(m)) holds.add(m);
+    }
+    assert(() {
+      if (kDebugMode) {
+        debugPrint(
+          '[hold-orders] keys=${res.keys.toList()} parsed=${holds.length} '
+          'rawList=${list.length}',
+        );
+      }
+      return true;
+    }());
+    return holds;
+  }
+
+  static int? resolveCashRegisterId(Map<String, dynamic> h) {
+    for (final key in [
+      'cashRagisterId',
+      'cash_ragister_id',
+      'cash_register_id',
+      'cashRegisterId',
+      'cash_register',
+      'registerId',
+      'register_id',
+    ]) {
+      final v = h[key];
+      if (v is Map) {
+        final id = cashRegisterParseId(
+          v['id'] ?? v['cash_register_id'] ?? v['cashRagisterId'],
+        );
+        if (id != null && id > 0) return id;
+        continue;
+      }
+      final id = cashRegisterParseId(v);
+      if (id != null && id > 0) return id;
+    }
+    for (final nestKey in ['order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final id = resolveCashRegisterId(Map<String, dynamic>.from(nested));
+        if (id != null) return id;
+      }
+    }
+    return null;
+  }
+
+  /// Kassa nomi — API dagi obyekt yoki ro'yxatdan id bo'yicha.
+  static String? resolveCashRegisterLabel(
+    Map<String, dynamic> h, {
+    List<Map<String, dynamic>> registers = const [],
+  }) {
+    for (final key in [
+      'cash_register',
+      'cashRegister',
+      'register',
+      'cashRagisterId',
+      'cash_ragister_id',
+      'cash_register_id',
+      'cashRegisterId',
+    ]) {
+      final v = h[key];
+      if (v is Map) {
+        final m = Map<String, dynamic>.from(v);
+        final title = cashRegisterDisplayTitle(m);
+        if (title.trim().isNotEmpty && title != 'Kassa') return title;
+        final hasName = m.containsKey('title') ||
+            m.containsKey('name') ||
+            m.containsKey('cash_register_title');
+        if (hasName) return title;
+      }
+    }
+
+    final id = resolveCashRegisterId(h);
+    if (id == null || id <= 0) return null;
+
+    for (final r in registers) {
+      final rid = cashRegisterParseId(r['id'] ?? r['cash_register_id'] ?? r['cashRagisterId']);
+      if (rid == id) return cashRegisterDisplayTitle(r);
+    }
+
+    return 'Kassa $id';
+  }
+
+  static int? resolveRegisterLogId(Map<String, dynamic> h) {
+    for (final key in ['register_log_id', 'registerLogId', 'cash_register_log_id', 'log_id']) {
+      final id = cashRegisterParseId(h[key]);
+      if (id != null && id > 0) return id;
+    }
+    for (final nestKey in ['order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final id = resolveRegisterLogId(Map<String, dynamic>.from(nested));
+        if (id != null) return id;
+      }
+    }
+    return null;
+  }
+
+  static List<dynamic> _extractList(Map<String, dynamic> res) {
+    // Server `hold_orders: []` qaytarsa — boshqa kalitlardagi umumiy sotuvlarni aralashtirmaymiz.
+    if (res.containsKey('hold_orders') || res.containsKey('holdOrders')) {
+      final direct = res['hold_orders'] ?? res['holdOrders'];
+      return direct is List ? direct : const [];
+    }
+
+    final data = res['data'];
+    if (data is List) return data;
+    if (data is Map) {
+      final m = Map<String, dynamic>.from(data);
+      for (final key in ['hold_orders', 'holdOrders', 'datarows', 'orders', 'rows']) {
+        final inner = m[key];
+        if (inner is List && inner.isNotEmpty) return inner;
+      }
+    }
+
+    final datarows = res['datarows'];
+    if (datarows is List) return datarows;
+
+    return const [];
+  }
+
+  static bool _isHoldRow(Map<String, dynamic> m) {
+    if (resolveOrderId(m) == null) return false;
+
+    final status = (m['status'] ?? m['order_status'] ?? m['orderStatus'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (_isCompletedOrCancelledStatus(status)) return false;
+
+    if (status == 'hold' || status == 'paused' || status == 'pause') return true;
+
+    final holdFlag = m['is_hold'] ?? m['isHold'] ?? m['on_hold'];
+    if (holdFlag == true || holdFlag == 1 || holdFlag == '1') return true;
+
+    return false;
+  }
+
+  static bool _isCompletedOrCancelledStatus(String status) {
+    if (status.isEmpty) return false;
+    const done = {
+      'done',
+      'completed',
+      'complete',
+      'paid',
+      'closed',
+      'cancelled',
+      'canceled',
+      'void',
+      'final',
+      'sold',
+    };
+    return done.contains(status);
+  }
+
+  /// POST /sales/store da mavjud buyurtmani yangilash uchun to‘g‘ri order id.
+  static int? resolveOrderId(Map<String, dynamic> h) {
+    for (final key in ['orderID', 'order_id', 'orderId']) {
+      final v = h[key];
+      if (v == null) continue;
+      final n = v is int ? v : int.tryParse(v.toString());
+      if (n != null && n > 0) return n;
+    }
+    final fromRow = getOrderIdFromSale(h);
+    if (fromRow != null && fromRow > 0) return fromRow;
+    final inv = parseOrderIdFromInvoiceId(h['invoice_id'] ?? h['invoiceId']);
+    if (inv != null && inv > 0) return inv;
+    return null;
+  }
+
+  static int orderId(Map<String, dynamic> h) => resolveOrderId(h) ?? 0;
+
+  static String? resolveInvoiceId(Map<String, dynamic> h) {
+    final inv = (h['invoice_id'] ?? h['invoiceId'] ?? '').toString().trim();
+    return inv.isEmpty ? null : inv;
+  }
+
+  static int displayTotal(Map<String, dynamic> h) {
+    final nested = h['order'];
+    if (nested is Map) {
+      final fromOrder = displayTotal(Map<String, dynamic>.from(nested));
+      if (fromOrder > 0) return fromOrder;
+    }
+
+    for (final key in _totalKeys) {
+      final amt = parseAmountFromApi(h[key]);
+      if (amt > 0) return amt;
+    }
+
+    final fromCart = _sumCartLines(h);
+    if (fromCart > 0) return fromCart;
+
+    return 0;
+  }
+
+  static int _sumCartLines(Map<String, dynamic> h) {
+    for (final key in ['cart', 'orderItems', 'items', 'order_items']) {
+      final raw = h[key];
+      if (raw is! List || raw.isEmpty) continue;
+      var sum = 0;
+      for (final row in raw) {
+        if (row is! Map) continue;
+        final m = Map<String, dynamic>.from(row);
+        if ((m['orderType'] ?? '').toString() == 'discount') continue;
+        final line = parseAmountFromApi(m['calculatedPrice'] ?? m['line_total'] ?? m['total']);
+        if (line > 0) {
+          sum += line;
+          continue;
+        }
+        final price = parseAmountFromApi(m['price'] ?? m['unit_price']);
+        final qty = m['quantity'] ?? m['qty'] ?? 1;
+        final q = qty is num ? qty.toDouble() : double.tryParse(qty.toString()) ?? 1;
+        sum += (price * q).round();
+      }
+      if (sum > 0) return sum;
+    }
+    return 0;
+  }
+
+  static const _totalKeys = [
+    'grandTotal',
+    'grand_total',
+    'total',
+    'total_amount',
+    'order_total',
+    'orderTotal',
+    'amount',
+    'sum',
+    'subTotal',
+    'sub_total',
+    'paid',
+  ];
+}

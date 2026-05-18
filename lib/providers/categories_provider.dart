@@ -18,6 +18,21 @@ class CategoriesProvider extends ChangeNotifier {
   String? _loadError;
 
   List<String> get items => List.unmodifiable(_items);
+
+  /// Filtr dropdown: {id, name}
+  List<Map<String, dynamic>> get idNameOptions => _rawList
+      .map((e) {
+        final id = (e['id'] ?? e['value'] ?? '').toString().trim();
+        final name = (e['name'] as String? ??
+                e['title'] as String? ??
+                e['category_name'] as String? ??
+                e['text'] as String? ??
+                '')
+            .trim();
+        return {'id': id, 'name': name.isNotEmpty ? name : id};
+      })
+      .where((e) => (e['id'] as String).isNotEmpty)
+      .toList();
   Stream<List<String>> get stream => _controller.stream;
   String? get loadError => _loadError;
   Map<String, dynamic>? get lastRawCategories => _lastRawResponse;

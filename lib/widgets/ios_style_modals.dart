@@ -45,10 +45,7 @@ class AppModals {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (showGrabber) grabber(),
-                        Flexible(
-                          fit: FlexFit.loose,
-                          child: child,
-                        ),
+                        child,
                       ],
                     ),
                   ),
@@ -58,6 +55,149 @@ class AppModals {
           ),
         );
       },
+    );
+  }
+
+  static const EdgeInsets sheetHorizontalPadding = EdgeInsets.symmetric(horizontal: 16);
+  static const EdgeInsets sheetBodyPadding = EdgeInsets.fromLTRB(16, 8, 16, 0);
+  static const EdgeInsets sheetActionsPadding = EdgeInsets.fromLTRB(16, 12, 16, 16);
+
+  /// Klaviatura ochilganda tugmalar varaq bilan birga ko'tariladi (showSheet padding).
+  /// Maydonlar scroll, tugmalar pastda qotilgan.
+  static Widget sheetKeyboardForm({
+    required BuildContext context,
+    required List<Widget> body,
+    Widget? middle,
+    Widget? bottomBar,
+    VoidCallback? onCancel,
+    VoidCallback? onSave,
+    String cancelLabel = 'Bekor qilish',
+    String saveLabel = 'Saqlash',
+    Color? saveBackgroundColor,
+    Color? saveForegroundColor,
+    double maxScrollHeightFactor = 0.5,
+  }) {
+    final maxH = MediaQuery.sizeOf(context).height * maxScrollHeightFactor;
+    final actions = bottomBar ??
+        (onCancel != null && onSave != null
+            ? sheetPillCancelSaveRow(
+                onCancel: onCancel,
+                onSave: onSave,
+                cancelLabel: cancelLabel,
+                saveLabel: saveLabel,
+                saveBackgroundColor: saveBackgroundColor,
+                saveForegroundColor: saveForegroundColor,
+              )
+            : null);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: SingleChildScrollView(
+            padding: sheetBodyPadding,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: body,
+            ),
+          ),
+        ),
+        if (middle != null) middle,
+        if (actions != null)
+          Padding(
+            padding: sheetActionsPadding,
+            child: actions,
+          ),
+      ],
+    );
+  }
+
+  /// Qisqa tasdiq / xabar — scrollsiz, tugmalar kontent ostida.
+  static Widget sheetConfirm({
+    required List<Widget> body,
+    required VoidCallback onCancel,
+    required VoidCallback onConfirm,
+    String cancelLabel = 'Bekor qilish',
+    String confirmLabel = 'Saqlash',
+    Color? confirmBackgroundColor,
+    Color? confirmForegroundColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...body,
+          const SizedBox(height: 14),
+          sheetPillCancelSaveRow(
+            onCancel: onCancel,
+            onSave: onConfirm,
+            cancelLabel: cancelLabel,
+            saveLabel: confirmLabel,
+            saveBackgroundColor: confirmBackgroundColor,
+            saveForegroundColor: confirmForegroundColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ro'yxatdan bitta qiymat (kategoriya, o'lchov birligi). Scroll — overflow bo'lmaydi.
+  static Future<void> showChoiceList({
+    required BuildContext context,
+    required String title,
+    required List<String> options,
+    required ValueChanged<String> onSelect,
+  }) {
+    return showSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showGrabber: true,
+      child: Builder(
+        builder: (sheetCtx) {
+          const tileHeight = 56.0;
+          final bottom = MediaQuery.paddingOf(sheetCtx).bottom;
+          final maxListH = MediaQuery.sizeOf(sheetCtx).height * 0.58;
+          final contentH = options.length * tileHeight + 8;
+          final listH = contentH.clamp(tileHeight, maxListH);
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Text(
+                  title,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Divider(height: 1),
+              SizedBox(
+                height: listH,
+                child: ListView.builder(
+                  itemCount: options.length,
+                  itemBuilder: (_, i) {
+                    final label = options[i];
+                    return ListTile(
+                      title: Text(label),
+                      onTap: () {
+                        onSelect(label);
+                        Navigator.pop(sheetCtx);
+                      },
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: bottom > 0 ? bottom : 12),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -154,6 +294,84 @@ class AppModals {
             child: Text(okLabel),
           ),
         ],
+      ),
+    );
+  }
+
+  static InputDecoration desktopField(String label, {String? suffix, String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      suffixText: suffix,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppTheme.divider),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      labelStyle: const TextStyle(fontSize: 15),
+    );
+  }
+
+  /// Markazdagi forma — faqat desktop (Windows/macOS).
+  static Future<T?> showDesktopFormPanel<T>({
+    required BuildContext context,
+    required String title,
+    required List<Widget> children,
+    required T? Function() trySubmit,
+    String? subtitle,
+    double width = 500,
+    String cancelLabel = 'Bekor qilish',
+    String saveLabel = 'Saqlash',
+    Color? saveBackgroundColor,
+  }) {
+    return showPopupPanel<T>(
+      context: context,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+      child: Builder(
+        builder: (ctx) => SizedBox(
+          width: width,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                    if (subtitle != null && subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(subtitle, style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                    ],
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: children,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
+                child: sheetPillCancelSaveRow(
+                  onCancel: () => Navigator.pop(ctx),
+                  onSave: () {
+                    final value = trySubmit();
+                    if (value != null) Navigator.pop(ctx, value);
+                  },
+                  cancelLabel: cancelLabel,
+                  saveLabel: saveLabel,
+                  saveBackgroundColor: saveBackgroundColor,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

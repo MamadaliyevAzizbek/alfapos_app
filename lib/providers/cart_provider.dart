@@ -13,23 +13,31 @@ class CartProvider {
   List<CartItem> get items => List.unmodifiable(_items);
   num get count => _items.fold<num>(0, (sum, e) => sum + e.quantity);
 
-  static bool _sameSaleOverride(double? a, double? b) {
-    if (a == null && b == null) return true;
-    if (a == null || b == null) return false;
-    return (a - b).abs() < 0.01;
+  /// Bir xil mahsulot qatori: ID + variant + dona/pachka (chegirmali narx alohida emas).
+  static bool isSameCartLine(CartItem a, CartItem b) {
+    if (a.sellByPack != b.sellByPack) return false;
+    if (a.product.id != b.product.id) return false;
+    final va = a.product.variantId;
+    final vb = b.product.variantId;
+    if (va == null && vb == null) return true;
+    if (va == null || vb == null) return va == vb;
+    return va == vb;
   }
 
-  void add(CartItem item) {
-    final i = _items.indexWhere((e) =>
-        e.product.id == item.product.id &&
-        e.sellByPack == item.sellByPack &&
-        _sameSaleOverride(e.salePriceOverride, item.salePriceOverride));
+  /// Qo'shilgan yoki miqdori oshirilgan qatorni qaytaradi (har doim ro'yxat boshida).
+  CartItem add(CartItem item) {
+    final i = _items.indexWhere((e) => isSameCartLine(e, item));
+    final CartItem line;
     if (i >= 0) {
-      _items[i].quantity = _items[i].quantity + item.quantity;
+      final existing = _items.removeAt(i);
+      existing.quantity = existing.quantity + item.quantity;
+      line = existing;
     } else {
-      _items.add(item);
+      line = item;
     }
+    _items.insert(0, line);
     _controller.add(items);
+    return line;
   }
 
   void remove(CartItem item) {

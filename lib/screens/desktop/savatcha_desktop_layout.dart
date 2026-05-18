@@ -1,0 +1,1078 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../core/constants.dart';
+import '../../core/input_formatters.dart';
+import '../../core/theme.dart';
+import '../../models/cart_item.dart';
+import '../../models/product.dart';
+import '../../widgets/pos_editable_focus_scope.dart';
+import '../../widgets/product_tile.dart';
+
+/// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
+class SavatchaDesktopLayout extends StatelessWidget {
+  static const Color _panelBg = Color(0xFFF0F2F5);
+  static const Color _totalBar = Color(0xFF2D3446);
+  static const Color _priceGreen = Color(0xFF16A34A);
+
+  final TextEditingController searchController;
+  final FocusNode? catalogSearchFocus;
+  final VoidCallback? onCatalogSearchRefocus;
+  final VoidCallback? onPointerDownAnywhere;
+  final String query;
+  final List<Product> catalogProducts;
+  final List<CartItem> cartItems;
+  final bool productsLoading;
+  final String? selectedCustomerName;
+  final ValueChanged<String> onSearchChanged;
+  final Future<void> Function(String) onSearchSubmitted;
+  final VoidCallback onFilterTap;
+  final Widget customerSearchSection;
+  final VoidCallback onOpenSavedOrders;
+  final int savedOrdersCount;
+  final VoidCallback? onLoadMoreProducts;
+  final List<Map<String, dynamic>> cashRegisters;
+  final int? selectedCashRegisterId;
+  final ValueChanged<Map<String, dynamic>>? onCashRegisterSelected;
+  final bool showPurchasePriceOnCards;
+  /// `purchase` | `wholesale` — katalog kartochkasidagi asosiy narx.
+  final String? catalogSellPriceType;
+  final VoidCallback onClearCart;
+  final void Function(Product product) onProductTap;
+  final CartItem? expandedCartItem;
+  final void Function(CartItem item) onToggleCartExpand;
+  final void Function(CartItem item, num quantity) onCartQuantityChanged;
+  final void Function(CartItem item, double? unitPriceOverride) onCartUnitPriceChanged;
+  final void Function(CartItem item) onRemoveCartItem;
+  final void Function(CartItem item) onIncrement;
+  final void Function(CartItem item) onDecrement;
+  final VoidCallback onPayment;
+  final VoidCallback onDailyReport;
+  final VoidCallback onDiscount;
+  final TextEditingController discountPercentController;
+  final ValueChanged<int> onDiscountPercentChanged;
+  final VoidCallback onHoldCart;
+  final bool holdCartInFlight;
+  final VoidCallback? onSalesList;
+  final VoidCallback? onOpenShiftDashboard;
+  final VoidCallback? onLogout;
+  final String cashRegisterLabel;
+  final String sellerName;
+  final int cartGrandTotal;
+  final int cartCatalogTotal;
+  final int cartDiscountPercent;
+  final double usdExchangeRate;
+
+  const SavatchaDesktopLayout({
+    super.key,
+    required this.searchController,
+    this.catalogSearchFocus,
+    this.onCatalogSearchRefocus,
+    this.onPointerDownAnywhere,
+    required this.query,
+    required this.catalogProducts,
+    required this.cartItems,
+    required this.productsLoading,
+    this.selectedCustomerName,
+    required this.onSearchChanged,
+    required this.onSearchSubmitted,
+    required this.onFilterTap,
+    required this.customerSearchSection,
+    required this.onOpenSavedOrders,
+    this.savedOrdersCount = 0,
+    this.onLoadMoreProducts,
+    this.cashRegisters = const [],
+    this.selectedCashRegisterId,
+    this.onCashRegisterSelected,
+    this.showPurchasePriceOnCards = false,
+    this.catalogSellPriceType,
+    required this.onClearCart,
+    required this.onProductTap,
+    this.expandedCartItem,
+    required this.onToggleCartExpand,
+    required this.onCartQuantityChanged,
+    required this.onCartUnitPriceChanged,
+    required this.onRemoveCartItem,
+    required this.onIncrement,
+    required this.onDecrement,
+    required this.onPayment,
+    required this.onDailyReport,
+    required this.onDiscount,
+    required this.discountPercentController,
+    required this.onDiscountPercentChanged,
+    required this.onHoldCart,
+    this.holdCartInFlight = false,
+    this.onSalesList,
+    this.onOpenShiftDashboard,
+    this.onLogout,
+    required this.cashRegisterLabel,
+    required this.sellerName,
+    required this.cartGrandTotal,
+    this.cartCatalogTotal = 0,
+    this.cartDiscountPercent = 0,
+    this.usdExchangeRate = 12600,
+  });
+
+  int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
+
+  Map<String, dynamic>? _selectedRegister() {
+    if (cashRegisters.isEmpty) return null;
+    if (selectedCashRegisterId == null) return cashRegisters.first;
+    for (final r in cashRegisters) {
+      final id = r['id'] ?? r['cash_register_id'];
+      final n = id is int ? id : int.tryParse(id?.toString() ?? '');
+      if (n == selectedCashRegisterId) return r;
+    }
+    return cashRegisters.first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => onPointerDownAnywhere?.call(),
+      child: ColoredBox(
+      color: _panelBg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopBar(context),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _buildCatalogPanel(context)),
+                Container(width: 1, color: AppTheme.divider),
+                Expanded(child: _buildCartPanel(context)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+    );
+  }
+
+  static const Color _navBlue = AppTheme.primary;
+
+  ButtonStyle get _navButtonStyle => TextButton.styleFrom(
+        foregroundColor: _navBlue,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      );
+
+  Widget _buildTopBar(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: AppTheme.divider)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.point_of_sale_rounded, color: _navBlue, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              cashRegisterLabel,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (onOpenShiftDashboard != null)
+            TextButton.icon(
+              onPressed: onOpenShiftDashboard,
+              style: _navButtonStyle,
+              icon: const Icon(Icons.account_balance_wallet_outlined, size: 20, color: _navBlue),
+              label: const Text('Kassa smenasi'),
+            ),
+          if (onSalesList != null)
+            TextButton.icon(
+              onPressed: onSalesList,
+              style: _navButtonStyle,
+              icon: const Icon(Icons.list_alt_rounded, size: 20, color: _navBlue),
+              label: const Text("Sotish ro'yxati"),
+            ),
+          if (cashRegisters.length > 1 && onCashRegisterSelected != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<Map<String, dynamic>>(
+                  value: _selectedRegister(),
+                  iconEnabledColor: _navBlue,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _navBlue),
+                  items: cashRegisters
+                      .map(
+                        (r) => DropdownMenuItem(
+                          value: r,
+                          child: Text((r['name'] ?? r['title'] ?? 'Kassa').toString()),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (r) {
+                    if (r != null) onCashRegisterSelected!(r);
+                  },
+                ),
+              ),
+            ),
+          if (onLogout != null)
+            PopupMenuButton<String>(
+              tooltip: 'Hisob',
+              offset: const Offset(0, 44),
+              color: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              icon: const Icon(Icons.person_outline_rounded, color: _navBlue, size: 26),
+              onSelected: (value) {
+                if (value == 'logout') onLogout!();
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
+                      SizedBox(width: 10),
+                      Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCatalogPanel(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: onCatalogSearchRefocus,
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: searchController,
+                focusNode: catalogSearchFocus,
+                autofocus: catalogSearchFocus != null,
+                onChanged: onSearchChanged,
+                onSubmitted: onSearchSubmitted,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: Strings.mahsulotQidirishHint,
+                  filled: true,
+                  fillColor: Colors.white,
+                  prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                  suffixIcon: query.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () {
+                            searchController.clear();
+                            onSearchChanged('');
+                          },
+                        )
+                      : null,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppTheme.divider),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.divider),
+                      ),
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        sellerName,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    child: InkWell(
+                      onTap: onFilterTap,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.divider),
+                        ),
+                        child: const Icon(Icons.filter_list_rounded, color: AppTheme.textSecondary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: productsLoading
+              ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+              : catalogProducts.isEmpty
+                  ? const Center(
+                      child: Text(
+                        "Mahsulot topilmadi",
+                        style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+                      ),
+                    )
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: (n) {
+                        if (n is ScrollEndNotification &&
+                            n.metrics.pixels >= n.metrics.maxScrollExtent - 120 &&
+                            onLoadMoreProducts != null) {
+                          onLoadMoreProducts!();
+                        }
+                        return false;
+                      },
+                      child: GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.82,
+                        ),
+                        itemCount: catalogProducts.length,
+                        itemBuilder: (context, i) => _DesktopProductCard(
+                          product: catalogProducts[i],
+                          usdRate: usdExchangeRate,
+                          catalogSellPriceType: catalogSellPriceType,
+                          showPurchasePrice: showPurchasePriceOnCards,
+                          onTap: () => onProductTap(catalogProducts[i]),
+                        ),
+                      ),
+                    ),
+        ),
+      ],
+    ),
+    );
+  }
+
+  Widget _buildCartPanel(BuildContext context) {
+    return ColoredBox(
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                customerSearchSection,
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onClearCart,
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                    label: const Text('Savatchani tozalash', style: TextStyle(fontSize: 13, color: Colors.red)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      visualDensity: VisualDensity.compact,
+                      side: BorderSide(color: Colors.red.shade200),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: cartItems.isEmpty
+                ? const Center(
+                    child: Text(
+                      "Bo'sh Savat",
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: cartItems.length,
+                    itemBuilder: (context, i) {
+                      final line = cartItems[i];
+                      return _DesktopCartLine(
+                        item: line,
+                        expanded: identical(expandedCartItem, line),
+                        onToggleExpand: () => onToggleCartExpand(line),
+                        onIncrement: () => onIncrement(line),
+                        onDecrement: () => onDecrement(line),
+                        onRemove: () => onRemoveCartItem(line),
+                        onQuantityChanged: (q) => onCartQuantityChanged(line, q),
+                        onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
+                      );
+                    },
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Row(
+              children: [
+                const Text(
+                  "Foiz qo'shish",
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textPrimary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: PosEditableFocusScope(
+                    child: SizedBox(
+                    height: 48,
+                    child: TextField(
+                      controller: discountPercentController,
+                      keyboardType: const TextInputType.numberWithOptions(signed: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^-?\d{0,3}$')),
+                      ],
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        hintText: '20 yoki -20',
+                        suffixText: '%',
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppTheme.divider),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppTheme.divider),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                        ),
+                      ),
+                      onChanged: (v) {
+                        if (v.isEmpty) {
+                          onDiscountPercentChanged(0);
+                          return;
+                        }
+                        if (v == '-') return;
+                        final p = int.tryParse(v.trim());
+                        if (p == null) return;
+                        onDiscountPercentChanged(p.clamp(-100, 100));
+                      },
+                      onSubmitted: (v) {
+                        final p = int.tryParse(v.trim()) ?? 0;
+                        onDiscountPercentChanged(p.clamp(-100, 100));
+                      },
+                    ),
+                  ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: BoxDecoration(
+              color: _totalBar,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                const Text(
+                  'Umumiy',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (cartCatalogTotal > 0 && cartCatalogTotal != cartGrandTotal)
+                      Text(
+                        formatThousands(cartCatalogTotal),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: 14,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    Text(
+                      formatThousands(cartGrandTotal),
+                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
+            child: SizedBox(
+              height: 88,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _footerSavedOrdersAction(),
+                  _footerAction(
+                    Icons.pause_circle_outline_rounded,
+                    "To'xtatish",
+                    cartItems.isEmpty || holdCartInFlight ? null : onHoldCart,
+                    tooltip: holdCartInFlight ? 'Saqlanmoqda...' : 'Buyurtmani saqlash',
+                    loading: holdCartInFlight,
+                  ),
+                  _footerAction(Icons.percent_rounded, 'Chegirma', onDiscount),
+                  _footerAction(Icons.send_rounded, 'Kunlik hisobot', onDailyReport),
+                  Expanded(
+                    flex: 2,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Material(
+                        color: AppTheme.primary,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          onTap: cartItems.isEmpty ? null : onPayment,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  "To'lov qilish",
+                                  style: TextStyle(
+                                    color: cartItems.isEmpty ? Colors.white54 : Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 17,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.keyboard_double_arrow_right_rounded,
+                                  size: 26,
+                                  color: cartItems.isEmpty ? Colors.white54 : Colors.white,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _footerSavedOrdersAction() {
+    return Expanded(
+      child: Tooltip(
+        message: "Saqlangan buyurtmalar ro'yxati",
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onOpenSavedOrders,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.recycling_rounded, size: 28, color: AppTheme.textSecondary),
+                      if (savedOrdersCount > 0)
+                        Positioned(
+                          right: -8,
+                          top: -6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              savedOrdersCount > 9 ? '9+' : '$savedOrdersCount',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Savatcha',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _footerAction(
+    IconData icon,
+    String label,
+    VoidCallback? onTap, {
+    String? tooltip,
+    bool loading = false,
+  }) {
+    final enabled = onTap != null && !loading;
+    final fg = enabled ? AppTheme.textSecondary : AppTheme.textSecondary.withValues(alpha: 0.4);
+    final content = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (loading)
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: fg),
+                )
+              else
+                Icon(icon, size: 28, color: fg),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: fg),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Expanded(
+      child: tooltip != null ? Tooltip(message: tooltip, child: content) : content,
+    );
+  }
+}
+
+class _DesktopProductCard extends StatelessWidget {
+  final Product product;
+  final double usdRate;
+  final String? catalogSellPriceType;
+  final bool showPurchasePrice;
+  final VoidCallback onTap;
+
+  const _DesktopProductCard({
+    required this.product,
+    required this.usdRate,
+    this.catalogSellPriceType,
+    this.showPurchasePrice = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final unit = Product.unitDisplayShort(product.unit);
+    final qty = product.initialQuantity;
+    final primary = _primaryPrice(product, catalogSellPriceType, usdRate);
+    final purchase = showPurchasePrice ? _purchaseLabel(product) : null;
+
+    return Material(
+      color: Colors.white,
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppTheme.divider),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return ProductTile.buildProductImageCover(
+                    product,
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              primary,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: SavatchaDesktopLayout._priceGreen,
+                              ),
+                            ),
+                            if (purchase != null)
+                              Text(
+                                purchase,
+                                style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '$qty $unit',
+                        style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _primaryPrice(Product p, String? sellType, double rate) {
+    switch (sellType) {
+      case 'purchase':
+        final cost = p.costPriceUzs;
+        if (cost != null && cost > 0) {
+          return formatThousands(cost);
+        }
+        break;
+      case 'wholesale':
+        return formatThousands(p.wholesalePiecePriceNum.round());
+    }
+    if (p.sellingPriceCurrency.toLowerCase() == 'usd') {
+      return p.priceFormatted;
+    }
+    final sell = p.sellUnitPriceNum.round();
+    if (rate > 0) {
+      final usd = p.sellUnitPriceNum / rate;
+      return '${formatThousands(sell)} (\$${usd.toStringAsFixed(2)})';
+    }
+    return formatThousands(sell);
+  }
+
+  static String? _purchaseLabel(Product p) {
+    final c = p.costPriceUzs;
+    if (c == null || c <= 0) return null;
+    return 'Kelish: ${formatThousands(c)}';
+  }
+}
+
+class _DesktopCartLine extends StatefulWidget {
+  final CartItem item;
+  final bool expanded;
+  final VoidCallback onToggleExpand;
+  final VoidCallback onIncrement;
+  final VoidCallback onDecrement;
+  final VoidCallback onRemove;
+  final ValueChanged<num> onQuantityChanged;
+  final ValueChanged<double?> onUnitPriceChanged;
+
+  const _DesktopCartLine({
+    required this.item,
+    required this.expanded,
+    required this.onToggleExpand,
+    required this.onIncrement,
+    required this.onDecrement,
+    required this.onRemove,
+    required this.onQuantityChanged,
+    required this.onUnitPriceChanged,
+  });
+
+  @override
+  State<_DesktopCartLine> createState() => _DesktopCartLineState();
+}
+
+class _DesktopCartLineState extends State<_DesktopCartLine> {
+  late final TextEditingController _qtyController;
+  late final TextEditingController _priceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyController = TextEditingController(text: _qtyText(widget.item.quantity));
+    _priceController = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
+  }
+
+  @override
+  void didUpdateWidget(covariant _DesktopCartLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final q = _qtyText(widget.item.quantity);
+    if (_qtyController.text != q) _qtyController.text = q;
+    final p = formatThousands(widget.item.unitPriceDisplay);
+    if (_priceController.text != p) _priceController.text = p;
+  }
+
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
+
+  static String _qtyText(num q) {
+    if (q == q.roundToDouble()) return '${q.round()}';
+    return q.toString();
+  }
+
+  static num? _parseQty(String raw) {
+    final t = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (t.isEmpty) return null;
+    return num.tryParse(t);
+  }
+
+  void _commitQuantity() {
+    final q = _parseQty(_qtyController.text);
+    if (q == null || q <= 0) {
+      _qtyController.text = _qtyText(widget.item.quantity);
+      return;
+    }
+    if (q != widget.item.quantity) widget.onQuantityChanged(q);
+  }
+
+  void _commitPrice() {
+    final v = parseFormattedSum(_priceController.text);
+    if (v == null || v < 0) {
+      _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+      return;
+    }
+    final def = widget.item.defaultLineUnitPrice.round();
+    final override = v == def ? null : v.toDouble();
+    final current = widget.item.salePriceOverride?.round();
+    final next = override?.round();
+    if (current != next) widget.onUnitPriceChanged(override);
+  }
+
+  InputDecoration get _inputDecoration => InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: AppTheme.divider),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: AppTheme.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+        ),
+      );
+
+  Widget _labeledField(String label, Widget field) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        field,
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.item.product;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: widget.expanded ? AppTheme.primary.withValues(alpha: 0.35) : AppTheme.divider,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onToggleExpand,
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.vertical(
+                  top: const Radius.circular(8),
+                  bottom: Radius.circular(widget.expanded ? 0 : 8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                        icon: Icon(
+                          widget.expanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+                          color: AppTheme.textSecondary,
+                        ),
+                        onPressed: widget.onToggleExpand,
+                      ),
+                      Expanded(
+                        child: Text(
+                          p.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppTheme.textPrimary),
+                        ),
+                      ),
+                      _qtyCircleButton(Icons.remove, widget.onDecrement),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Text(
+                          _qtyText(widget.item.quantity),
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                      ),
+                      _qtyCircleButton(Icons.add, widget.onIncrement, primary: true),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 72,
+                        child: Text(
+                          formatThousands(widget.item.total),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
+                        ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.textSecondary),
+                        onPressed: widget.onRemove,
+                        tooltip: "O'chirish",
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (widget.expanded)
+              PosEditableFocusScope(
+                child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(7)),
+                  border: Border(top: BorderSide(color: AppTheme.divider)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _labeledField(
+                        'Miqdori',
+                        TextField(
+                          controller: _qtyController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+                          ],
+                          decoration: _inputDecoration,
+                          onSubmitted: (_) => _commitQuantity(),
+                          onEditingComplete: _commitQuantity,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _labeledField(
+                        'Chegirmali narx',
+                        TextField(
+                          controller: _priceController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [ThousandsInputFormatter()],
+                          decoration: _inputDecoration,
+                          onSubmitted: (_) => _commitPrice(),
+                          onEditingComplete: _commitPrice,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _qtyCircleButton(IconData icon, VoidCallback onPressed, {bool primary = false}) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 20, color: primary ? AppTheme.primary : AppTheme.textSecondary),
+        ),
+      ),
+    );
+  }
+}

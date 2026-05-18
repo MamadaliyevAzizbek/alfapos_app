@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
+import '../utils/barcode_input_dialog.dart';
+import '../utils/platform_layout.dart';
 import '../widgets/ios_style_modals.dart';
 
 /// To'liq ekran skaner (eski variant – kerak bo'lsa ishlatiladi)
@@ -13,32 +15,41 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  final MobileScannerController _controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-    facing: CameraFacing.back,
-    torchEnabled: false,
-    // Android’da EAN/UPC/Code128 kabi shtrix-kodlar aniq topilishi uchun formatlarni ochiq beramiz.
-    formats: const [
-      BarcodeFormat.ean13,
-      BarcodeFormat.ean8,
-      BarcodeFormat.upcA,
-      BarcodeFormat.upcE,
-      BarcodeFormat.code128,
-      BarcodeFormat.code39,
-      BarcodeFormat.code93,
-      BarcodeFormat.itf,
-      BarcodeFormat.codabar,
-      BarcodeFormat.qrCode,
-      BarcodeFormat.dataMatrix,
-      BarcodeFormat.aztec,
-      BarcodeFormat.pdf417,
-    ],
-  );
+  MobileScannerController? _controller;
   bool _hasScanned = false;
+
+  static const _barcodeFormats = [
+    BarcodeFormat.ean13,
+    BarcodeFormat.ean8,
+    BarcodeFormat.upcA,
+    BarcodeFormat.upcE,
+    BarcodeFormat.code128,
+    BarcodeFormat.code39,
+    BarcodeFormat.code93,
+    BarcodeFormat.itf,
+    BarcodeFormat.codabar,
+    BarcodeFormat.qrCode,
+    BarcodeFormat.dataMatrix,
+    BarcodeFormat.aztec,
+    BarcodeFormat.pdf417,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (!isDesktopPosLayout) {
+      _controller = MobileScannerController(
+        detectionSpeed: DetectionSpeed.noDuplicates,
+        facing: CameraFacing.back,
+        torchEnabled: false,
+        formats: _barcodeFormats,
+      );
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -61,6 +72,31 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (isDesktopPosLayout) {
+      return Scaffold(
+        appBar: AppBar(title: const Text(Strings.skaner)),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Kompyuterda kamera skaner ishlatilmaydi. Shtrix-kodni qidiruv maydoniga kiriting.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(Strings.qaytish),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -73,7 +109,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         fit: StackFit.expand,
         children: [
           MobileScanner(
-            controller: _controller,
+            controller: _controller!,
             onDetect: _onDetect,
             errorBuilder: (context, error) {
               return Center(
@@ -129,6 +165,10 @@ void showCompactScanner(
   BuildContext context, {
   required ValueChanged<String?> onResult,
 }) {
+  if (isDesktopPosLayout) {
+    showBarcodeInputDialog(context).then(onResult);
+    return;
+  }
   IosStyleModals.showSheet<void>(
     context: context,
     isScrollControlled: true,

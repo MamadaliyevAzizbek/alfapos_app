@@ -10,7 +10,10 @@ import 'yangi_tovar_screen.dart';
 import 'mahsulot_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/product_search.dart' as product_search;
+import '../utils/platform_layout.dart';
 import '../widgets/ios_style_modals.dart';
+import 'desktop/desktop_shell_scope.dart';
+import '../services/app_data_sync.dart';
 
 class KatalogScreen extends StatefulWidget {
   const KatalogScreen({super.key});
@@ -27,7 +30,7 @@ class KatalogScreen extends StatefulWidget {
 
 enum _ProductFilter { all, active, inactive }
 
-class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProviderStateMixin {
+class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProviderStateMixin, DesktopShellSyncMixin {
   final _searchController = TextEditingController();
   String _query = '';
   String? _lockedProductId;
@@ -36,6 +39,22 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   final _products = ProductsProvider.instance;
   final _categories = CategoriesProvider.instance;
   late TabController _tabController;
+  bool _syncing = false;
+
+  Future<void> _syncAllData() async {
+    if (_syncing || AppDataSync.isRunning) return;
+    setState(() => _syncing = true);
+    try {
+      await AppDataSync.syncAll();
+      if (!mounted) return;
+      AppNotify.success(context, 'Ma\'lumotlar sinxronlandi');
+      setState(() {});
+    } catch (e) {
+      if (mounted) AppNotify.error(context, 'Sinxronlash xatosi: $e');
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
 
   @override
   void initState() {
@@ -44,8 +63,12 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     _tabController.addListener(() => setState(() {}));
     _products.stream.listen((_) => setState(() {}));
     _categories.stream.listen((_) => setState(() {}));
-    // Faqat API dan yuklash (lokal saqlash yo'q)
-    _products.loadFromApi();
+    _products.loadFromStorage();
+  }
+
+  @override
+  Future<void> onDesktopShellSync() async {
+    await _syncAllData();
   }
 
   @override
@@ -81,23 +104,18 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     return '${s.substring(0, s.length - 3)} ${s.substring(s.length - 3)}';
   }
 
-  /// Barcode bilan qidirilganda bitta mahsulot topilsa, qisqa kutib inputni tozalaydi.
   void _maybeClearSearchAfterBarcodeMatch() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 600), () {
+    product_search.scheduleBarcodeAutoAction(
+      query: _query,
+      filteredProducts: _filteredProducts,
+      onSingleBarcodeMatch: (p) {
         if (!mounted) return;
-        final list = _filteredProducts;
-        final raw = _query.trim();
-        if (raw.isEmpty || list.length != 1) return;
-        final p = list.single;
-        if (p.matchesBarcode(raw)) {
-          setState(() => _lockedProductId = p.id);
-          _ignoreNextSearchChange = true;
-          _searchController.clear();
-          setState(() => _query = '');
-        }
-      });
-    });
+        setState(() => _lockedProductId = p.id);
+        _ignoreNextSearchChange = true;
+        _searchController.clear();
+        setState(() => _query = '');
+      },
+    );
   }
 
   @override
@@ -107,6 +125,19 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     return Scaffold(
       appBar: AppBar(
         title: const Text(Strings.navMahsulotlar),
+        actions: [
+          IconButton(
+            tooltip: 'Sinxronlash',
+            onPressed: _syncing || AppDataSync.isRunning ? null : _syncAllData,
+            icon: _syncing || AppDataSync.isRunning
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                  )
+                : const Icon(Icons.sync_rounded),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -155,23 +186,25 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Material(
-                color: AppTheme.primary,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () => _showScanner(context),
+              if (!isDesktopPosLayout) ...[
+                const SizedBox(width: 10),
+                Material(
+                  color: AppTheme.primary,
                   borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    child: const Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: Colors.white,
-                      size: 26,
+                  child: InkWell(
+                    onTap: () => _showScanner(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      child: const Icon(
+                        Icons.qr_code_scanner_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -518,57 +551,39 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
       isScrollControlled: true,
       showGrabber: true,
       child: Builder(
-        builder: (ctx) => SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(Strings.yangiKategoriya, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Kategoriya nomi',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onSubmitted: (_) async {
-                  final name = controller.text.trim();
-                  if (name.isNotEmpty) {
-                    await _categories.addCategory(name);
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    setState(() {});
-                  }
-                },
+        builder: (ctx) => IosStyleModals.sheetKeyboardForm(
+          context: ctx,
+          onCancel: () => Navigator.pop(ctx),
+          onSave: () async {
+            final name = controller.text.trim();
+            if (name.isNotEmpty) {
+              await _categories.addCategory(name);
+              if (ctx.mounted) Navigator.pop(ctx);
+              setState(() {});
+            }
+          },
+          cancelLabel: Strings.bekorQilish,
+          saveLabel: Strings.saqlash,
+          body: [
+            const Text(Strings.yangiKategoriya, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Kategoriya nomi',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(Strings.bekorQilish),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () async {
-                        final name = controller.text.trim();
-                        if (name.isNotEmpty) {
-                          await _categories.addCategory(name);
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          setState(() {});
-                        }
-                      },
-                      child: const Text(Strings.saqlash),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+              onSubmitted: (_) async {
+                final name = controller.text.trim();
+                if (name.isNotEmpty) {
+                  await _categories.addCategory(name);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  setState(() {});
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -581,49 +596,31 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
       isScrollControlled: true,
       showGrabber: true,
       child: Builder(
-        builder: (ctx) => SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text("Kategoriyani tahrirlash", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Kategoriya nomi',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+        builder: (ctx) => IosStyleModals.sheetKeyboardForm(
+          context: ctx,
+          onCancel: () => Navigator.pop(ctx),
+          onSave: () async {
+            final newName = controller.text.trim();
+            if (newName.isNotEmpty) {
+              await _categories.updateCategory(oldName, newName);
+              if (ctx.mounted) Navigator.pop(ctx);
+              setState(() {});
+            }
+          },
+          cancelLabel: Strings.bekorQilish,
+          saveLabel: Strings.saqlash,
+          body: [
+            const Text("Kategoriyani tahrirlash", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Kategoriya nomi',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(Strings.bekorQilish),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () async {
-                        final newName = controller.text.trim();
-                        if (newName.isNotEmpty) {
-                          await _categories.updateCategory(oldName, newName);
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          setState(() {});
-                        }
-                      },
-                      child: const Text(Strings.saqlash),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -634,40 +631,22 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
       context: context,
       showGrabber: true,
       child: Builder(
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(Strings.kategoriyaniOchirish, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 8),
-              const Text(Strings.kategoriyaniOchirishRost, textAlign: TextAlign.center),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(Strings.bekorQilish),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-                      onPressed: () async {
-                        await _categories.removeCategory(name);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        setState(() {});
-                      },
-                      child: const Text("O'chirish"),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        builder: (ctx) => IosStyleModals.sheetConfirm(
+          onCancel: () => Navigator.pop(ctx),
+          onConfirm: () async {
+            await _categories.removeCategory(name);
+            if (ctx.mounted) Navigator.pop(ctx);
+            setState(() {});
+          },
+          cancelLabel: Strings.bekorQilish,
+          confirmLabel: "O'chirish",
+          confirmBackgroundColor: Colors.red.shade700,
+          confirmForegroundColor: Colors.white,
+          body: const [
+            Text(Strings.kategoriyaniOchirish, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            SizedBox(height: 8),
+            Text(Strings.kategoriyaniOchirishRost, textAlign: TextAlign.center),
+          ],
         ),
       ),
     );
@@ -791,40 +770,22 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
       context: context,
       showGrabber: true,
       child: Builder(
-        builder: (ctx) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text("Mahsulotni o'chirish", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 8),
-              Text("«${product.name}» ni rostdan ham o'chirmoqchimisiz?", textAlign: TextAlign.center),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text("Bekor qilish"),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-                      onPressed: () async {
-                        await ProductsProvider.instance.removeProduct(product);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        setState(() {});
-                      },
-                      child: const Text("O'chirish"),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+        builder: (ctx) => IosStyleModals.sheetConfirm(
+          onCancel: () => Navigator.pop(ctx),
+          onConfirm: () async {
+            await ProductsProvider.instance.removeProduct(product);
+            if (ctx.mounted) Navigator.pop(ctx);
+            setState(() {});
+          },
+          cancelLabel: 'Bekor qilish',
+          confirmLabel: "O'chirish",
+          confirmBackgroundColor: Colors.red.shade700,
+          confirmForegroundColor: Colors.white,
+          body: [
+            const Text("Mahsulotni o'chirish", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            const SizedBox(height: 8),
+            Text("«${product.name}» ni rostdan ham o'chirmoqchimisiz?", textAlign: TextAlign.center),
+          ],
         ),
       ),
     );

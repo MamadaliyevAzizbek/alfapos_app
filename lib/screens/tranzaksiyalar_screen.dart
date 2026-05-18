@@ -4,6 +4,7 @@ import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../services/api_service.dart';
 import 'api_chek_detail_screen.dart';
+import 'desktop/desktop_shell_scope.dart';
 
 class TranzaksiyalarScreen extends StatefulWidget {
   final int tabIndex;
@@ -15,7 +16,7 @@ class TranzaksiyalarScreen extends StatefulWidget {
   State<TranzaksiyalarScreen> createState() => _TranzaksiyalarScreenState();
 }
 
-class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> {
+class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with DesktopShellSyncMixin {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   List<Map<String, dynamic>> _apiSales = [];
@@ -65,6 +66,9 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> {
     if (!mounted) return;
     setState(() {});
   }
+
+  @override
+  Future<void> onDesktopShellSync() => _load();
 
   /// POST /api/v1/reports/sales — so'nggi 30 kun yoki searchValue bo'lsa qidiruv
   Future<void> _loadApiSales({String? searchValue}) async {

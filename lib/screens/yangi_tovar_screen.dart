@@ -6,12 +6,15 @@ import 'package:image_picker/image_picker.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/input_formatters.dart';
+import '../core/product_image_utils.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
 import '../providers/categories_provider.dart';
 import '../services/api_service.dart';
 import 'scanner_screen.dart' show showCompactScanner;
+import '../core/desktop_runtime.dart';
+import '../utils/platform_layout.dart';
 import '../widgets/ios_style_modals.dart';
 
 class YangiTovarScreen extends StatefulWidget {
@@ -26,9 +29,8 @@ class YangiTovarScreen extends StatefulWidget {
 class _YangiTovarScreenState extends State<YangiTovarScreen> {
   final _nameController = TextEditingController();
   final _barcodeController = TextEditingController();
-  final _additionalBarcode1Controller = TextEditingController();
-  final _additionalBarcode2Controller = TextEditingController();
-  final _additionalBarcodesController = TextEditingController();
+  final List<TextEditingController> _additionalBarcodeControllers = [];
+  final List<FocusNode> _additionalBarcodeFocusNodes = [];
   final _descriptionController = TextEditingController();
   final _costPriceController = TextEditingController();
   final _sellPriceController = TextEditingController();
@@ -36,15 +38,19 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
   final _quantityPerPackController = TextEditingController(text: '1');
   final _costPricePerPackController = TextEditingController();
   final _sellPricePerPackController = TextEditingController();
+  final _wholesalePriceController = TextEditingController();
 
   String _unit = 'dona';
   String _category = 'Tanlanmagan';
   bool _quantityInPack = false;
   bool _addInitialQuantity = true;
-  String? _imagePath;
+  String? _localImagePath;
+  String? _remoteImagePath;
+  bool _imageDeleted = false;
   /// API: `purchasePriceCurrency` / `sellingPriceCurrency` — `uzs` yoki `usd`
   String _purchaseCurrency = 'uzs';
   String _sellingCurrency = 'uzs';
+  String _wholesaleCurrency = 'uzs';
   bool _isSaving = false;
 
   /// API dan yuklangan birlik nomlari (supporting-data); bo'sh bo'lsa fallback
@@ -63,10 +69,7 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     if (p != null) {
       _nameController.text = p.name;
       _barcodeController.text = p.barcode ?? '';
-      final ab = p.additionalBarcodes ?? [];
-      if (ab.isNotEmpty) _additionalBarcode1Controller.text = ab[0];
-      if (ab.length >= 2) _additionalBarcode2Controller.text = ab[1];
-      if (ab.length > 2) _additionalBarcodesController.text = ab.sublist(2).join(', ');
+      _replaceAdditionalBarcodeFields(Product.parseAdditionalBarcodes(p.additionalBarcodes));
       _descriptionController.text = p.description ?? '';
       _purchaseCurrency = p.purchasePriceCurrency.toLowerCase();
       _sellingCurrency = p.sellingPriceCurrency.toLowerCase();
@@ -85,12 +88,20 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       _category = p.category ?? Strings.tanlanmagan;
       _quantityInPack = p.quantityInPack;
       _addInitialQuantity = p.initialQuantity > 0;
-      _imagePath = p.imageUrl;
+      _setRemoteImage(p.imageUrl);
       _quantityPerPackController.text = p.quantityPerPack > 0 ? p.quantityPerPack.toString() : '1';
       _costPricePerPackController.text = p.costPricePerPack != null && p.costPricePerPack! > 0 ? formatThousands(p.costPricePerPack!) : '';
       _sellPricePerPackController.text = p.sellPricePerPack != null && p.sellPricePerPack! > 0 ? formatThousands(p.sellPricePerPack!) : '';
+      _wholesaleCurrency = p.wholesalePriceCurrency.toLowerCase();
+      _wholesalePriceController.text = _priceFieldInitial(
+        currency: _wholesaleCurrency,
+        api: p.wholesalePriceApi,
+        uzsInt: p.wholesalePriceUzs,
+      );
       // Tahrirlashda pachka narxlari ro'yxatda bo'lmasa, bitta mahsulot API dan yuklab to'ldiramiz
       _loadFullProductForEdit(p);
+    } else {
+      _replaceAdditionalBarcodeFields([]);
     }
   }
 
@@ -106,6 +117,13 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
         final full = Product.fromApiJson(Map<String, dynamic>.from(raw), unitIdToName: null);
         if (!mounted) return;
         setState(() {
+          if (full.barcode != null && full.barcode!.trim().isNotEmpty) {
+            _barcodeController.text = full.barcode!.trim();
+          }
+          _replaceAdditionalBarcodeFields(Product.parseAdditionalBarcodes(full.additionalBarcodes));
+          if (full.imageUrl != null && full.imageUrl!.trim().isNotEmpty) {
+            _setRemoteImage(full.imageUrl);
+          }
           _purchaseCurrency = full.purchasePriceCurrency.toLowerCase();
           _sellingCurrency = full.sellingPriceCurrency.toLowerCase();
           _costPriceController.text = _priceFieldInitial(
@@ -130,6 +148,12 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
           if (full.sellPricePerPack != null && full.sellPricePerPack! > 0) {
             _sellPricePerPackController.text = formatThousands(full.sellPricePerPack!);
           }
+          _wholesaleCurrency = full.wholesalePriceCurrency.toLowerCase();
+          _wholesalePriceController.text = _priceFieldInitial(
+            currency: _wholesaleCurrency,
+            api: full.wholesalePriceApi,
+            uzsInt: full.wholesalePriceUzs,
+          );
         });
       } catch (_) {}
     });
@@ -191,14 +215,77 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     if (mounted) setState(() {});
   }
 
+  bool _isLocalImageFile(String path) {
+    final lower = path.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return false;
+    return File(path).existsSync();
+  }
+
+  void _setRemoteImage(String? raw) {
+    final t = (raw ?? '').trim();
+    if (t.isEmpty) return;
+    if (_isLocalImageFile(t)) {
+      _localImagePath = t;
+      _remoteImagePath = null;
+    } else {
+      _remoteImagePath = t;
+      _localImagePath = null;
+    }
+    _imageDeleted = false;
+  }
+
+  void _replaceAdditionalBarcodeFields(List<String> codes) {
+    for (final c in _additionalBarcodeControllers) {
+      c.dispose();
+    }
+    for (final f in _additionalBarcodeFocusNodes) {
+      f.dispose();
+    }
+    _additionalBarcodeControllers.clear();
+    _additionalBarcodeFocusNodes.clear();
+    if (codes.isEmpty) {
+      _additionalBarcodeControllers.add(TextEditingController());
+      _additionalBarcodeFocusNodes.add(FocusNode());
+    } else {
+      for (final code in codes) {
+        _additionalBarcodeControllers.add(TextEditingController(text: code));
+        _additionalBarcodeFocusNodes.add(FocusNode());
+      }
+    }
+  }
+
+  void _addAdditionalBarcodeField({String? initial, bool focus = true}) {
+    final controller = TextEditingController(text: initial ?? '');
+    final focusNode = FocusNode();
+    setState(() {
+      _additionalBarcodeControllers.add(controller);
+      _additionalBarcodeFocusNodes.add(focusNode);
+    });
+    if (focus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).requestFocus(focusNode);
+      });
+    }
+  }
+
+  List<String> _collectAdditionalBarcodes() {
+    return _additionalBarcodeControllers
+        .map((c) => c.text.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   @override
   void dispose() {
     CategoriesProvider.instance.removeListener(_onCategoriesChanged);
     _nameController.dispose();
     _barcodeController.dispose();
-    _additionalBarcode1Controller.dispose();
-    _additionalBarcode2Controller.dispose();
-    _additionalBarcodesController.dispose();
+    for (final c in _additionalBarcodeControllers) {
+      c.dispose();
+    }
+    for (final f in _additionalBarcodeFocusNodes) {
+      f.dispose();
+    }
     _descriptionController.dispose();
     _costPriceController.dispose();
     _sellPriceController.dispose();
@@ -206,6 +293,7 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     _quantityPerPackController.dispose();
     _costPricePerPackController.dispose();
     _sellPricePerPackController.dispose();
+    _wholesalePriceController.dispose();
     super.dispose();
   }
 
@@ -238,6 +326,11 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
   }
 
   void _showImageSourcePicker() {
+    // Windows/macOS/Linux: kamera yo‘q — fayl tanlash (file_selector).
+    if (isDesktopPosLayout) {
+      _pickImage(ImageSource.gallery);
+      return;
+    }
     IosStyleModals.showSheet(
       context: context,
       showGrabber: true,
@@ -279,13 +372,18 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       );
       if (!mounted) return;
       if (xFile != null) {
-        setState(() => _imagePath = xFile.path);
+        setState(() {
+          _localImagePath = xFile.path;
+          _imageDeleted = false;
+        });
       }
     } catch (e) {
       if (mounted) {
         AppNotify.warning(
           context,
-          "Rasm tanlanmadi. Galereya/kamera ruxsatini tekshiring (Sozlamalar → Ilova). Xato: $e",
+          isDesktopPosLayout
+              ? "${desktopImagePickHelpText()} Xato: $e"
+              : "Rasm tanlanmadi. Galereya/kamera ruxsatini tekshiring (Sozlamalar → Ilova). Xato: $e",
           duration: const Duration(seconds: 5),
         );
       }
@@ -398,25 +496,39 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     // Pachka narxlari — faqat pachka maydonlaridan (dona narxlari emas)
     final costPerPack = _parsePrice(_costPricePerPackController.text, 0);
     final sellPerPack = _parsePrice(_sellPricePerPackController.text, 0);
+
+    num? wholesaleForApi;
+    int? wholesaleDisplayInt;
+    final wholesaleText = _wholesalePriceController.text.trim();
+    if (wholesaleText.isEmpty) {
+      wholesaleForApi = null;
+      wholesaleDisplayInt = null;
+    } else if (_wholesaleCurrency == 'usd') {
+      final d = _parseUsd(_wholesalePriceController.text);
+      if (d == null) {
+        AppNotify.info(context, "Ulgurji narxi noto'g'ri (USD)");
+        return;
+      }
+      wholesaleForApi = d;
+      wholesaleDisplayInt = d.round();
+    } else {
+      final w = _parsePrice(_wholesalePriceController.text, existing?.wholesalePriceUzs ?? 0);
+      wholesaleForApi = w > 0 ? w : null;
+      wholesaleDisplayInt = w > 0 ? w : null;
+    }
+
     final qtyInfo = _addInitialQuantity && initialQty > 0
         ? '$initialQty $_unit'
         : '0 $_unit';
 
-    final productId = existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
-    // Rasm lokal saqlanmaydi — API ga yuborishda faqat vaqtincha fayl yo'li (_imagePath) ishlatiladi.
-    final savedImagePath = _imagePath;
-    final ab1 = _additionalBarcode1Controller.text.trim();
-    final ab2 = _additionalBarcode2Controller.text.trim();
-    final abRest = _additionalBarcodesController.text
-        .split(RegExp(r'[,\s]+'))
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-    final additionalBarcodesRaw = [ab1, ab2, ...abRest].where((e) => e.isNotEmpty).toList();
+    final productId = existing?.id ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final savedImagePath = _localImagePath ?? (_imageDeleted ? null : _remoteImagePath);
+    final additionalBarcodesRaw = _collectAdditionalBarcodes();
     final product = Product(
       id: productId,
       name: name,
       sku: existing?.sku,
+      variantId: existing?.variantId,
       barcode: _barcodeController.text.trim().isEmpty ? null : _barcodeController.text.trim(),
       additionalBarcodes: additionalBarcodesRaw.isNotEmpty ? additionalBarcodesRaw : null,
       priceUzs: sellDisplayInt,
@@ -433,19 +545,34 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       quantityPerPack: (_quantityInPack && qtyPerPack > 1) ? qtyPerPack : 0,
       costPricePerPack: (_quantityInPack && qtyPerPack > 1) ? costPerPack : null,
       sellPricePerPack: (_quantityInPack && qtyPerPack > 1) ? sellPerPack : null,
+      wholesalePriceUzs: wholesaleDisplayInt,
+      wholesalePriceCurrency: _wholesaleCurrency,
+      wholesalePriceApi: (_wholesaleCurrency == 'usd' && wholesaleForApi != null) ? wholesaleForApi : null,
       reorderLevel: 0,
       initialQuantity: initialQty,
-      imageUrl: savedImagePath ?? _imagePath,
+      imageUrl: savedImagePath,
     );
+
+    final dupMsg = await ProductsProvider.instance.validateProductBarcodes(product);
+    if (dupMsg != null) {
+      if (mounted) AppNotify.error(context, dupMsg);
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
       if (existing != null) {
-        await ProductsProvider.instance.updateProduct(product);
+        await ProductsProvider.instance.saveProductLocalFirst(
+          product,
+          isCreate: false,
+          deleteImage: _imageDeleted && _localImagePath == null,
+        );
       } else {
-        await ProductsProvider.instance.addProduct(product);
+        await ProductsProvider.instance.saveProductLocalFirst(product, isCreate: true);
       }
-      if (mounted) Navigator.of(context).pop(true);
+      if (!mounted) return;
+      AppNotify.success(context, 'Saqlandi. Serverga yuborilmoqda…');
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Xatolik: $e');
     } finally {
@@ -523,49 +650,21 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
                 Expanded(
                   child: TextField(
                     controller: _barcodeController,
-                    readOnly: true,
-                    onTap: _openBarcodeScanner,
-                    decoration: const InputDecoration(
+                    readOnly: !isDesktopPosLayout,
+                    onTap: isDesktopPosLayout ? null : _openBarcodeScanner,
+                    decoration: InputDecoration(
                       labelText: Strings.shtrixKod,
-                      hintText: "Skaner uchun bosing",
-                      suffixIcon: Icon(Icons.qr_code_scanner_rounded, color: AppTheme.textSecondary, size: 22),
+                      hintText: isDesktopPosLayout ? 'Shtrix kodni kiriting' : 'Skaner uchun bosing',
+                      suffixIcon: isDesktopPosLayout
+                          ? null
+                          : const Icon(Icons.qr_code_scanner_rounded, color: AppTheme.textSecondary, size: 22),
                     ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _additionalBarcode1Controller,
-              decoration: InputDecoration(
-                labelText: "Qo'shimcha shtrix kod 1",
-                hintText: "Kiriting yoki skaner bosing",
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.qr_code_scanner_rounded, color: AppTheme.textSecondary, size: 22),
-                  onPressed: () => _openBarcodeScannerFor((v) => _additionalBarcode1Controller.text = v),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _additionalBarcode2Controller,
-              decoration: InputDecoration(
-                labelText: "Qo'shimcha shtrix kod 2",
-                hintText: "Kiriting yoki skaner bosing",
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.qr_code_scanner_rounded, color: AppTheme.textSecondary, size: 22),
-                  onPressed: () => _openBarcodeScannerFor((v) => _additionalBarcode2Controller.text = v),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _additionalBarcodesController,
-              decoration: const InputDecoration(
-                labelText: "Yana qo'shimcha (vergul bilan, ixtiyoriy)",
-                hintText: "4601234567893, 4601234567894",
-              ),
-            ),
+            ..._buildAdditionalBarcodeFields(),
             const SizedBox(height: 16),
             const Text(
               Strings.tavsif,
@@ -600,6 +699,13 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
               controller: _sellPriceController,
               currency: _sellingCurrency,
               onCurrency: (v) => setState(() => _sellingCurrency = v),
+            ),
+            const SizedBox(height: 12),
+            _priceFieldWithCurrency(
+              label: Strings.ulgurjiNarxi,
+              controller: _wholesalePriceController,
+              currency: _wholesaleCurrency,
+              onCurrency: (v) => setState(() => _wholesaleCurrency = v),
             ),
             const SizedBox(height: 20),
             Row(
@@ -723,35 +829,6 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
         ),
             ),
             ),
-            if (_isSaving) ...[
-              ModalBarrier(
-                color: Colors.black.withValues(alpha: 0.35),
-                dismissible: false,
-              ),
-              const Center(
-                child: Card(
-                  elevation: 6,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 28, vertical: 22),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(strokeWidth: 3, color: AppTheme.primary),
-                        ),
-                        SizedBox(height: 14),
-                        Text(
-                          'Saqlanmoqda…',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -950,56 +1027,92 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       isScrollControlled: true,
       showGrabber: true,
       child: Builder(
-        builder: (ctx) => SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(Strings.yangiKategoriya, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Kategoriya nomi',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+        builder: (ctx) => IosStyleModals.sheetKeyboardForm(
+          context: ctx,
+          onCancel: () => Navigator.pop(ctx),
+          onSave: () async {
+            final name = controller.text.trim();
+            if (name.isNotEmpty) {
+              await CategoriesProvider.instance.addCategory(name);
+              if (ctx.mounted) Navigator.pop(ctx);
+              setState(() => _category = name);
+            }
+          },
+          cancelLabel: Strings.bekorQilish,
+          saveLabel: Strings.saqlash,
+          body: [
+            const Text(Strings.yangiKategoriya, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Kategoriya nomi',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(Strings.bekorQilish),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () async {
-                        final name = controller.text.trim();
-                        if (name.isNotEmpty) {
-                          await CategoriesProvider.instance.addCategory(name);
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          setState(() => _category = name);
-                        }
-                      },
-                      child: const Text(Strings.saqlash),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  List<Widget> _buildAdditionalBarcodeFields() {
+    final widgets = <Widget>[];
+    for (var i = 0; i < _additionalBarcodeControllers.length; i++) {
+      final controller = _additionalBarcodeControllers[i];
+      final focusNode = _additionalBarcodeFocusNodes[i];
+      widgets.add(
+        Padding(
+          padding: EdgeInsets.only(top: i == 0 ? 0 : 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    labelText: i == 0 ? "Qo'shimcha shtrix kod" : "Qo'shimcha shtrix kod ${i + 1}",
+                    hintText: "Kiriting yoki skaner bosing",
+                    suffixIcon: isDesktopPosLayout
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.qr_code_scanner_rounded, color: AppTheme.textSecondary, size: 22),
+                            onPressed: () => _openBarcodeScannerFor((v) => controller.text = v),
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (i == _additionalBarcodeControllers.length - 1)
+                Material(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.circular(12),
+                  child: IconButton(
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    tooltip: "Yana qo'shimcha shtrix kod",
+                    onPressed: _addAdditionalBarcodeField,
+                  ),
+                )
+              else
+                const SizedBox(width: 48, height: 48),
+            ],
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
   Widget _imageUploadArea() {
-    final hasImage = _imagePath != null && _imagePath!.isNotEmpty && File(_imagePath!).existsSync();
+    final localPath = _localImagePath;
+    final hasLocal = localPath != null && localPath.isNotEmpty && _isLocalImageFile(localPath);
+    final networkUrl = !hasLocal && !_imageDeleted && (_remoteImagePath?.trim().isNotEmpty ?? false)
+        ? ProductImageUtils.resolveToUrl(_remoteImagePath)
+        : '';
+    final hasNetwork = networkUrl.isNotEmpty;
+    final hasImage = hasLocal || hasNetwork;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1025,13 +1138,22 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.file(
-                          File(_imagePath!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Center(
-                            child: Icon(Icons.broken_image_outlined, color: AppTheme.textSecondary, size: 48),
+                        if (hasLocal)
+                          Image.file(
+                            File(localPath!),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Icon(Icons.broken_image_outlined, color: AppTheme.textSecondary, size: 48),
+                            ),
+                          )
+                        else
+                          Image.network(
+                            networkUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Icon(Icons.broken_image_outlined, color: AppTheme.textSecondary, size: 48),
+                            ),
                           ),
-                        ),
                         Positioned(
                           left: 0,
                           right: 0,
@@ -1055,7 +1177,11 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
                             clipBehavior: Clip.antiAlias,
                             child: IconButton(
                               icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
-                              onPressed: () => setState(() => _imagePath = null),
+                              onPressed: () => setState(() {
+                                _localImagePath = null;
+                                _remoteImagePath = null;
+                                _imageDeleted = true;
+                              }),
                             ),
                           ),
                         ),
@@ -1090,43 +1216,11 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
   }
 
   void _showChoice(String title, List<String> options, ValueChanged<String> onSelect) {
-    IosStyleModals.showSheet(
+    IosStyleModals.showChoiceList(
       context: context,
-      showGrabber: true,
-      child: Builder(
-        builder: (sheetCtx) {
-          final maxHeight = MediaQuery.of(sheetCtx).size.height * 0.68;
-          return ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    itemCount: options.length,
-                    itemBuilder: (_, i) {
-                      final s = options[i];
-                      return ListTile(
-                        title: Text(s),
-                        onTap: () {
-                          onSelect(s);
-                          Navigator.pop(sheetCtx);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+      title: title,
+      options: options,
+      onSelect: onSelect,
     );
   }
 }

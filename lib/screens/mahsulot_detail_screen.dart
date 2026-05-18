@@ -3,17 +3,43 @@ import 'package:flutter/material.dart';
 import '../core/product_image_utils.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
+import '../providers/products_provider.dart';
 import '../widgets/auth_network_image.dart';
 
 /// Mahsulot haqida ma'lumotlar: rasm, o'lchov birlik, kategoriya, shtrix kod, narxlar
-class MahsulotDetailScreen extends StatelessWidget {
+class MahsulotDetailScreen extends StatefulWidget {
   final Product product;
 
   const MahsulotDetailScreen({super.key, required this.product});
 
   @override
+  State<MahsulotDetailScreen> createState() => _MahsulotDetailScreenState();
+}
+
+class _MahsulotDetailScreenState extends State<MahsulotDetailScreen> {
+  late Product _product;
+  bool _loadingPrices = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _product = widget.product;
+    _loadFullProduct();
+  }
+
+  Future<void> _loadFullProduct() async {
+    final full = await ProductsProvider.instance.resolveProductForDetail(widget.product);
+    if (!mounted) return;
+    setState(() {
+      _product = full;
+      _loadingPrices = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final previewW = MediaQuery.sizeOf(context).width - 32;
+    final product = _product;
     final rawImage = (product.imageUrl ?? '').trim();
     final bool isLocalFile = rawImage.isNotEmpty && File(rawImage).existsSync();
     final imageUrl = rawImage.isEmpty ? '' : ProductImageUtils.resolveToUrl(rawImage);
@@ -34,7 +60,6 @@ class MahsulotDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Mahsulot rasmi
             Container(
               height: 220,
               decoration: BoxDecoration(
@@ -70,7 +95,6 @@ class MahsulotDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            // Ma'lumotlar jadvali
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -95,11 +119,7 @@ class MahsulotDetailScreen extends StatelessWidget {
                   _detailRow(context, "Shtrix kod", product.barcode ?? '—'),
                   if (product.additionalBarcodes != null && product.additionalBarcodes!.isNotEmpty) ...[
                     _divider(),
-                    _detailRow(
-                      context,
-                      "Qo'shimcha shtrix kodlar",
-                      product.additionalBarcodes!.join(', '),
-                    ),
+                    _additionalBarcodesBlock(product.additionalBarcodes!),
                   ],
                   _divider(),
                   _detailRow(
@@ -115,7 +135,15 @@ class MahsulotDetailScreen extends StatelessWidget {
                     product.purchasePriceDisplayText,
                     valueColor: const Color(0xFF2E7D32),
                   ),
-                  // API: pachka — units_per_package > 1 bo'lganda; package_selling_price, package_purchase_price
+                  _divider(),
+                  _detailRow(
+                    context,
+                    "Ulgurji narxi",
+                    _loadingPrices && !product.hasWholesalePrice
+                        ? 'Yuklanmoqda…'
+                        : product.wholesalePriceDisplayText,
+                    valueColor: product.hasWholesalePrice ? const Color(0xFF2E7D32) : null,
+                  ),
                   if (product.quantityInPack && product.quantityPerPack > 1) ...[
                     _divider(),
                     _detailRow(context, "1 pachkada (dona)", '${product.quantityPerPack}'),
@@ -151,22 +179,65 @@ class MahsulotDetailScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(
+          Expanded(
+            flex: 2,
+            child: Text(
+              label.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              softWrap: true,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: valueColor ?? AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _additionalBarcodesBlock(List<String> codes) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            "QO'SHIMCHA SHTRIX KODLAR",
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: AppTheme.textSecondary,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: valueColor ?? AppTheme.textPrimary,
+          const SizedBox(height: 8),
+          ...codes.map(
+            (code) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                code,
+                textAlign: TextAlign.end,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
             ),
           ),
         ],

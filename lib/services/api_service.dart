@@ -59,6 +59,20 @@ class ContactsApi {
     await ApiClient.delete('/contacts/customers/$id');
   }
 
+  /// POST /contacts/suppliers — kirim uchun yetkazib beruvchilar.
+  static Future<Map<String, dynamic>> getSuppliers({Map<String, dynamic>? body}) async {
+    return ApiClient.post('/contacts/suppliers', body: body ?? {
+      'rowLimit': 5000,
+      'rowOffset': 0,
+      'columnKey': 'id',
+      'columnSortedBy': 'DESC',
+    });
+  }
+
+  static Future<Map<String, dynamic>> storeSupplier(Map<String, dynamic> data) async {
+    return ApiClient.post('/contacts/suppliers/store', body: data);
+  }
+
   static Future<Map<String, dynamic>> getCustomerDebts(int id) async {
     return ApiClient.post('/contacts/customers/$id/debts', body: {});
   }
@@ -110,12 +124,133 @@ class ContactsApi {
     return ApiClient.get('/contacts/customers/$id/due-orders');
   }
 
-  static Future<Map<String, dynamic>> bulkDuePayment(int id, {required num amount}) async {
-    return ApiClient.post('/contacts/customers/$id/bulk-due-payment', body: {'amount': amount});
+  /// GET /contacts/payment-list — umumiy to'lash uchun (web BulkDuePayment).
+  static Future<Map<String, dynamic>> getPaymentList() async {
+    return ApiClient.get('/contacts/payment-list');
+  }
+
+  /// POST bulk-due-payment — [paymentMethod]: payment_types.id yoki "customer_balance".
+  static Future<Map<String, dynamic>> bulkDuePayment(
+    int id, {
+    required num amount,
+    required Object paymentMethod,
+  }) async {
+    return ApiClient.post('/contacts/customers/$id/bulk-due-payment', body: {
+      'amount': amount,
+      'payment_method': paymentMethod,
+    });
+  }
+
+  static Future<Map<String, dynamic>> deleteBulkDuePayment(
+    int customerId, {
+    required String bulkGroupId,
+  }) async {
+    return ApiClient.post(
+      '/contacts/customers/$customerId/bulk-due-payment/delete',
+      body: {'bulk_group_id': bulkGroupId},
+    );
+  }
+
+  static Future<Map<String, dynamic>> deleteOrderDuePayment(
+    int customerId, {
+    required int paymentId,
+  }) async {
+    return ApiClient.post(
+      '/contacts/customers/$customerId/order-due-payment/delete/$paymentId',
+      body: {},
+    );
   }
 
   static Future<Map<String, dynamic>> getCustomerDebtCount() async {
     return ApiClient.get('/contacts/customer-debt-count');
+  }
+
+  static Future<Map<String, dynamic>> getCustomerFormOptions() async {
+    return ApiClient.get('/contacts/customers/form-options');
+  }
+
+  static Future<Map<String, dynamic>> getCustomerGroups() async {
+    return ApiClient.get('/contacts/customer-groups');
+  }
+
+  static Future<Map<String, dynamic>> getGroupsShort() async {
+    return ApiClient.get('/contacts/groups');
+  }
+
+  static Future<Map<String, dynamic>> postGroupsList({
+    int rowLimit = 200,
+    int rowOffset = 0,
+    String? reqType,
+  }) async {
+    final body = <String, dynamic>{
+      'rowLimit': rowLimit,
+      'rowOffset': rowOffset,
+    };
+    if (reqType != null && reqType.isNotEmpty) body['reqType'] = reqType;
+    return ApiClient.post('/contacts/groups-list', body: body);
+  }
+
+  static Future<Map<String, dynamic>> getCustomerGroup(int id) async {
+    return ApiClient.get('/contacts/groups/$id');
+  }
+
+  static Future<Map<String, dynamic>> storeCustomerGroup({
+    required String title,
+    required num discount,
+    bool isDefault = false,
+  }) async {
+    return ApiClient.post('/contacts/groups/store', body: {
+      'title': title,
+      'discount': discount,
+      'is_default': isDefault ? 1 : 0,
+    });
+  }
+
+  static Future<Map<String, dynamic>> updateCustomerGroup(
+    int id, {
+    required String title,
+    required num discount,
+    bool isDefault = false,
+  }) async {
+    return ApiClient.post('/contacts/groups/$id', body: {
+      'title': title,
+      'discount': discount,
+      'is_default': isDefault ? 1 : 0,
+    });
+  }
+
+  static Future<Map<String, dynamic>> deleteCustomerGroup(int id) async {
+    return ApiClient.delete('/contacts/groups/$id');
+  }
+
+  static Future<Map<String, dynamic>> saveOrderDuePayment(Map<String, dynamic> body) async {
+    return ApiClient.post('/contacts/customers/save-order-due-payment', body: body);
+  }
+
+  static Future<Map<String, dynamic>> sendTelegramReceipt(Map<String, dynamic> body) async {
+    return ApiClient.post('/contacts/customers/send-telegram-receipt', body: body);
+  }
+
+  static Future<Map<String, dynamic>> sendTelegramDebtBalance(int customerId) async {
+    return ApiClient.post('/contacts/customers/$customerId/send-telegram-debt-balance', body: {});
+  }
+
+  static Future<Map<String, dynamic>> setAutoTelegramCustomerReceipt(int customerId, bool enabled) async {
+    return ApiClient.post('/contacts/customers/$customerId/auto-telegram-customer-receipt', body: {
+      'auto_telegram_customer_receipt': enabled ? 1 : 0,
+    });
+  }
+
+  static Future<Map<String, dynamic>> getWordDocuments(int customerId) async {
+    return ApiClient.get('/contacts/customers/$customerId/word-documents');
+  }
+
+  static Future<Map<String, dynamic>> addToBlacklist(int customerId) async {
+    return ApiClient.post('/contacts/customers/blacklist/add', body: {'customer_id': customerId});
+  }
+
+  static Future<Map<String, dynamic>> removeFromBlacklist(int customerId) async {
+    return ApiClient.post('/contacts/customers/blacklist/remove/$customerId', body: {});
   }
 }
 
@@ -128,6 +263,68 @@ class ProductsApi {
     if (l.endsWith('.gif')) return MediaType('image', 'gif');
     if (l.endsWith('.heic') || l.endsWith('.heif')) return MediaType('image', 'jpeg');
     return MediaType('image', 'jpeg');
+  }
+
+  /// Laravel multipart: massivlar `key[0]`, `key[1]` ko'rinishida (jsonEncode emas).
+  static Map<String, String> dataToMultipartFields(Map<String, dynamic> data) {
+    final fields = <String, String>{};
+
+    data.forEach((key, value) {
+      if (value == null) return;
+      if (key == 'image_base64') return;
+      if (value is String) {
+        fields[key] = value;
+      } else if (value is num || value is bool) {
+        fields[key] = value.toString();
+      } else if (value is List) {
+        for (var i = 0; i < value.length; i++) {
+          final item = value[i];
+          if (item == null) continue;
+          if (item is Map) {
+            final m = Map<String, dynamic>.from(item as Map);
+            m.forEach((subKey, subVal) {
+              if (subVal == null) return;
+              if (subVal is List || subVal is Map) {
+                fields['$key[$i][$subKey]'] = jsonEncode(subVal);
+                return;
+              }
+              final str = subVal is String ? subVal.trim() : subVal.toString();
+              if (str.isNotEmpty) fields['$key[$i][$subKey]'] = str;
+            });
+            continue;
+          }
+          final str = item is String ? item.trim() : item.toString();
+          if (str.isEmpty) continue;
+          fields['$key[$i]'] = str;
+        }
+      } else if (value is Map) {
+        fields[key] = jsonEncode(value);
+      } else {
+        fields[key] = value.toString();
+      }
+    });
+    return fields;
+  }
+
+  static Future<String?> _readImageBase64(String localImagePath) async {
+    final f = File(localImagePath);
+    if (!await f.exists()) return null;
+    final bytes = await f.readAsBytes();
+    if (bytes.isEmpty) return null;
+    if (bytes.length > 6 * 1024 * 1024) {
+      throw ApiException('Rasm hajmi juda katta (6 MB dan oshmasligi kerak)', 400);
+    }
+    return base64Encode(bytes);
+  }
+
+  static String _imageDataUri(String localImagePath, String base64) {
+    final l = localImagePath.toLowerCase();
+    final mime = l.endsWith('.png')
+        ? 'image/png'
+        : l.endsWith('.webp')
+            ? 'image/webp'
+            : 'image/jpeg';
+    return 'data:$mime;base64,$base64';
   }
 
   static Future<Map<String, dynamic>> getProducts({int? limit, int? offset, String? search}) async {
@@ -153,39 +350,77 @@ class ProductsApi {
 
   /// [localImagePath] bo‘lsa MOBILE_API_DOCS.md bo‘yicha `multipart/form-data`, `image` fayl.
   /// Aks holda JSON body (shu jumladan `image_base64` bo‘lishi mumkin).
-  static Future<Map<String, dynamic>> createProduct(
+  /// Yangi mahsulot va tahrirlashda rasm — bir xil multipart (`image` fayl).
+  static int? _variantIdFromData(Map<String, dynamic> data) {
+    final direct = data['variantID'] ?? data['variant_id'];
+    if (direct is int && direct > 0) return direct;
+    if (direct != null) {
+      final n = int.tryParse(direct.toString());
+      if (n != null && n > 0) return n;
+    }
+    final vd = data['variantDetails'];
+    if (vd is List && vd.isNotEmpty && vd.first is Map) {
+      final id = (vd.first as Map)['id'];
+      if (id is int && id > 0) return id;
+      final n = int.tryParse(id?.toString() ?? '');
+      if (n != null && n > 0) return n;
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> _postWithProductImage(
+    String path,
+    Map<String, dynamic> data,
+    String localImagePath,
+  ) async {
+    final fields = dataToMultipartFields(data);
+    final file = File(localImagePath);
+    final name = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'image.jpg';
+    final contentType = _imageMediaTypeForPath(localImagePath);
+    final variantId = _variantIdFromData(data);
+
+    final fieldNames = <String>['image', 'productImage', 'product_image'];
+    if (variantId != null) {
+      fieldNames.addAll(['variant_image', 'variantDetails[0][image]']);
+    }
+
+    ApiException? lastError;
+    for (final fieldName in fieldNames) {
+      try {
+        final multipartFile = await http.MultipartFile.fromPath(
+          fieldName,
+          localImagePath,
+          filename: name,
+          contentType: contentType,
+        );
+        return await ApiClient.postMultipart(path, fields: fields, file: multipartFile);
+      } on ApiException catch (e) {
+        lastError = e;
+      }
+    }
+    if (lastError != null) throw lastError!;
+    throw ApiException('Rasm yuborilmadi', 500);
+  }
+
+  /// Yangi mahsulot — web bilan bir xil (`wholesalePrice`, pachka maydonlari).
+  static Future<Map<String, dynamic>> storeProduct(
     Map<String, dynamic> data, {
     String? localImagePath,
   }) async {
     if (localImagePath != null && localImagePath.isNotEmpty) {
       final f = File(localImagePath);
       if (await f.exists()) {
-        final fields = <String, String>{};
-        data.forEach((key, value) {
-          if (value == null) return;
-          if (key == 'image_base64') return;
-          if (value is String) {
-            fields[key] = value;
-          } else if (value is num || value is bool) {
-            fields[key] = value.toString();
-          } else if (value is List || value is Map) {
-            fields[key] = jsonEncode(value);
-          } else {
-            fields[key] = value.toString();
-          }
-        });
-        final name = f.uri.pathSegments.isNotEmpty ? f.uri.pathSegments.last : 'image.jpg';
-        final multipartFile = await http.MultipartFile.fromPath(
-          'image',
-          localImagePath,
-          filename: name,
-          contentType: _imageMediaTypeForPath(localImagePath),
-        );
-        return ApiClient.postMultipart('/products', fields: fields, file: multipartFile);
+        return _postWithProductImage('/products/store', data, localImagePath);
       }
     }
-    return ApiClient.post('/products', body: data);
+    return ApiClient.post('/products/store', body: data);
   }
+
+  /// Eski V1 — cheklangan maydonlar; faqat fallback.
+  static Future<Map<String, dynamic>> createProduct(
+    Map<String, dynamic> data, {
+    String? localImagePath,
+  }) async => storeProduct(data, localImagePath: localImagePath);
 
   static Future<Map<String, dynamic>> updateProduct(
     int id,
@@ -195,28 +430,31 @@ class ProductsApi {
     if (localImagePath != null && localImagePath.isNotEmpty) {
       final f = File(localImagePath);
       if (await f.exists()) {
-        final fields = <String, String>{};
-        data.forEach((key, value) {
-          if (value == null) return;
-          if (key == 'image_base64') return;
-          if (value is String) {
-            fields[key] = value;
-          } else if (value is num || value is bool) {
-            fields[key] = value.toString();
-          } else if (value is List || value is Map) {
-            fields[key] = jsonEncode(value);
-          } else {
-            fields[key] = value.toString();
+        // Tahrirlash: yangi mahsulot kabi avval multipart (ishlaydi)
+        try {
+          return await _postWithProductImage('/products/$id/edit', data, localImagePath);
+        } on ApiException catch (multipartError) {
+          final b64 = await _readImageBase64(localImagePath);
+          if (b64 == null) throw multipartError;
+          final dataUri = _imageDataUri(localImagePath, b64);
+          final imageAttempts = <Map<String, dynamic>>[
+            {'image_base64': b64},
+            {'image_base64': dataUri},
+            {'image': dataUri},
+          ];
+          ApiException? lastJsonError = multipartError;
+          for (final extra in imageAttempts) {
+            try {
+              return await ApiClient.post(
+                '/products/$id/edit',
+                body: {...data, ...extra},
+              );
+            } on ApiException catch (e) {
+              lastJsonError = e;
+            }
           }
-        });
-        final name = f.uri.pathSegments.isNotEmpty ? f.uri.pathSegments.last : 'image.jpg';
-        final multipartFile = await http.MultipartFile.fromPath(
-          'image',
-          localImagePath,
-          filename: name,
-          contentType: _imageMediaTypeForPath(localImagePath),
-        );
-        return ApiClient.postMultipart('/products/$id/edit', fields: fields, file: multipartFile);
+          if (lastJsonError != null) throw lastJsonError;
+        }
       }
     }
     return ApiClient.post('/products/$id/edit', body: data);
@@ -228,6 +466,14 @@ class ProductsApi {
 
   static Future<Map<String, dynamic>> getSupportingData() async {
     return ApiClient.get('/products/supporting-data');
+  }
+
+  static Future<Map<String, dynamic>> postCategoriesList() async {
+    return ApiClient.post('/products/categories/list', body: {});
+  }
+
+  static Future<Map<String, dynamic>> postBrandsList() async {
+    return ApiClient.post('/products/brands/list', body: {});
   }
 }
 
@@ -273,10 +519,46 @@ class ExpensesApi {
   }
 }
 
-/// Sotuv (Savatcha) — Murod API: mahsulotlar, to'lov turlari, filiallar, chek yuborish
+/// Kassaga kirim (tezkor kirim forma)
+class IncomesApi {
+  static Future<Map<String, dynamic>> getIncomes({String? from, String? to}) async {
+    final q = <String, String>{};
+    if (from != null) q['from'] = from;
+    if (to != null) q['to'] = to;
+    return ApiClient.get('/incomes', queryParams: q.isEmpty ? null : q);
+  }
+
+  static Future<Map<String, dynamic>> createIncome(Map<String, dynamic> data) async {
+    return ApiClient.post('/incomes', body: data);
+  }
+}
+
+/// Sotuv (Savatcha) — MOBILE_SALES_API_UZ.md
 class SalesApi {
   static Future<Map<String, dynamic>> getSalesProducts({Map<String, dynamic>? body}) async {
-    return ApiClient.post('/sales/products', body: body ?? {'rowLimit': 50, 'offset': 0, 'orderType': 'sales'});
+    return ApiClient.post('/sales/products', body: body ?? {'rowLimit': 40, 'offset': 0, 'orderType': 'sales'});
+  }
+
+  static Future<Map<String, dynamic>> barcodeSearch({
+    required String searchValue,
+    required int branchId,
+    String orderType = 'sales',
+  }) async {
+    return ApiClient.post('/sales/barcode-search', body: {
+      'searchValueForBarCode': searchValue,
+      'orderType': orderType,
+      'branchId': branchId,
+    });
+  }
+
+  static Future<Map<String, dynamic>> searchCustomers({
+    required String searchValue,
+    String orderType = 'sales',
+  }) async {
+    return ApiClient.post('/sales/customers', body: {
+      'orderType': orderType,
+      'customerSearchValue': searchValue,
+    });
   }
 
   static Future<Map<String, dynamic>> getPaymentTypes() async {
@@ -287,12 +569,81 @@ class SalesApi {
     return ApiClient.get('/sales/branches');
   }
 
+  static Future<Map<String, dynamic>> getCurrencies() async {
+    return ApiClient.get('/sales/currencies');
+  }
+
   static Future<Map<String, dynamic>> setBranch({required int branchID, String orderType = 'sales'}) async {
     return ApiClient.post('/sales/set-branch', body: {'branchID': branchID, 'orderType': orderType});
   }
 
+  static Future<Map<String, dynamic>> getCashRegisters() async {
+    return ApiClient.get('/sales/cash-registers');
+  }
+
+  static Future<Map<String, dynamic>> getCashRegisterBalance(int id) async {
+    return ApiClient.get('/sales/cash-registers/$id/balance');
+  }
+
+  static Future<Map<String, dynamic>> openCloseCashRegister(Map<String, dynamic> body) async {
+    return ApiClient.post('/sales/cash-registers/open-close', body: body);
+  }
+
+  static Future<Map<String, dynamic>> getRegisterExpectedAmount(int cashRegisterId) async {
+    return ApiClient.get('/sales/register-amount/$cashRegisterId');
+  }
+
+  static Future<Map<String, dynamic>> getShiftInfo(int logId) async {
+    return ApiClient.get('/sales/cash-register-shifts/$logId/info');
+  }
+
+  static Future<Map<String, dynamic>> getShiftAnalytics(int logId) async {
+    return ApiClient.get('/sales/cash-register-shifts/$logId/analytics');
+  }
+
+  static Future<Map<String, dynamic>> closeShift(Map<String, dynamic> body) async {
+    return ApiClient.post('/sales/cash-register-shifts/close', body: body);
+  }
+
+  /// Barcha pauza (hold) buyurtmalar — kassa bo‘yicha filtrlash yo‘q.
+  static Future<Map<String, dynamic>> getHoldOrders() async {
+    return ApiClient.get('/sales/hold-orders');
+  }
+
+  static Future<Map<String, dynamic>> updateHoldStatus(Map<String, dynamic> body) async {
+    return ApiClient.post('/sales/hold-orders/update-status', body: body);
+  }
+
   static Future<Map<String, dynamic>> storeSale(Map<String, dynamic> data) async {
     return ApiClient.post('/sales/store', body: data);
+  }
+
+  static Future<Map<String, dynamic>> sendTelegramReceipt({
+    required int customerId,
+    required int orderId,
+    required String invoiceId,
+  }) async {
+    return ApiClient.post('/sales/send-telegram-receipt', body: {
+      'id': customerId,
+      'orderId': orderId,
+      'invoiceId': invoiceId,
+    });
+  }
+
+  static Future<Map<String, dynamic>> sendTelegramDailySummary() async {
+    return ApiClient.post('/sales/send-telegram-daily-summary', body: {});
+  }
+
+  static Future<Map<String, dynamic>> getVariantQuantity(int variantId, {required int branchId}) async {
+    return ApiClient.get('/sales/variant-available-quantity/$variantId?branchId=$branchId');
+  }
+
+  static Future<Map<String, dynamic>> cancelSale(int orderId) async {
+    return ApiClient.post('/sales/cancel', body: {'orderID': orderId});
+  }
+
+  static Future<Map<String, dynamic>> continueSale(int orderId) async {
+    return ApiClient.post('/sales/continue-sale', body: {'orderID': orderId});
   }
 
   /// POST /sales/return-full-order — chekni to'liq qaytarish (web bilan bir xil).
@@ -318,6 +669,19 @@ class ReceivesApi {
     return ApiClient.post('/receives/products', body: body ?? {'rowLimit': 500, 'orderType': 'receiving'});
   }
 
+  /// POST /receives/barcode-search
+  static Future<Map<String, dynamic>> barcodeSearch({
+    required String searchValue,
+    int? branchId,
+    String orderType = 'receiving',
+  }) async {
+    return ApiClient.post('/receives/barcode-search', body: {
+      'searchValueForBarCode': searchValue,
+      'orderType': orderType,
+      if (branchId != null) 'branchId': branchId,
+    });
+  }
+
   static Future<Map<String, dynamic>> storeReceive(Map<String, dynamic> data) async {
     return ApiClient.post('/receives/store', body: data);
   }
@@ -328,6 +692,21 @@ class ReceivesApi {
 
   static Future<Map<String, dynamic>> getBranches() async {
     return ApiClient.get('/receives/branches');
+  }
+
+  static Future<Map<String, dynamic>> getCurrencies() async {
+    return ApiClient.get('/receives/currencies');
+  }
+
+  static Future<Map<String, dynamic>> setBranch({required int branchId, String orderType = 'receiving'}) async {
+    return ApiClient.post('/receives/set-branch', body: {
+      'branchID': branchId,
+      'orderType': orderType,
+    });
+  }
+
+  static Future<Map<String, dynamic>> getEditableOrder(int orderId, {String orderType = 'receiving'}) async {
+    return ApiClient.get('/receives/editable-order/$orderId?orderType=$orderType');
   }
 }
 
@@ -472,6 +851,37 @@ class ReportsApi {
 
   static Future<Map<String, dynamic>> getInvoiceDetails(int orderId) async {
     return ApiClient.post('/reports/sales/invoice-details/$orderId', body: {});
+  }
+
+  /// POST /reports/receiving — kirim tarixi.
+  static Future<Map<String, dynamic>> getReceivingReport({Map<String, dynamic>? body}) async {
+    return ApiClient.post('/reports/receiving', body: body ?? {});
+  }
+
+  static Future<Map<String, dynamic>> getReceivingFilter() async {
+    return ApiClient.get('/reports/receiving/filter');
+  }
+
+  static Map<String, dynamic> receivingListBody({
+    required String from,
+    required String to,
+    int rowLimit = 20,
+    int rowOffset = 0,
+  }) {
+    return {
+      'rowLimit': rowLimit,
+      'rowOffset': rowOffset,
+      'columnKey': 'date',
+      'columnSortedBy': 'DESC',
+      'filtersData': [
+        {
+          'filterKey': 'date_range',
+          'value': [
+            {'start': from, 'end': to},
+          ],
+        },
+      ],
+    };
   }
 
   /// MOBILE_INVOICE_AND_RECEIPT_API: chekni HTML/print ko'rinishida — templateData.content (termal), largeInvoiceView (A4).

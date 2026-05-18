@@ -12,6 +12,9 @@ class ProductTile extends StatelessWidget {
   final VoidCallback? onMenu;
   final bool showBarcode;
   final bool showMenu;
+  /// Agar berilsa, `product.priceFormatted` o‘rnida ko‘rsatiladi (sotuv filtri).
+  final String? primaryPriceLabel;
+  final String? secondaryPriceLabel;
 
   const ProductTile({
     super.key,
@@ -20,6 +23,8 @@ class ProductTile extends StatelessWidget {
     this.onMenu,
     this.showBarcode = true,
     this.showMenu = true,
+    this.primaryPriceLabel,
+    this.secondaryPriceLabel,
   });
 
   static Widget _placeholder(double boxSize) {
@@ -27,6 +32,53 @@ class ProductTile extends StatelessWidget {
       Icons.image_not_supported_rounded,
       color: AppTheme.textSecondary,
       size: boxSize * 0.45,
+    );
+  }
+
+  /// Katalog kartochkasi: butun maydonni to‘ldiradi (ichki alohida ramka yo‘q).
+  static Widget buildProductImageCover(
+    Product product, {
+    required double width,
+    required double height,
+  }) {
+    final iconSize = (width < height ? width : height) * 0.38;
+    final ph = Center(
+      child: Icon(Icons.image_not_supported_rounded, color: AppTheme.textSecondary, size: iconSize),
+    );
+
+    Widget imageBox(Widget child) => SizedBox(width: width, height: height, child: child);
+
+    final raw = (product.imageUrl ?? '').trim();
+    if (raw.isEmpty) {
+      return imageBox(ColoredBox(color: const Color(0xFFF0F2F5), child: ph));
+    }
+
+    final localFile = File(raw);
+    if (localFile.existsSync()) {
+      return imageBox(
+        Image.file(
+          localFile,
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => ColoredBox(color: const Color(0xFFF0F2F5), child: ph),
+        ),
+      );
+    }
+
+    final url = ProductImageUtils.resolveToUrl(raw);
+    if (url.isEmpty) {
+      return imageBox(ColoredBox(color: const Color(0xFFF0F2F5), child: ph));
+    }
+
+    return imageBox(
+      AuthNetworkImage(
+        url: url,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        placeholder: ColoredBox(color: const Color(0xFFF0F2F5), child: ph),
+      ),
     );
   }
 
@@ -100,13 +152,24 @@ class ProductTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      product.priceFormatted,
+                      primaryPriceLabel ?? product.priceFormatted,
                       style: const TextStyle(
                         fontSize: 15,
                         color: AppTheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (secondaryPriceLabel != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        secondaryPriceLabel!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Text(
                       'Miqdor: ${product.initialQuantity} ${product.unit ?? 'dona'}',
@@ -129,7 +192,7 @@ class ProductTile extends StatelessWidget {
                       if (product.additionalBarcodes != null && product.additionalBarcodes!.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          "Qo'shimcha: ${product.additionalBarcodes!.join(', ')}",
+                          "Qo'shimcha: ${product.additionalBarcodes!.take(3).join(', ')}${product.additionalBarcodes!.length > 3 ? '…' : ''}",
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppTheme.textSecondary,

@@ -5,6 +5,15 @@
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Dedupe Flutter iOS build roots"
+               scriptText = "# Xcode 15+: mixed outputs (Debug-iphonesimulator vs iphonesimulator) and ios/build cache trigger &apos;Stale file outside allowed root paths&apos;.&#10;IOS_PROJ_DIR=&quot;${PROJECT_DIR}&quot;&#10;REPO_ROOT=&quot;$(cd &quot;${IOS_PROJ_DIR}/..&quot; &amp;&amp; pwd)&quot;&#10;rm -rf &quot;${IOS_PROJ_DIR}/build&quot;&#10;IOS_OUT=&quot;${REPO_ROOT}/build/ios&quot;&#10;if [ -d &quot;${IOS_OUT}/iphonesimulator&quot; ] &amp;&amp; [ -d &quot;${IOS_OUT}/Debug-iphonesimulator&quot; ]; then&#10;  rm -rf &quot;${IOS_OUT}/iphonesimulator&quot; &quot;${IOS_OUT}/XCBuildData&quot;&#10;fi&#10;">
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"

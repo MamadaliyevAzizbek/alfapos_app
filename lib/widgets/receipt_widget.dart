@@ -39,6 +39,8 @@ class ReceiptWidget extends StatelessWidget {
   final int discount;
   final int totalSum;
   final String barcodeData;
+  /// To'lovdan oldin mijozga beriladigan oldindan chek.
+  final bool isPrecheck;
 
   const ReceiptWidget({
     super.key,
@@ -52,6 +54,7 @@ class ReceiptWidget extends StatelessWidget {
     required this.discount,
     required this.totalSum,
     this.barcodeData = '',
+    this.isPrecheck = false,
   });
 
   static String _fmt(int n) => formatThousands(n);
@@ -91,6 +94,27 @@ class ReceiptWidget extends StatelessWidget {
               ),
             ),
           ),
+          if (isPrecheck) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade700, width: 1.5),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  "OLDINDAN CHEK",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: Colors.grey.shade900,
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           // Sana va vaqt
           Center(
@@ -100,7 +124,10 @@ class ReceiptWidget extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text('Chek raqami: $receiptNumber', style: textStyle),
+          Text(
+            isPrecheck ? "Chek raqami: to'lov oldin" : 'Chek raqami: $receiptNumber',
+            style: textStyle,
+          ),
           Text('Sotuvchi: $sellerName', style: textStyle),
           if (clientName != null && clientName!.trim().isNotEmpty)
             Text('Mijoz: ${clientName!.trim()}', style: textStyle),
@@ -135,6 +162,7 @@ class ReceiptWidget extends StatelessWidget {
             ),
           _dashedLine(width - padding * 2),
           // To'lov qatorlari
+          if (!isPrecheck)
           for (final row in paymentRows)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -155,21 +183,31 @@ class ReceiptWidget extends StatelessWidget {
               Text(_fmt(totalSum), style: headerStyle),
             ],
           ),
-          const SizedBox(height: 16),
-          // Shtrix-kod (oddiy chiziqlar)
-          Center(
-            child: _BarcodeStrip(
-              data: barcodeData.isEmpty ? receiptNumber : barcodeData,
-              width: width - padding * 2,
+          if (!isPrecheck) ...[
+            const SizedBox(height: 16),
+            Center(
+              child: _BarcodeStrip(
+                data: barcodeData.isEmpty ? receiptNumber : barcodeData,
+                width: width - padding * 2,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Center(
-            child: Text(
-              'Спасибо за покупку!',
-              style: TextStyle(fontSize: 12, color: Colors.black87),
+            const SizedBox(height: 8),
+            const Center(
+              child: Text(
+                'Спасибо за покупку!',
+                style: TextStyle(fontSize: 12, color: Colors.black87),
+              ),
             ),
-          ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                "To'lov hali amalga oshirilmagan",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+              ),
+            ),
+          ],
         ],
       ),
     );

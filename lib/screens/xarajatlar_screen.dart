@@ -3,6 +3,7 @@ import '../core/constants.dart';
 import '../core/theme.dart';
 import '../providers/expenses_provider.dart';
 import 'xarajat_qoshish_screen.dart';
+import 'desktop/desktop_shell_scope.dart';
 
 /// Menu → Xarajatlar: ro'yxat va yangi xarajat faqat API dan (GET /expenses, POST /expenses).
 class XarajatlarScreen extends StatefulWidget {
@@ -12,7 +13,7 @@ class XarajatlarScreen extends StatefulWidget {
   State<XarajatlarScreen> createState() => _XarajatlarScreenState();
 }
 
-class _XarajatlarScreenState extends State<XarajatlarScreen> {
+class _XarajatlarScreenState extends State<XarajatlarScreen> with DesktopShellSyncMixin {
   final _expenses = ExpensesProvider.instance;
   late DateTimeRange _range;
 
@@ -75,6 +76,10 @@ class _XarajatlarScreenState extends State<XarajatlarScreen> {
     setState(() => _range = DateTimeRange(start: today, end: today));
     await _expenses.loadFromApi(fromDate: _range.start, toDate: _range.end);
   }
+
+  @override
+  Future<void> onDesktopShellSync() =>
+      _expenses.loadFromApi(fromDate: _range.start, toDate: _range.end);
 
   Future<void> _openAddExpenseScreen() async {
     final added = await Navigator.push<bool>(

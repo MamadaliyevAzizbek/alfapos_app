@@ -9,17 +9,46 @@ class ThousandsInputFormatter extends TextInputFormatter {
   ) {
     final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) {
-      return TextEditingValue(
+      return const TextEditingValue(
         text: '',
-        selection: const TextSelection.collapsed(offset: 0),
+        selection: TextSelection.collapsed(offset: 0),
       );
     }
     final formatted = _formatThousands(digits);
-    final cursor = formatted.length.clamp(0, newValue.selection.end);
+    final digitsBeforeCursor = _countDigitsBefore(
+      newValue.text,
+      newValue.selection.end.clamp(0, newValue.text.length),
+    );
+    final cursor = _offsetAfterDigitIndex(formatted, digitsBeforeCursor);
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: cursor),
     );
+  }
+
+  /// Kursor oldidagi raqamlar soni (formatdan mustaqil).
+  static int _countDigitsBefore(String text, int endOffset) {
+    var count = 0;
+    final end = endOffset.clamp(0, text.length);
+    for (var i = 0; i < end; i++) {
+      final c = text[i];
+      if (c.codeUnitAt(0) >= 48 && c.codeUnitAt(0) <= 57) count++;
+    }
+    return count;
+  }
+
+  /// Formatlangan qatorda `digitIndex` ta raqamdan keyingi kursor pozitsiyasi.
+  static int _offsetAfterDigitIndex(String formatted, int digitIndex) {
+    if (digitIndex <= 0) return 0;
+    var count = 0;
+    for (var i = 0; i < formatted.length; i++) {
+      final c = formatted.codeUnitAt(i);
+      if (c >= 48 && c <= 57) {
+        count++;
+        if (count == digitIndex) return i + 1;
+      }
+    }
+    return formatted.length;
   }
 
   static String _formatThousands(String digits) {
@@ -41,13 +70,24 @@ int? parseFormattedSum(String? s) {
   return int.tryParse(t);
 }
 
-/// API dan kelgan total (int, num yoki "20000.00" string) ni butun songa aylantiradi.
+/// API dan kelgan total (int, num, "20000.00", "21 000", "21,000") ni butun songa aylantiradi.
 int parseAmountFromApi(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
-  if (v is num) return v.toInt();
-  final s = v.toString().trim();
+  if (v is num) return v.round();
+  var s = v.toString().trim();
   if (s.isEmpty) return 0;
+  s = s.replaceAll(RegExp(r'\s+'), '');
+  if (s.contains(',') && !s.contains('.')) {
+    final parts = s.split(',');
+    if (parts.length == 2 && parts[1].length <= 2) {
+      s = '${parts[0]}.${parts[1]}';
+    } else {
+      s = s.replaceAll(',', '');
+    }
+  } else {
+    s = s.replaceAll(',', '');
+  }
   final d = double.tryParse(s);
   return d != null ? d.round() : 0;
 }

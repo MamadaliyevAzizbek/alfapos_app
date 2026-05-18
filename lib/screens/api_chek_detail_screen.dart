@@ -11,6 +11,7 @@ import '../services/api_service.dart';
 import '../widgets/auth_network_image.dart';
 import '../widgets/ios_style_modals.dart';
 import '../widgets/product_tile.dart';
+import '../utils/sale_return_utils.dart';
 
 /// API dan kelgan chek batafsil — to'liq chek ko'rinishi (Hisobotlar, Tranzaksiyalar, Mijoz detali).
 class ApiChekDetailScreen extends StatefulWidget {
@@ -178,6 +179,9 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
       discountUzs = effectiveSubTotal - totalUzs;
     }
 
+    final alreadyReturned = isSaleAlreadyReturned(widget.sale, invoiceDetail: inv);
+    final showReturnButton = canShowReturnSaleButton(widget.sale, invoiceDetail: inv);
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Chek #$posTitle"),
@@ -196,6 +200,30 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
             Text('Sotuvchi: $sellerName', style: const TextStyle(fontSize: 14)),
             if (clientName.toString().trim().isNotEmpty)
               Text('Mijoz: ${clientName.toString().trim()}', style: const TextStyle(fontSize: 14)),
+            if (alreadyReturned) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, color: Colors.orange.shade800, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Bu chek allaqachon qaytarilgan. Qayta qaytarish mumkin emas.',
+                        style: TextStyle(fontSize: 13, color: Colors.orange.shade900, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             _CollapsibleSectionCard(
@@ -269,6 +297,7 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
               ),
             ),
 
+            if (showReturnButton) ...[
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
@@ -278,6 +307,12 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                   if (orderId == null) {
                     if (context.mounted) {
                       AppNotify.error(context, "Chek ID aniqlanmadi");
+                    }
+                    return;
+                  }
+                  if (!canShowReturnSaleButton(widget.sale, invoiceDetail: inv)) {
+                    if (context.mounted) {
+                      AppNotify.info(context, "Bu chek allaqachon qaytarilgan");
                     }
                     return;
                   }
@@ -318,6 +353,9 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                   if (confirm != true || !context.mounted) return;
                   try {
                     await SalesApi.returnFullOrder(orderId: orderId, invoiceId: invoiceIdToSend);
+                    SaleReturnGuard.markReturned(orderId);
+                    widget.sale['status'] = 'returned';
+                    widget.sale['is_returned'] = true;
                     if (!context.mounted) return;
                     Navigator.pop(context, true);
                     AppNotify.success(null, "Chek muvaffaqiyatli qaytarildi");
@@ -339,6 +377,7 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                 ),
               ),
             ),
+            ],
           ],
         ),
       ),

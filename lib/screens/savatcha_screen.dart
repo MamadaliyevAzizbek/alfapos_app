@@ -1,37 +1,148 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../providers/cart_provider.dart';
+import '../providers/clients_provider.dart';
 import '../providers/products_provider.dart';
+import '../providers/sales_session_provider.dart';
+import '../core/api_client.dart';
+import '../services/api_service.dart';
+import '../core/seller_preferences.dart';
 import '../widgets/product_tile.dart';
 import 'tranzaksiya_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/product_search.dart' as product_search;
+import '../utils/platform_layout.dart';
 import '../core/input_formatters.dart';
 import '../widgets/ios_style_modals.dart';
+import 'desktop/cash_register_shift_gate.dart';
+import 'desktop/cash_register_shift_dashboard.dart';
+import 'desktop/desktop_shell_scope.dart';
+import 'desktop/savatcha_desktop_layout.dart';
+import '../providers/cash_register_shift_provider.dart';
+import 'desktop/sales_filter_dialog.dart';
+import 'desktop/desktop_payment_screen.dart';
+import 'desktop/sales_hold_orders_sheet.dart';
+import '../utils/cart_discount_percent.dart';
+import '../utils/cart_payment_discount.dart';
+import '../utils/customer_group_discount.dart';
+import '../utils/sales_filter_cart_price.dart';
+import '../utils/catalog_product_price_label.dart';
+import '../utils/hold_order_cart.dart';
+import '../utils/hold_cart_action.dart';
+import '../widgets/pos_editable_focus_scope.dart';
+import '../widgets/sales_customer_search.dart';
+import 'yangi_mijoz_screen.dart';
 
 /// Savatcha: mahsulotlar API dan (ProductsProvider). Sotuv POST /sales/store orqali, chek ID API javobidan.
 /// Savatcha o'zi diska saqlanmaydi (faqat sessiya davomida xotirada).
 class SavatchaScreen extends StatefulWidget {
-  const SavatchaScreen({super.key});
+  final VoidCallback? onLogout;
+  /// Desktop: sidebar «Tranzaksiyalar» bo‘limiga o‘tish.
+  final VoidCallback? onNavigateToTransactions;
+  /// Desktop IndexedStack: boshqa tabda bo‘lsa katalog autofokus ishlamasin.
+  final bool isTabActive;
+
+  const SavatchaScreen({
+    super.key,
+    this.onLogout,
+    this.onNavigateToTransactions,
+    this.isTabActive = true,
+  });
 
   @override
   State<SavatchaScreen> createState() => _SavatchaScreenState();
 }
 
-class _SavatchaScreenState extends State<SavatchaScreen> {
+class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMixin {
   final _searchController = TextEditingController();
+  final _catalogSearchFocus = FocusNode();
+  final _discountPercentController = TextEditingController();
+  int _catalogSearchRefocusSuspend = 0;
   final _cart = CartProvider.instance;
   final _products = ProductsProvider.instance;
+  final _sales = SalesSessionProvider.instance;
   String _query = '';
+  Timer? _barcodeSearchDebounce;
+  Timer? _catalogSearchDebounce;
+  Timer? _catalogSearchRefocusTimer;
+  bool _barcodeSearchInFlight = false;
+  Client? _selectedClient;
+  String _sellerName = '';
+  int? _activeHoldOrderId;
+  String? _activeHoldInvoiceId;
+  int _savedOrdersCount = 0;
+  CartItem? _expandedCartLine;
 
   Future<void> _onRefresh() async {
-    await _products.loadFromApi();
+    if (isDesktopPosLayout) {
+      await _products.loadFromApi();
+    } else if (_sales.initError == null) {
+      await _sales.loadProducts(reset: true, searchValue: _query.trim());
+    } else {
+      await ProductsProvider.instance.loadFromStorage();
+    }
     if (mounted) setState(() {});
+  }
+
+  bool get _salesFiltersActive =>
+      _sales.categoryId != null ||
+      _sales.brandId != null ||
+      _sales.hideZeroStock ||
+      _sales.sellAtWholesalePrice ||
+      _sales.sellAtPurchasePrice ||
+      _sales.showPurchasePrice;
+
+  bool get _useSalesCatalog =>
+      !isDesktopPosLayout && _sales.initError == null && _sales.salesProducts.isNotEmpty;
+
+  List<Product> get _mobileCatalogProducts {
+    var list = _useSalesCatalog
+        ? List<Product>.from(_sales.catalogProductsVisible)
+        : List<Product>.from(_products.items);
+    final q = _query.trim();
+    if (q.isNotEmpty) {
+      list = product_search.filterCatalogProducts(list, q);
+    }
+    return list;
+  }
+
+  /// Mobil: server + lokal katalog bo'yicha qidiruv (nomdagi har qanday belgi/raqam).
+  Future<void> _mobileSearchProducts(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    if (_sales.initError == null) {
+      _sales.setSearchQuery(q);
+      await _sales.loadProducts(reset: true, searchValue: q);
+    }
+    if (_products.items.isEmpty) {
+      try {
+        await _products.loadFromStorage();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Future<void> onDesktopShellSync() async {
+    if (!isDesktopPosLayout) return;
+    _sales.syncFromShift();
+    await _refreshSavedOrdersCount();
+    if (mounted) setState(() {});
+  }
+
+  void _onCashShiftChanged() {
+    if (mounted) {
+      _sales.syncFromShift();
+      setState(() {});
+    }
   }
 
   @override
@@ -39,25 +150,233 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
     super.initState();
     _cart.stream.listen((_) => setState(() {}));
     _products.stream.listen((_) => setState(() {}));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _products.loadFromApi());
+    _sales.addListener(_onSalesSessionChanged);
+    CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
+    if (isDesktopPosLayout) {
+      FocusManager.instance.addListener(_onDesktopFocusChanged);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _sellerName = await getSellerName();
+      if (!mounted) return;
+      if (isDesktopPosLayout) {
+        await _sales.init();
+        await _refreshSavedOrdersCount();
+        unawaited(_sales.ensureAllProductsLoaded().then((_) {
+          if (mounted) setState(() {});
+        }));
+      } else {
+        final shift = CashRegisterShiftProvider.instance;
+        await shift.loadRegisters();
+        _sales.syncFromShift();
+        await _refreshSavedOrdersCount();
+        try {
+          await _sales.init();
+        } catch (_) {}
+        unawaited(_products.loadFromStorage());
+        if (shift.isShiftOpen) {
+          unawaited(shift.loadShiftDetail());
+        }
+      }
+      if (mounted) {
+        setState(() {});
+        _refocusCatalogSearch();
+      }
+    });
+  }
+
+  /// USB/Bluetooth shtrix skaner klaviatura kabi yozadi — qidiruv inputida fokus bo‘lishi kerak.
+  void _refocusCatalogSearch({bool immediate = false}) {
+    if (!mounted || !isDesktopPosLayout || !widget.isTabActive || _catalogSearchRefocusSuspend > 0) {
+      return;
+    }
+    _catalogSearchRefocusTimer?.cancel();
+    void apply() {
+      if (!mounted || !widget.isTabActive || _catalogSearchRefocusSuspend > 0) return;
+      if (_catalogSearchFocus.hasFocus) return;
+      final primary = FocusManager.instance.primaryFocus;
+      if (PosEditableFocusScope.shouldPreserveFocus(primary)) return;
+      if (!_catalogSearchFocus.canRequestFocus) return;
+      _catalogSearchFocus.requestFocus();
+    }
+    if (immediate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      _catalogSearchRefocusTimer = Timer(const Duration(milliseconds: 80), apply);
+    }
+  }
+
+  void _scheduleCatalogSearchRefocus() => _refocusCatalogSearch();
+
+  void _onDesktopFocusChanged() {
+    if (!mounted || !isDesktopPosLayout || !widget.isTabActive || _catalogSearchRefocusSuspend > 0) {
+      return;
+    }
+    if (_catalogSearchFocus.hasFocus) return;
+    final primary = FocusManager.instance.primaryFocus;
+    if (PosEditableFocusScope.shouldPreserveFocus(primary)) return;
+    _scheduleCatalogSearchRefocus();
+  }
+
+  Future<T?> _runWithSuspendedCatalogSearchRefocus<T>(Future<T?> Function() action) async {
+    _catalogSearchRefocusSuspend++;
+    try {
+      return await action();
+    } finally {
+      _catalogSearchRefocusSuspend--;
+      _refocusCatalogSearch();
+    }
+  }
+
+  void _onSalesSessionChanged() {
+    _syncDiscountPercentField();
+    if (mounted) setState(() {});
+    if (_barcodeSearchInFlight) return;
+    final pending = _sales.takePendingBarcodeProduct();
+    if (pending != null && mounted) {
+      _addProductToCart(pending);
+      _clearSearchField();
+    }
   }
 
   @override
   void dispose() {
+    _barcodeSearchDebounce?.cancel();
+    _catalogSearchDebounce?.cancel();
+    _catalogSearchRefocusTimer?.cancel();
+    if (isDesktopPosLayout) {
+      FocusManager.instance.removeListener(_onDesktopFocusChanged);
+    }
+    _sales.removeListener(_onSalesSessionChanged);
+    CashRegisterShiftProvider.instance.removeListener(_onCashShiftChanged);
+    _catalogSearchFocus.dispose();
     _searchController.dispose();
+    _discountPercentController.dispose();
     super.dispose();
+  }
+
+  void _syncDiscountPercentField() {
+    if (!isDesktopPosLayout) return;
+    final p = _sales.cartDiscountPercent;
+    final text = p != 0 ? '$p' : '';
+    if (_discountPercentController.text != text) {
+      _discountPercentController.text = text;
+    }
+  }
+
+  void _setCartDiscountPercent(int percent) {
+    final old = _sales.cartDiscountPercent;
+    _sales.setCartDiscountPercent(percent);
+    for (final item in _cart.items) {
+      var base = item.unitPriceBaseForCartPercent;
+      if (base == null) {
+        final line = item.unitPriceForLine;
+        base = old != 0 ? line / ((100 + old) / 100) : line;
+        item.unitPriceBaseForCartPercent = base;
+      }
+      CartDiscountPercent.applyToItem(item, percent);
+    }
+    _syncDiscountPercentField();
+    setState(() {});
+  }
+
+  void _setCartLineUnitPrice(CartItem item, double? override) {
+    CartDiscountPercent.onManualUnitPrice(
+      item,
+      override,
+      _sales.cartDiscountPercent,
+    );
+    _cart.updateSalePriceOverride(item, item.salePriceOverride);
+  }
+
+  void _clearSearchField() {
+    _searchController.clear();
+    if (mounted) setState(() => _query = '');
+    _refocusCatalogSearch();
+  }
+
+  void _onSearchFieldChanged(String v) {
+    setState(() => _query = v);
+    _barcodeSearchDebounce?.cancel();
+    final q = v.trim();
+
+    // Mobil: API qidiruv (nom, raqam, shtrix) + faqat uzun shtrixda avtomatik qo'shish.
+    if (!isDesktopPosLayout) {
+      if (q.isEmpty) {
+        if (_sales.lastSearch.isNotEmpty) {
+          _sales.setSearchQuery('');
+          unawaited(_sales.loadProducts(reset: true, searchValue: ''));
+        }
+        return;
+      }
+      _catalogSearchDebounce?.cancel();
+      _catalogSearchDebounce = Timer(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        if (_searchController.text.trim() != q) return;
+        unawaited(_mobileSearchProducts(q));
+      });
+      if (product_search.looksLikeBarcodeInput(q)) {
+        _barcodeSearchDebounce = Timer(const Duration(milliseconds: 500), () {
+          if (!mounted) return;
+          if (_searchController.text.trim() != q) return;
+          unawaited(_searchAndAdd(q));
+        });
+      }
+      return;
+    }
+
+    // Mahsulotlar (Katalog) kabi: nom — faqat mahalliy filtr; API har harfda emas.
+    if (q.isEmpty) {
+      if (_sales.lastSearch.isNotEmpty) {
+        _sales.setSearchQuery('');
+        unawaited(_sales.loadProducts(reset: true, searchValue: ''));
+      }
+      return;
+    }
+
+    if (product_search.looksLikeBarcodeInput(q)) {
+      _barcodeSearchDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        if (_searchController.text.trim() != q) return;
+        unawaited(_desktopBarcodeSearchAndAdd(q));
+      });
+    }
   }
 
   List<Product> get _filteredProducts =>
       product_search.filterProductsByQuery(_products.items, _query);
 
+  List<Product> get _desktopCatalogProducts {
+    var list = _sales.catalogProductsVisible;
+    final q = _query.trim();
+    if (q.isNotEmpty) {
+      list = product_search.filterCatalogProducts(list, q);
+    }
+    return list;
+  }
+
+  int get _cartRawTotal => _cart.items.fold<int>(0, (s, e) => s + e.total);
+
+  int get _cartCatalogTotal => CartDiscountPercent.catalogLinesTotal(_cart.items);
+
+  int get _cartGrandTotal => _cartRawTotal;
+
   @override
   Widget build(BuildContext context) {
+    if (isDesktopPosLayout) {
+      return _buildDesktopPos(context);
+    }
+
     final items = _cart.items;
     final showSearchResults = _query.trim().isNotEmpty;
-    final products = _filteredProducts;
+    final products = showSearchResults ? _mobileCatalogProducts : _filteredProducts;
+    final catalogLoading = showSearchResults &&
+        ((_useSalesCatalog && _sales.productsLoading) ||
+            (!_useSalesCatalog && _products.isLoaded == false));
+    final shift = CashRegisterShiftProvider.instance;
+    final showShiftDashboard = shift.requiresCashRegister && shift.isShiftOpen;
 
-    return Scaffold(
+    return CashRegisterShiftGate(
+      child: Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
@@ -80,13 +399,28 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: Strings.saqlanganBuyurtmalar,
+            onPressed: () => _openHoldOrders(context),
+            icon: Badge(
+              isLabelVisible: _savedOrdersCount > 0,
+              label: Text(
+                _savedOrdersCount > 9 ? '9+' : '$_savedOrdersCount',
+                style: const TextStyle(fontSize: 10),
+              ),
+              child: const Icon(Icons.list_alt_rounded),
+            ),
+          ),
+          if (showShiftDashboard)
+            IconButton(
+              tooltip: 'Kassa smenasi',
+              icon: const Icon(Icons.point_of_sale_rounded),
+              onPressed: () => openCashRegisterShiftDashboard(context),
+            ),
           if (items.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-              onPressed: () {
-                _cart.clear();
-                setState(() {});
-              },
+              onPressed: _clearCart,
             ),
         ],
       ),
@@ -103,9 +437,17 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
                       hintText: Strings.artikulShtrixIsm,
                       prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textSecondary),
                     ),
-                    onChanged: (v) => setState(() => _query = v),
+                    onChanged: _onSearchFieldChanged,
                     onSubmitted: (q) async {
-                      await _searchAndAdd(q);
+                      _barcodeSearchDebounce?.cancel();
+                      _catalogSearchDebounce?.cancel();
+                      final trimmed = q.trim();
+                      if (trimmed.isEmpty) return;
+                      if (product_search.looksLikeBarcodeInput(trimmed)) {
+                        await _searchAndAdd(trimmed);
+                        return;
+                      }
+                      await _mobileSearchProducts(trimmed);
                     },
                   ),
                 ),
@@ -135,7 +477,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
               child: RefreshIndicator(
                 onRefresh: _onRefresh,
                 child: showSearchResults
-                  ? _products.isLoaded == false
+                  ? catalogLoading
                       ? const Center(
                           child: CircularProgressIndicator(color: AppTheme.primary),
                         )
@@ -161,8 +503,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
                               itemCount: products.length,
                               itemBuilder: (context, index) {
                                 final p = products[index];
+                                final usd = _sales.usdRate > 0 ? _sales.usdRate : 12600.0;
+                                final sellType = _sales.activeSellPriceType;
                                 return ProductTile(
                                   product: p,
+                                  primaryPriceLabel: CatalogProductPriceLabel.primary(
+                                    p,
+                                    sellType: sellType,
+                                    usdRate: usd,
+                                  ),
+                                  secondaryPriceLabel: _sales.showPurchasePrice
+                                      ? CatalogProductPriceLabel.purchaseLine(p)
+                                      : null,
                                   onTap: () {
                                     _addProductToCart(p);
                                     _searchController.clear();
@@ -217,106 +569,172 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
         if (items.isNotEmpty)
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openScanner(context),
-                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 22),
-                      label: const Text(Strings.skaner),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _sales.holdCartInFlight ? null : () => _holdCart(context),
+                        icon: _sales.holdCartInFlight
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                              )
+                            : const Icon(Icons.pause_circle_outline_rounded, size: 22),
+                        label: Text(_sales.holdCartInFlight ? 'Saqlanmoqda...' : Strings.toxtatish),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => TranzaksiyaDetailScreen(
-                              items: List.from(items),
-                            ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showDesktopFilterSheet(context),
+                        icon: Icon(
+                          Icons.tune_rounded,
+                          size: 22,
+                          color: _salesFiltersActive ? AppTheme.primary : null,
+                        ),
+                        label: Text(
+                          _salesFiltersActive ? 'Filtr •' : 'Filtr',
+                          style: TextStyle(
+                            color: _salesFiltersActive ? AppTheme.primary : null,
+                            fontWeight: _salesFiltersActive ? FontWeight.w600 : null,
                           ),
-                        );
-                      },
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(Strings.keyingisi),
-                          SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_rounded, size: 18),
-                        ],
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () => _openPayment(context),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(Strings.keyingisi),
+                            SizedBox(width: 4),
+                            Icon(Icons.arrow_forward_rounded, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ],
       ),
+    ),
     );
   }
 
   Future<void> _searchAndAdd(String query) async {
     final q = query.trim();
-    if (q.isEmpty) return;
+    if (q.isEmpty || _barcodeSearchInFlight) return;
+    _barcodeSearchInFlight = true;
+    try {
+      if (_useSalesCatalog) {
+        var barcodeHits = product_search.filterProductsByBarcodeQuery(_sales.salesProducts, q);
+        if (barcodeHits.length == 1) {
+          _addProductToCart(barcodeHits.single);
+          _clearSearchField();
+          return;
+        }
 
-    // Muhim: barcode skanerdan keyin darrov qidirilganda mahsulotlar hali yuklanmagan bo‘lishi mumkin.
-    if (_products.items.isEmpty || _products.isLoaded == false) {
-      try {
-        await _products.loadFromApi();
-      } catch (_) {}
-    }
+        final fromSales = await _sales.findByBarcode(q);
+        if (fromSales != null) {
+          _addProductToCart(fromSales);
+          _clearSearchField();
+          return;
+        }
+        if (barcodeHits.length > 1) return;
+      } else {
+        if (_products.items.isEmpty || _products.isLoaded == false) {
+          try {
+            await _products.loadFromStorage();
+          } catch (_) {}
+        }
 
-    final list = product_search.filterProductsByQuery(_products.items, q);
-    if (list.isEmpty) {
-      assert(() {
-        final total = _products.items.length;
-        final withBarcode = _products.items.where((p) => (p.barcode ?? '').trim().isNotEmpty).length;
-        final withPack = _products.items.where((p) => p.quantityInPack && p.quantityPerPack > 1).length;
-        final withPackNoBarcode = _products.items
-            .where((p) => p.quantityInPack && p.quantityPerPack > 1 && (p.barcode == null || p.barcode!.trim().isEmpty))
-            .length;
-        final qNorm = Product.normalizeBarcode(q);
-        final samplePack = _products.items
-            .where((p) => p.quantityInPack && p.quantityPerPack > 1)
-            .take(3)
-            .map((p) => 'id=${p.id} bc=${p.barcode} units=${p.quantityPerPack} packPrice=${p.sellPricePerPack}')
-            .join(' | ');
-        // ignore: avoid_print
-        print('[Savatcha search] NOT FOUND q="$q" qNorm="$qNorm" items=$total withBarcode=$withBarcode withPack=$withPack withPackNoBarcode=$withPackNoBarcode samplePack=($samplePack)');
-        return true;
-      }());
+        var barcodeHits = product_search.filterProductsByBarcodeQuery(_products.items, q);
+        if (barcodeHits.length == 1) {
+          _addProductToCart(barcodeHits.single);
+          _clearSearchField();
+          return;
+        }
+
+        if (barcodeHits.isEmpty) {
+          final fromApi = await _products.findProductByBarcode(q);
+          if (fromApi != null) {
+            _addProductToCart(fromApi);
+            _clearSearchField();
+            return;
+          }
+        }
+        if (barcodeHits.length > 1) return;
+      }
+
       if (!mounted) return;
       AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi. Ro'yxatni yangilab ko'ring.");
-      return;
-    }
-
-    if (list.length == 1) {
-      _addProductToCart(list.single);
-      _searchController.clear();
-      if (mounted) setState(() => _query = '');
-    } else {
-      _searchController.text = q;
-      if (mounted) setState(() => _query = q);
+    } finally {
+      _barcodeSearchInFlight = false;
     }
   }
 
+  String _packChoiceLabel(Product product) {
+    final qty = product.quantityPerPack;
+    final sellType = _sales.activeSellPriceType;
+    if (sellType == 'purchase') {
+      final pack = product.purchasePackUnitPriceNum;
+      if (pack != null && pack > 0) {
+        return 'Pachka — ${formatThousands(pack.round())} kelish ($qty dona)';
+      }
+    } else if (sellType == 'wholesale') {
+      final pack = product.wholesalePackUnitPriceNum;
+      if (pack != null && pack > 0) {
+        return 'Pachka — ${formatThousands(pack.round())} ulgurji ($qty dona)';
+      }
+    }
+    final packPrice = product.packSellUnitPriceNum!;
+    return 'Pachka — ${formatThousands(packPrice.round())} ($qty dona)';
+  }
+
+  String _pieceChoiceLabel(Product product) {
+    final sellType = _sales.activeSellPriceType;
+    if (sellType == 'purchase') {
+      final cost = product.costPriceUzs;
+      if (cost != null && cost > 0) {
+        return 'Dona — ${formatThousands(cost)} kelish';
+      }
+    } else if (sellType == 'wholesale') {
+      return 'Dona — ${formatThousands(product.wholesalePiecePriceNum.round())} ulgurji';
+    }
+    if (product.sellingPriceCurrency.toLowerCase() == 'usd') {
+      return 'Dona — ${product.priceFormatted}';
+    }
+    return 'Dona — ${formatThousands(product.pieceSellPriceNum.round())} so\'m';
+  }
+
   void _addProductToCart(Product product) {
-    final hasPack = product.quantityPerPack > 1 &&
-        product.sellPricePerPack != null &&
-        product.sellPricePerPack! > 0;
-    if (hasPack) {
-      final packPrice = product.sellPricePerPack ?? 0;
-      final pieceLabel = product.sellingPriceCurrency.toLowerCase() == 'usd'
-          ? product.priceFormatted
-          : '${formatThousands(product.priceUzs)} so\'m';
+    if (product.canSellByPack) {
       final packQty = product.quantityPerPack;
       showCupertinoModalPopup<void>(
         context: context,
@@ -327,18 +745,20 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.pop(ctx);
-                _cart.add(CartItem(product: product, quantity: 1, sellByPack: true));
+                final line = _cart.add(CartItem(product: product, quantity: 1, sellByPack: true));
+                _applyCustomerPricingToNewItem(line);
                 setState(() {});
               },
-              child: Text('Pachka — ${formatThousands(packPrice)} ($packQty dona)'),
+              child: Text(_packChoiceLabel(product)),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.pop(ctx);
-                _cart.add(CartItem(product: product, quantity: 1, sellByPack: false));
+                final line = _cart.add(CartItem(product: product, quantity: 1, sellByPack: false));
+                _applyCustomerPricingToNewItem(line);
                 setState(() {});
               },
-              child: Text('Dona — $pieceLabel'),
+              child: Text(_pieceChoiceLabel(product)),
             ),
           ],
           cancelButton: CupertinoActionSheetAction(
@@ -347,123 +767,659 @@ class _SavatchaScreenState extends State<SavatchaScreen> {
             child: const Text(Strings.bekorQilish),
           ),
         ),
-      );
+      ).whenComplete(_refocusCatalogSearch);
     } else {
-      _cart.add(CartItem(product: product, quantity: 1, sellByPack: false));
+      final line = _cart.add(CartItem(product: product, quantity: 1, sellByPack: false));
+      _applyCustomerPricingToNewItem(line);
       setState(() {});
+      _refocusCatalogSearch();
     }
   }
 
-  void _showCartLinePriceDialog(BuildContext context, CartItem item) {
-    final p = item.product;
-    final unitHint = item.sellByPack ? '1 pachka' : '1 dona';
-    final controller = TextEditingController(text: formatThousands(item.unitPriceDisplay));
-    IosStyleModals.showSheet<void>(
+  Future<void> _showCartLinePriceDialog(BuildContext context, CartItem item) async {
+    final result = await IosStyleModals.showSheet<_CartLinePriceResult>(
       context: context,
       isScrollControlled: true,
       showGrabber: true,
-      child: Builder(
-        builder: (ctx) => SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text("Narxni o'zgartirish", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 8),
-              Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                autofocus: true,
-                inputFormatters: [ThousandsInputFormatter()],
-                decoration: InputDecoration(
-                  labelText: '$unitHint narxi',
-                  suffixText: Strings.som,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        _cart.updateSalePriceOverride(item, null);
-                        Navigator.pop(ctx);
-                        setState(() {});
-                      },
-                      child: const Text('Standart narx'),
-                    ),
-                  ),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(Strings.bekorQilish),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () {
-                        final v = parseFormattedSum(controller.text);
-                        if (v == null || v < 0) {
-                          AppNotify.info(context, "To'g'ri narx kiriting");
-                          return;
-                        }
-                        final def = item.defaultLineUnitPrice;
-                        _cart.updateSalePriceOverride(item, v == def ? null : v.toDouble());
-                        Navigator.pop(ctx);
-                        setState(() {});
-                      },
-                      child: const Text(Strings.saqlash),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: _CartLinePriceEditSheet(item: item),
     );
+    if (!mounted || result == null) return;
+    if (result.useStandard) {
+      _setCartLineUnitPrice(item, null);
+    } else {
+      final def = item.defaultLineUnitPrice;
+      final price = result.price;
+      _setCartLineUnitPrice(item, price != null && price == def ? null : price);
+    }
+    setState(() {});
   }
 
   void _openScanner(BuildContext context) {
     showCompactScanner(context, onResult: (barcode) async {
       if (barcode == null || barcode.isEmpty || !mounted) return;
-      // Katalog bilan bir xil: skaner qaytgan qiymatni trim qilib _query ga qo‘yamiz
       final q = barcode.trim();
+      _barcodeSearchDebounce?.cancel();
       _searchController.text = q;
       setState(() => _query = q);
-      // Mahsulotlar bo‘sh bo‘lsa avval yuklash (Katalogda allaqachon yuklangan bo‘lishi mumkin)
-      if (_products.items.isEmpty || !_products.isLoaded) {
-        try {
-          await _products.loadFromApi();
-        } catch (_) {}
-        if (!mounted) return;
-      }
-      // Katalogdagidek aynan _filteredProducts (bir xil ro‘yxat va qidiruv) dan foydalanamiz
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final list = product_search.filterProductsByQuery(_products.items, _query);
-        if (list.isEmpty) {
-          AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi. Ro'yxatni yangilab ko'ring.");
-          return;
-        }
-        if (list.length == 1) {
-          _addProductToCart(list.single);
-          _searchController.clear();
-          setState(() => _query = '');
-        }
-        // 2+ natija bo‘lsa qidiruv natijalari allaqachon _query tufayli ko‘rinadi
-      });
+      await _searchAndAdd(q);
     });
   }
+
+  Widget _buildDesktopPos(BuildContext context) {
+    if (_sales.initLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+      );
+    }
+    if (_sales.initError != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_sales.initError!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: () => _sales.init(), child: const Text('Qayta yuklash')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final items = _cart.items;
+    return Scaffold(
+      body: CashRegisterShiftGate(
+        child: SavatchaDesktopLayout(
+        searchController: _searchController,
+        catalogSearchFocus: _catalogSearchFocus,
+        onCatalogSearchRefocus: _refocusCatalogSearch,
+        query: _query,
+        catalogProducts: _desktopCatalogProducts,
+        cartItems: items,
+        productsLoading: _sales.productsLoading,
+        selectedCustomerName: _selectedClient?.name,
+        cashRegisterLabel: _sales.cashRegisterName,
+        cashRegisters: _sales.cashRegisters,
+        selectedCashRegisterId: _sales.cashRegisterId,
+        onCashRegisterSelected: (r) {
+          _sales.selectCashRegister(r);
+          unawaited(_refreshSavedOrdersCount());
+          setState(() {});
+        },
+        showPurchasePriceOnCards: _sales.showPurchasePrice,
+        catalogSellPriceType: _sales.activeSellPriceType,
+        sellerName: _sellerName.isNotEmpty ? _sellerName : 'Sotuvchi',
+        cartGrandTotal: _cartGrandTotal,
+        cartCatalogTotal: _cartCatalogTotal,
+        cartDiscountPercent: _sales.cartDiscountPercent,
+        usdExchangeRate: _sales.usdRate > 0 ? _sales.usdRate : 12600,
+        onSearchChanged: _onSearchFieldChanged,
+        onSearchSubmitted: _desktopSearchSubmit,
+        onFilterTap: () => _runWithSuspendedCatalogSearchRefocus(
+          () => _showDesktopFilterSheet(context),
+        ),
+        customerSearchSection: PosEditableFocusScope(
+          child: SalesCustomerSearch(
+            selected: _selectedClient,
+            onSelected: _onCustomerSelected,
+            onAddNew: () => _addCustomer(context),
+          ),
+        ),
+        onPointerDownAnywhere: _scheduleCatalogSearchRefocus,
+        onOpenSavedOrders: () => _runWithSuspendedCatalogSearchRefocus(
+          () => SalesHoldOrdersSheet.show(
+            context,
+            onResume: _resumeHoldOrder,
+            onListChanged: () => unawaited(_refreshSavedOrdersCount()),
+          ),
+        ),
+        savedOrdersCount: _savedOrdersCount,
+        onLoadMoreProducts: _sales.hasMoreProducts && !_sales.productsLoading
+            ? () => _sales.loadMoreProducts()
+            : null,
+        onClearCart: _clearCart,
+        onSalesList: widget.onNavigateToTransactions,
+        onProductTap: (p) => _addProductToCart(p),
+        expandedCartItem: _expandedCartLine,
+        onToggleCartExpand: (item) {
+          setState(() {
+            _expandedCartLine = identical(_expandedCartLine, item) ? null : item;
+          });
+        },
+        onCartQuantityChanged: (item, qty) {
+          if (qty <= 0) {
+            _cart.remove(item);
+            if (identical(_expandedCartLine, item)) _expandedCartLine = null;
+          } else {
+            _cart.updateQuantity(item, qty);
+          }
+          setState(() {});
+        },
+        onCartUnitPriceChanged: (item, override) {
+          _setCartLineUnitPrice(item, override);
+          setState(() {});
+        },
+        onRemoveCartItem: (item) {
+          _cart.remove(item);
+          if (identical(_expandedCartLine, item)) _expandedCartLine = null;
+          setState(() {});
+        },
+        onIncrement: (item) {
+          _cart.updateQuantity(item, item.quantity + 1);
+          setState(() {});
+        },
+        onDecrement: (item) {
+          if (item.quantity > 1) {
+            _cart.updateQuantity(item, item.quantity - 1);
+          } else {
+            _cart.remove(item);
+            if (identical(_expandedCartLine, item)) _expandedCartLine = null;
+          }
+          setState(() {});
+        },
+        onPayment: () => _openPayment(context),
+        onDailyReport: () => _sendDailyReport(context),
+        discountPercentController: _discountPercentController,
+        onDiscountPercentChanged: _setCartDiscountPercent,
+        onDiscount: () => _runWithSuspendedCatalogSearchRefocus(
+          () => _showDiscountDialog(context),
+        ),
+        holdCartInFlight: _sales.holdCartInFlight,
+        onHoldCart: () => _holdCart(context),
+        onOpenShiftDashboard: _openShiftDashboard,
+        onLogout: widget.onLogout == null
+            ? null
+            : () async {
+                await AuthApi.logout();
+                widget.onLogout?.call();
+              },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openShiftDashboard() async {
+    if (!mounted) return;
+    await _runWithSuspendedCatalogSearchRefocus(
+      () => openCashRegisterShiftDashboard(context),
+    );
+  }
+
+  /// Savat, foiz, mijoz va pauza holatini tozalash.
+  void _clearCart() {
+    _cart.clear();
+    _expandedCartLine = null;
+    _activeHoldOrderId = null;
+    _activeHoldInvoiceId = null;
+    _selectedClient = null;
+    _setCartDiscountPercent(0);
+  }
+
+  Future<void> _onCustomerSelected(Client? client) async {
+    if (client == null) {
+      setState(() {
+        _selectedClient = null;
+        CustomerGroupDiscount.applyCustomerPricingToCart(_cart.items, null);
+        CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
+      });
+      return;
+    }
+
+    Client? effective = client;
+    final idNum = int.tryParse(client.id);
+    if (idNum != null) {
+      try {
+        final res = await ContactsApi.getCustomer(idNum);
+        final raw = res['customer'] ?? res['data'] ?? res;
+        if (raw is Map) {
+          effective = Client.fromApiJson(Map<String, dynamic>.from(raw));
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    final groups = await ClientsProvider.instance.fetchCustomerGroups();
+    if (!mounted) return;
+    setState(() {
+      _selectedClient = effective;
+      _reapplyCustomerGroupPricingToCart(groups: groups);
+    });
+  }
+
+  /// Mijoz tanlanganida — barcha savat qatorlariga guruh foizi (har yangi mahsulotda ham).
+  void _reapplyCustomerGroupPricingToCart({List<Map<String, dynamic>>? groups}) {
+    final client = _selectedClient;
+    if (client == null) return;
+    CustomerGroupDiscount.applyCustomerPricingToCart(
+      _cart.items,
+      client,
+      groups: groups ?? ClientsProvider.instance.cachedCustomerGroups,
+    );
+    CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
+  }
+
+  void _applyCustomerPricingToNewItem(CartItem item) {
+    if (_selectedClient != null) {
+      _reapplyCustomerGroupPricingToCart();
+      return;
+    }
+    if (_sales.activeSellPriceType != null) {
+      SalesFilterCartPrice.applySessionPriceToItem(item, _sales);
+      CartDiscountPercent.applyToItem(item, _sales.cartDiscountPercent);
+      return;
+    }
+    CartDiscountPercent.initNewItem(item);
+    CartDiscountPercent.syncBaseFromCurrent(item);
+    CartDiscountPercent.applyToItem(item, _sales.cartDiscountPercent);
+  }
+
+  void _reapplySalesFilterPricingToCart() {
+    if (_selectedClient != null) {
+      _reapplyCustomerGroupPricingToCart();
+      return;
+    }
+    if (_sales.activeSellPriceType != null) {
+      SalesFilterCartPrice.applySessionPriceToCart(_cart.items, _sales);
+    } else {
+      for (final item in _cart.items) {
+        item.salePriceOverride = null;
+        item.unitPriceBaseForCartPercent = item.defaultLineUnitPrice.toDouble();
+      }
+    }
+    CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
+  }
+
+  Future<void> _refreshSavedOrdersCount({bool force = false}) async {
+    final list = await _sales.fetchHoldOrders(force: force);
+    if (mounted) setState(() => _savedOrdersCount = list.length);
+  }
+
+  Future<void> _resumeHoldOrder(HoldOrderResume resume) async {
+    _cart.clear();
+    for (final item in resume.items) {
+      _cart.add(CartItem(
+        product: item.product,
+        quantity: item.quantity,
+        sellByPack: item.sellByPack,
+        salePriceOverride: item.salePriceOverride,
+      ));
+    }
+    _activeHoldOrderId = resume.orderId;
+    _activeHoldInvoiceId = resume.invoiceId;
+    _selectedClient = resume.customer;
+    if (_activeHoldOrderId != null) {
+      try {
+        await SalesApi.continueSale(_activeHoldOrderId!);
+      } catch (_) {}
+    }
+    unawaited(ClientsProvider.instance.fetchCustomerGroups().then((groups) {
+      if (!mounted) return;
+      CustomerGroupDiscount.applyCustomerPricingToCart(
+        _cart.items,
+        resume.customer,
+        groups: groups,
+      );
+      CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
+      setState(() {});
+    }));
+    final pct = resume.discountPercent ?? 0;
+    _sales.setCartDiscountPercent(pct);
+    for (final item in _cart.items) {
+      CartDiscountPercent.syncBaseFromCurrent(item);
+      if (pct != 0 && item.hasSalePriceOverride) {
+        item.unitPriceBaseForCartPercent =
+            item.unitPriceForLine / ((100 + pct) / 100);
+      }
+      CartDiscountPercent.applyToItem(item, pct);
+    }
+    _syncDiscountPercentField();
+    if (mounted) {
+      setState(() {});
+      await _refreshSavedOrdersCount();
+      AppNotify.success(
+        context,
+        'Buyurtma qayta ochildi — qayta pauza qilsangiz shu buyurtma yangilanadi',
+      );
+      _refocusCatalogSearch();
+    }
+  }
+
+  Future<void> _desktopBarcodeSearchAndAdd(String q) async {
+    if (_barcodeSearchInFlight) return;
+    _barcodeSearchInFlight = true;
+    try {
+      final localHits = product_search.filterProductsByBarcodeQuery(_sales.salesProducts, q);
+      if (localHits.length == 1) {
+        _addProductToCart(localHits.single);
+        _clearSearchField();
+        return;
+      }
+
+      final fromApi = await _sales.findByBarcode(q);
+      if (fromApi != null) {
+        _addProductToCart(fromApi);
+        _clearSearchField();
+        return;
+      }
+
+      if (localHits.length > 1) return;
+
+      if (mounted) {
+        AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
+      }
+    } finally {
+      _barcodeSearchInFlight = false;
+    }
+  }
+
+  Future<void> _desktopSearchSubmit(String q) async {
+    _barcodeSearchDebounce?.cancel();
+    final trimmed = q.trim();
+    if (trimmed.isEmpty) {
+      if (_sales.lastSearch.isNotEmpty) {
+        _sales.setSearchQuery('');
+        await _sales.loadProducts(reset: true, searchValue: '');
+      }
+      return;
+    }
+
+    if (product_search.looksLikeBarcodeInput(trimmed)) {
+      await _desktopBarcodeSearchAndAdd(trimmed);
+      return;
+    }
+
+    if (_desktopCatalogProducts.isEmpty) {
+      _sales.setSearchQuery(trimmed);
+      await _sales.loadProducts(reset: true, searchValue: trimmed);
+    }
+  }
+
+  Future<void> _holdCart(BuildContext context) async {
+    final items = _cart.items;
+    final ok = await HoldCartAction.savePausedCart(
+      context: context,
+      cartItems: items,
+      subTotal: _cartCatalogTotal,
+      grandTotal: _cartGrandTotal,
+      customerId: _selectedClient != null ? int.tryParse(_selectedClient!.id) : null,
+      orderId: _activeHoldOrderId,
+      invoiceId: _activeHoldInvoiceId,
+      discountPercent: _sales.cartDiscountPercent,
+    );
+    if (!ok || !mounted) return;
+    _activeHoldOrderId = null;
+    _activeHoldInvoiceId = null;
+    _selectedClient = null;
+    _setCartDiscountPercent(0);
+    await _refreshSavedOrdersCount();
+    setState(() {});
+    _refocusCatalogSearch();
+  }
+
+  void _openHoldOrders(BuildContext context) {
+    SalesHoldOrdersSheet.show(
+      context,
+      onResume: _resumeHoldOrder,
+      onListChanged: () => unawaited(_refreshSavedOrdersCount()),
+    );
+  }
+
+  Future<void> _sendDailyReport(BuildContext context) async {
+    try {
+      await _sales.sendDailySummary();
+      if (mounted) AppNotify.success(context, 'Kunlik hisobot yuborildi');
+    } catch (e) {
+      if (mounted) AppNotify.error(context, 'Yuborilmadi: $e');
+    }
+  }
+
+  Future<void> _showDiscountDialog(BuildContext context) {
+    if (isDesktopPosLayout) {
+      return _showDesktopPaymentDiscountDialog(context);
+    }
+    return _showPercentDiscountDialog(context);
+  }
+
+  Future<void> _showPercentDiscountDialog(BuildContext context) {
+    final c = TextEditingController(
+      text: _sales.cartDiscountPercent != 0 ? '${_sales.cartDiscountPercent}' : '',
+    );
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Foiz (%)'),
+        content: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(signed: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^-?\d{0,3}$')),
+          ],
+          decoration: const InputDecoration(
+            labelText: 'Foiz',
+            suffixText: '%',
+            helperText: '+20 qo‘shadi, -20 ayiradi',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(Strings.bekorQilish)),
+          FilledButton(
+            onPressed: () {
+              final p = int.tryParse(c.text.trim()) ?? 0;
+              _setCartDiscountPercent(p.clamp(-100, 100));
+              Navigator.pop(ctx);
+            },
+            child: const Text(Strings.saqlash),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDesktopPaymentDiscountDialog(BuildContext context) async {
+    final cartTotal = _cartGrandTotal;
+    if (cartTotal <= 0) {
+      AppNotify.info(context, 'Savat bo\'sh');
+      return;
+    }
+
+    final payController = TextEditingController(
+      text: formatThousands(cartTotal),
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final paid = parseFormattedSum(payController.text) ?? cartTotal;
+            final clampedPaid = paid.clamp(0, cartTotal);
+            final discount = cartTotal - clampedPaid;
+
+            return AlertDialog(
+              title: const Text('To\'lov summasi'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Jami', style: TextStyle(color: AppTheme.textSecondary)),
+                        Text(
+                          '${formatThousands(cartTotal)} so\'m',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: payController,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [ThousandsInputFormatter()],
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Mijoz to\'laydi',
+                        suffixText: 'so\'m',
+                        helperText: 'Farq avtomatik chegirma bo\'lib qatorlarga taqsimlanadi',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryLight,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Chegirma'),
+                          Text(
+                            '${formatThousands(discount)} so\'m',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primary,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(Strings.bekorQilish),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final amount = parseFormattedSum(payController.text);
+                    if (amount == null) return;
+                    if (amount < 0 || amount > cartTotal) {
+                      AppNotify.error(ctx, '0 dan $cartTotal gacha summa kiriting');
+                      return;
+                    }
+                    Navigator.pop(ctx);
+                    _applyPaymentDiscount(amount);
+                  },
+                  child: const Text(Strings.saqlash),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _applyPaymentDiscount(int amountPaidUzs) {
+    _sales.setCartDiscountPercent(0);
+    _syncDiscountPercentField();
+    CartPaymentDiscount.applyCustomerPayment(_cart.items, amountPaidUzs);
+    for (final item in _cart.items) {
+      _cart.updateSalePriceOverride(item, item.salePriceOverride);
+    }
+    setState(() {});
+  }
+
+  Future<void> _showDesktopFilterSheet(BuildContext context) async {
+    final applied = await SalesFilterDialog.show(context);
+    if (!mounted) return;
+    if (applied == true) {
+      _reapplySalesFilterPricingToCart();
+      setState(() {});
+      unawaited(_sales.loadProducts(reset: true));
+    } else {
+      setState(() {});
+    }
+  }
+
+  Future<void> _addCustomer(BuildContext context) async {
+    final created = await _runWithSuspendedCatalogSearchRefocus(() async {
+      if (isDesktopPosLayout) {
+        return showYangiMijozDialog(context);
+      }
+      return Navigator.of(context).push<Client>(
+        MaterialPageRoute(builder: (_) => const YangiMijozScreen()),
+      );
+    });
+    if (created != null && mounted) await _onCustomerSelected(created);
+  }
+
+  void _openPayment(BuildContext context) {
+    final items = _cart.items;
+    if (items.isEmpty) return;
+    if (isDesktopPosLayout) {
+      unawaited(SalesSessionProvider.instance.ensurePaymentTypesLoaded());
+    }
+    final orderId = _activeHoldOrderId;
+    final invoiceId = _activeHoldInvoiceId;
+    final client = _selectedClient;
+
+    void afterPayment() {
+      if (!mounted) return;
+      _cart.clear();
+      _expandedCartLine = null;
+      _activeHoldOrderId = null;
+      _activeHoldInvoiceId = null;
+      _selectedClient = null;
+      _setCartDiscountPercent(0);
+      setState(() {});
+      unawaited(_refreshSavedOrdersCount(force: true));
+      _refocusCatalogSearch();
+    }
+
+    if (isDesktopPosLayout) {
+      _catalogSearchRefocusSuspend++;
+      DesktopPaymentScreen.show(
+        context,
+        items: List.from(items),
+        initialClient: client,
+        initialOrderId: orderId,
+        initialInvoiceId: invoiceId,
+      ).then((result) {
+        _catalogSearchRefocusSuspend--;
+        if (result is String && result.isNotEmpty) {
+          afterPayment();
+          if (mounted) {
+            final label = result.startsWith('POS') ? result : 'POS$result';
+            AppNotify.success(context, 'Tranzaksiya #$label muvaffaqiyatli!');
+          }
+        } else if (mounted) {
+          _refocusCatalogSearch();
+        }
+      });
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TranzaksiyaDetailScreen(
+          items: List.from(items),
+          initialClient: client,
+          initialOrderId: orderId,
+          initialInvoiceId: invoiceId,
+          onCustomerChanged: _onCustomerSelected,
+        ),
+      ),
+    ).then((result) {
+      if (result == 'held') {
+        afterPayment();
+      } else if (result is String && result.isNotEmpty) {
+        afterPayment();
+        if (mounted) {
+          final label = result.startsWith('POS') ? result : 'POS$result';
+          AppNotify.success(context, 'Tranzaksiya #$label muvaffaqiyatli!');
+        }
+      }
+    });
+  }
+
 }
 
 class _EmptyCart extends StatelessWidget {
@@ -744,6 +1700,120 @@ class _CartItemTileState extends State<_CartItemTile> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CartLinePriceResult {
+  const _CartLinePriceResult.standard() : useStandard = true, price = null;
+  const _CartLinePriceResult.saved(this.price) : useStandard = false;
+
+  final bool useStandard;
+  final double? price;
+}
+
+class _CartLinePriceEditSheet extends StatefulWidget {
+  const _CartLinePriceEditSheet({required this.item});
+
+  final CartItem item;
+
+  @override
+  State<_CartLinePriceEditSheet> createState() => _CartLinePriceEditSheetState();
+}
+
+class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
+  late final TextEditingController _priceCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _priceCtrl = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
+  }
+
+  @override
+  void dispose() {
+    _priceCtrl.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _fieldDecoration(String label, {String? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      suffixText: suffix,
+      filled: true,
+      fillColor: AppTheme.cardBg,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.divider),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+      ),
+      floatingLabelStyle: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600),
+    );
+  }
+
+  void _save() {
+    final v = parseFormattedSum(_priceCtrl.text);
+    if (v == null || v < 0) {
+      AppNotify.info(context, "To'g'ri narx kiriting");
+      return;
+    }
+    Navigator.pop(context, _CartLinePriceResult.saved(v.toDouble()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final unitHint = item.sellByPack ? '1 pachka narxi' : '1 dona narxi';
+    final catalog = item.defaultLineUnitPrice.round();
+
+    return IosStyleModals.sheetKeyboardForm(
+      context: context,
+      onCancel: () => Navigator.pop(context),
+      onSave: _save,
+      cancelLabel: Strings.bekorQilish,
+      saveLabel: Strings.saqlash,
+      middle: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: TextButton(
+          onPressed: () => Navigator.pop(context, const _CartLinePriceResult.standard()),
+          style: TextButton.styleFrom(
+            foregroundColor: AppTheme.primary,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+          ),
+          child: const Text(
+            'Standart narx',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          ),
+        ),
+      ),
+      body: [
+        const Text(
+          "Narxni o'zgartirish",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppTheme.textPrimary),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          item.product.name,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _priceCtrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          inputFormatters: [ThousandsInputFormatter()],
+          decoration: _fieldDecoration(unitHint, suffix: Strings.som),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Katalog narxi: ${formatThousands(catalog)} ${Strings.som}',
+          style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        ),
+      ],
     );
   }
 }

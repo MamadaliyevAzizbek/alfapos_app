@@ -1,0 +1,151 @@
+import '../core/input_formatters.dart';
+
+int? cashRegisterParseId(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  return int.tryParse(v.toString());
+}
+
+bool cashRegisterIsOpen(Map<String, dynamic> r) {
+  final s = (r['status'] ?? r['register_status'] ?? '').toString().toLowerCase();
+  if (s == 'open' || s.contains('ochiq')) return true;
+  return cashRegisterLogId(r) != null;
+}
+
+String cashRegisterDisplayTitle(Map<String, dynamic> r) {
+  return (r['title'] ?? r['name'] ?? 'Kassa').toString();
+}
+
+int? cashRegisterLogId(Map<String, dynamic> r) {
+  return cashRegisterParseId(
+    r['register_log_id'] ?? r['registerLogId'] ?? r['log_id'] ?? r['cash_register_log_id'],
+  );
+}
+
+String cashRegisterShiftStaffNames(Map<String, dynamic> r) {
+  final names = (r['shift_staff_names'] ?? '').toString().trim();
+  if (names.isNotEmpty) return names;
+  final staff = r['shift_staff'];
+  if (staff is List) {
+    final parts = <String>[];
+    for (final s in staff) {
+      if (s is Map) {
+        final n = (s['name'] ?? '').toString().trim();
+        if (n.isNotEmpty) parts.add(n);
+      }
+    }
+    if (parts.isNotEmpty) return parts.join(', ');
+  }
+  return '';
+}
+
+List<int> cashRegisterShiftUserIds(Map<String, dynamic> r) {
+  final ids = <int>{};
+  final raw = r['userID'] ?? r['user_ids'] ?? r['userIds'];
+  if (raw is List) {
+    for (final v in raw) {
+      final id = cashRegisterParseId(v);
+      if (id != null) ids.add(id);
+    }
+  }
+  final staff = r['shift_staff'];
+  if (staff is List) {
+    for (final s in staff) {
+      if (s is Map) {
+        final id = cashRegisterParseId(s['id']);
+        if (id != null) ids.add(id);
+      }
+    }
+  }
+  final opener = cashRegisterParseId(r['open_user_id']);
+  if (opener != null) ids.add(opener);
+  return ids.toList();
+}
+
+bool cashRegisterUserIsEnrolled(Map<String, dynamic> r, int? userId) {
+  if (!cashRegisterIsOpen(r)) return false;
+  if (userId == null) return cashRegisterLogId(r) != null;
+  return cashRegisterShiftUserIds(r).contains(userId);
+}
+
+bool cashRegisterUserIsOpener(Map<String, dynamic> r, int? userId) {
+  if (userId == null) return false;
+  final opener = cashRegisterParseId(r['open_user_id']);
+  if (opener == userId) return true;
+  final staff = r['shift_staff'];
+  if (staff is List) {
+    for (final s in staff) {
+      if (s is Map &&
+          cashRegisterParseId(s['id']) == userId &&
+          (s['is_opener'] == true || s['is_opener'] == 1)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+Map<String, dynamic> apiResponseMap(dynamic v) {
+  if (v is Map<String, dynamic>) return v;
+  if (v is Map) return Map<String, dynamic>.from(v);
+  return {};
+}
+
+String formatShiftDateTime(dynamic v) {
+  if (v == null) return '—';
+  final s = v.toString();
+  if (s.isEmpty) return '—';
+  try {
+    final dt = DateTime.parse(s);
+    final d = '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+    final t = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return '$d, $t';
+  } catch (_) {
+    return s.length > 16 ? s.substring(0, 16) : s;
+  }
+}
+
+String formatShiftMoney(dynamic v) {
+  return formatThousands(parseAmountFromApi(v));
+}
+
+String shiftOpeningTimeBody() {
+  final n = DateTime.now();
+  return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')} '
+      '${n.hour.toString().padLeft(2, '0')}:${n.minute.toString().padLeft(2, '0')}:${n.second.toString().padLeft(2, '0')}';
+}
+
+String shiftClosingTimeBody() {
+  return DateTime.now().toUtc().toIso8601String();
+}
+
+List<Map<String, dynamic>> parseApiList(dynamic raw) {
+  if (raw is List) {
+    return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+  return [];
+}
+
+List<Map<String, dynamic>> parseDropdownList(dynamic raw, {List<String> keys = const ['data', 'datarows']}) {
+  if (raw is List) return parseApiList(raw);
+  if (raw is Map) {
+    for (final k in keys) {
+      final v = raw[k];
+      if (v is List) return parseApiList(v);
+    }
+  }
+  return [];
+}
+
+String dropdownLabel(Map<String, dynamic> item) {
+  return (item['name'] ??
+          item['payment_method'] ??
+          item['title'] ??
+          item['text'] ??
+          '#${item['id']}')
+      .toString();
+}
+
+int? dropdownId(Map<String, dynamic> item) {
+  return cashRegisterParseId(item['id'] ?? item['value']);
+}

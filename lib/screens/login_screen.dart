@@ -1,10 +1,17 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../core/auth_storage.dart';
 import '../core/seller_preferences.dart';
 import '../core/api_client.dart';
+import '../core/api_http.dart';
+import '../core/desktop_runtime.dart';
 import '../services/api_service.dart';
 import '../widgets/liquid_glass.dart';
 
@@ -12,6 +19,23 @@ const String _keyCompanyId = 'alfapos_login_companyId';
 const String _keyLogin = 'alfapos_login_login';
 const String _keyPassword = 'alfapos_login_password';
 const String _keyLoggedIn = 'alfapos_logged_in';
+
+/// API: `token`, `data.token`, `success.token`
+String? _extractToken(Map<String, dynamic> res) {
+  final direct = res['token'];
+  if (direct is String && direct.isNotEmpty) return direct;
+  final data = res['data'];
+  if (data is Map) {
+    final t = data['token'];
+    if (t is String && t.isNotEmpty) return t;
+  }
+  final success = res['success'];
+  if (success is Map) {
+    final t = success['token'];
+    if (t is String && t.isNotEmpty) return t;
+  }
+  return null;
+}
 
 class LoginScreen extends StatefulWidget {
   /// Login muvaffaqiyatli bo'lganda chaqiriladi — dastur asosiy oynaga o'tadi (avtomatik kirish davom etadi).
@@ -87,12 +111,20 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      final res = await AuthApi.login(login, password, companyId);
-      String? token = res['token'] as String?;
-      if (token == null && res['data'] is Map) {
-        final data = res['data'] as Map<String, dynamic>;
-        token = data['token'] as String?;
+      if (Platform.isWindows) {
+        final reachErr = await ApiHttp.reachabilityDetail();
+        if (reachErr != null && mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                'Serverga ulanib bo\'lmadi.\n\n${windowsNetworkHelpText(detail: reachErr)}';
+          });
+          return;
+        }
       }
+
+      final res = await AuthApi.login(login, password, companyId);
+      String? token = _extractToken(res);
       if (token == null || token.isEmpty) {
         if (mounted) setState(() {
           _isLoading = false;
@@ -111,10 +143,60 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = false;
         _errorMessage = e.message;
       });
-    } catch (_) {
+    } on SocketException catch (e) {
+      ApiHttp.resetClient();
       if (mounted) setState(() {
         _isLoading = false;
-        _errorMessage = 'Tarmoq xatosi. Internetni tekshiring.';
+        _errorMessage = Platform.isWindows
+            ? windowsNetworkHelpText(detail: e.message)
+            : 'Serverga ulanib bo\'lmadi. Internet yoki firewall sozlamalarini tekshiring.\n(${e.message})';
+      });
+    } on HandshakeException catch (e) {
+      ApiHttp.resetClient();
+      if (mounted) setState(() {
+        _isLoading = false;
+        _errorMessage = Platform.isWindows
+            ? '${windowsNetworkHelpText(detail: e.message)}\n\nSSL / sertifikat xatosi.'
+            : 'Xavfsiz ulanish (SSL) xatosi. Internetni tekshiring.';
+      });
+    } on TlsException catch (e) {
+      ApiHttp.resetClient();
+      if (mounted) setState(() {
+        _isLoading = false;
+        _errorMessage = Platform.isWindows
+            ? windowsNetworkHelpText(detail: e.message)
+            : 'Xavfsiz ulanish (SSL) xatosi. Internetni tekshiring.';
+      });
+    } on http.ClientException catch (e) {
+      ApiHttp.resetClient();
+      if (mounted) setState(() {
+        _isLoading = false;
+        _errorMessage = Platform.isWindows
+            ? windowsNetworkHelpText(detail: e.message)
+            : 'Tarmoq xatosi: ${e.message}';
+      });
+    } on TimeoutException {
+      if (mounted) setState(() {
+        _isLoading = false;
+        _errorMessage = 'Server javob bermadi (vaqt tugadi). Keyinroq qayta urinib ko\'ring.';
+      });
+    } on FormatException catch (e) {
+      if (mounted) setState(() {
+        _isLoading = false;
+        _errorMessage = 'Server noto‘g‘ri javob qaytardi. API manzilini yoki proksini tekshiring.\n(${e.message})';
+      });
+    } catch (e, st) {
+      ApiHttp.resetClient();
+      if (kDebugMode) {
+        debugPrint('[Login] $e\n$st');
+      }
+      if (mounted) setState(() {
+        _isLoading = false;
+        _errorMessage = Platform.isWindows
+            ? windowsNetworkHelpText(detail: e.toString())
+            : (kDebugMode
+                ? 'Tarmoq xatosi: $e'
+                : 'Tarmoq xatosi. Internetni tekshiring.');
       });
     }
   }

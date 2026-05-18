@@ -1,6 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'api_config.dart';
+import 'api_http.dart';
 import 'auth_storage.dart';
 
 class ApiException implements Exception {
@@ -14,9 +19,13 @@ class ApiException implements Exception {
 class ApiClient {
   static String get _base => ApiConfig.apiBaseUrl;
 
-  static Future<Map<String, String>> _headers({bool jsonBody = true, bool withAuth = true}) async {
+  static Future<Map<String, String>> _headers({
+    bool jsonBody = true,
+    bool withAuth = true,
+    bool includeCompanyHeader = true,
+  }) async {
     final token = withAuth ? await getToken() : null;
-    final companyId = await getCompanyId();
+    final companyId = includeCompanyHeader ? await getCompanyId() : null;
     final headers = <String, String>{
       'Accept': 'application/json',
       // multipart so'rovlarida Content-Type ni http o‘rnatadi (boundary bilan)
@@ -30,16 +39,64 @@ class ApiClient {
   /// Login — token siz so'rov
   static Future<Map<String, dynamic>> login(String email, String password, String companyId) async {
     final uri = Uri.parse('$_base/login');
-    final response = await http.post(
-      uri,
-      headers: await _headers(withAuth: false),
-      body: jsonEncode({
-        'email': email,
-        'password': password,
-        'company_id': companyId,
-      }),
-    );
-    return _handleResponse(response);
+    final cid = int.tryParse(companyId.trim());
+    final payload = {
+      'email': email.trim(),
+      'password': password,
+      'company_id': cid ?? companyId.trim(),
+    };
+    ApiHttp.debugLog('POST $uri body=${payload.keys} company_id=${payload['company_id']}');
+    try {
+      http.Response response;
+      try {
+        response = await ApiHttp.post(
+          uri,
+          headers: await _headers(withAuth: false, includeCompanyHeader: false),
+          body: jsonEncode(payload),
+        );
+      } on SocketException {
+        if (Platform.isWindows) {
+          ApiHttp.resetClient();
+          response = await ApiHttp.post(
+            uri,
+            headers: await _headers(withAuth: false, includeCompanyHeader: false),
+            body: jsonEncode(payload),
+          );
+        } else {
+          rethrow;
+        }
+      } on HandshakeException {
+        if (Platform.isWindows) {
+          ApiHttp.resetClient();
+          response = await ApiHttp.post(
+            uri,
+            headers: await _headers(withAuth: false, includeCompanyHeader: false),
+            body: jsonEncode(payload),
+          );
+        } else {
+          rethrow;
+        }
+      }
+      ApiHttp.debugLog('login status=${response.statusCode} len=${response.body.length}');
+      return _handleResponse(response);
+    } on SocketException catch (e) {
+      ApiHttp.debugLog('SocketException: $e');
+      rethrow;
+    } on HandshakeException catch (e) {
+      ApiHttp.debugLog('HandshakeException: $e');
+      rethrow;
+    } on http.ClientException catch (e) {
+      ApiHttp.debugLog('ClientException: $e');
+      rethrow;
+    } on TimeoutException catch (e) {
+      ApiHttp.debugLog('TimeoutException: $e');
+      rethrow;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[ApiClient.login] $e\n$st');
+      }
+      rethrow;
+    }
   }
 
   static Future<Map<String, dynamic>> get(String path, {Map<String, String>? queryParams}) async {
@@ -48,13 +105,13 @@ class ApiClient {
     if (queryParams != null && queryParams.isNotEmpty) {
       uri = uri.replace(queryParameters: queryParams);
     }
-    final response = await http.get(uri, headers: h);
+    final response = await ApiHttp.get(uri, headers: h);
     return _handleResponse(response);
   }
 
   static Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? body}) async {
     final uri = Uri.parse('$_base$path');
-    final response = await http.post(
+    final response = await ApiHttp.post(
       uri,
       headers: await _headers(),
       body: body != null ? jsonEncode(body) : null,
@@ -76,14 +133,14 @@ class ApiClient {
       req.fields[k] = v;
     });
     if (file != null) req.files.add(file);
-    final streamed = await req.send();
+    final streamed = await ApiHttp.send(req);
     final response = await http.Response.fromStream(streamed);
     return _handleResponse(response);
   }
 
   static Future<Map<String, dynamic>> delete(String path) async {
     final uri = Uri.parse('$_base$path');
-    final response = await http.delete(uri, headers: await _headers());
+    final response = await ApiHttp.delete(uri, headers: await _headers());
     return _handleResponse(response);
   }
 
@@ -115,6 +172,10 @@ class ApiClient {
     final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (map['success'] == false) {
+        final msg = map['message'] as String? ?? 'So\'rov bajarilmadi';
+        throw ApiException(msg, response.statusCode);
+      }
       return map;
     }
 

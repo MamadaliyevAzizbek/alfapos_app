@@ -8,19 +8,24 @@ class CartItem {
   /// Shu savatcha / sotuv uchun 1 dona yoki 1 pachka narxi; null = katalogdagi narx
   double? salePriceOverride;
 
+  /// «Foiz qo'shish» qo'llanishidan oldingi birlik narxi (mijoz chegirmasi keyin).
+  double? unitPriceBaseForCartPercent;
+
   CartItem({
     required this.product,
     this.quantity = 1,
     this.sellByPack = false,
     this.salePriceOverride,
+    this.unitPriceBaseForCartPercent,
   });
 
   /// Katalog bo'yicha 1 dona yoki 1 pachka narxi (override siz)
   num get defaultLineUnitPrice {
-    if (sellByPack && product.quantityInPack && product.sellPricePerPack != null) {
-      return product.sellPricePerPack!;
+    if (sellByPack) {
+      final pack = product.packSellUnitPriceNum;
+      if (pack != null) return pack;
     }
-    return product.sellUnitPriceNum;
+    return product.pieceSellPriceNum;
   }
 
   /// Qator uchun ishlatiladigan birlik narxi
@@ -32,12 +37,25 @@ class CartItem {
 
   int get total => (unitPriceForLine * quantity).round();
 
+  /// sales/store: bazadagi narx o'zgarmasligi uchun katalog narxi + qator chegirmasi.
+  ({int catalogUnitPrice, int lineDiscount, int lineTotal}) get salesStoreLinePricing {
+    final catalogUnitPrice = defaultLineUnitPrice.round();
+    final lineTotal = total;
+    final catalogLineTotal = (defaultLineUnitPrice * quantity).round();
+    final diff = catalogLineTotal - lineTotal;
+    return (
+      catalogUnitPrice: catalogUnitPrice,
+      lineDiscount: diff > 0 ? diff : 0,
+      lineTotal: lineTotal,
+    );
+  }
+
   /// Qator summasi (USD o'nlik uchun)
   double get lineSubtotal => unitPriceForLine * quantity.toDouble();
 
   /// Ombor dan olib tashlanadigan dona soni (yaxlitlangan)
   int get quantityToDeduct {
-    if (sellByPack && product.quantityInPack && product.quantityPerPack > 0) {
+    if (sellByPack && product.canSellByPack) {
       return (quantity * product.quantityPerPack).round();
     }
     return quantity.round();

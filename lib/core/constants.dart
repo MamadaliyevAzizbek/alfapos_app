@@ -91,6 +91,7 @@ class Strings {
   static const xarajatNomi = "Xarajat nomi";
   static const xarajatNarxi = "Xarajat narxi (so'm)";
   static const qarzTolash = "Qarz to'lash";
+  static const umumiyTolash = "Umumiy to'lash";
   static const yashashJoyi = "Yashash joyi";
   static const yangiMijoz = "Yangi mijoz";
   static const mijozMalumotlari = "Mijoz ma'lumotlari";
@@ -114,6 +115,7 @@ class Strings {
   static const narxlari = 'Narxlari';
   static const kelishNarxi = 'Kelish narxi (UZS)';
   static const sotuvNarxi = 'Sotuv narxi (UZS)';
+  static const ulgurjiNarxi = 'Ulgurji narxi';
   static const ustama = 'Ustama (%)';
   static const tovarlarSoni = 'Tovarlar soni';
   static const xususiyatlar = 'Xususiyatlar';
@@ -147,6 +149,8 @@ class Strings {
   static const qoShish = "Qo'shish";
   static const chergirma = 'Chergirma';
   static const kechiktirish = 'Kechiktirish';
+  static const toxtatish = "To'xtatish";
+  static const saqlanganBuyurtmalar = "Saqlangan buyurtmalar";
   static const tolovgaOtish = "To'lovga o'tish";
 
   // Skaner
