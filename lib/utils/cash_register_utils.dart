@@ -8,7 +8,8 @@ int? cashRegisterParseId(dynamic v) {
 
 bool cashRegisterIsOpen(Map<String, dynamic> r) {
   final s = (r['status'] ?? r['register_status'] ?? '').toString().toLowerCase();
-  if (s == 'open' || s.contains('ochiq')) return true;
+  if (s == 'open' || s == '1' || s == 'true' || s.contains('ochiq')) return true;
+  if (s == 'closed' || s == '0' || s.contains('yopiq')) return false;
   return cashRegisterLogId(r) != null;
 }
 
@@ -41,31 +42,55 @@ String cashRegisterShiftStaffNames(Map<String, dynamic> r) {
 
 List<int> cashRegisterShiftUserIds(Map<String, dynamic> r) {
   final ids = <int>{};
-  final raw = r['userID'] ?? r['user_ids'] ?? r['userIds'];
-  if (raw is List) {
-    for (final v in raw) {
-      final id = cashRegisterParseId(v);
+
+  void addRaw(dynamic raw) {
+    if (raw is List) {
+      for (final v in raw) {
+        final id = cashRegisterParseId(v);
+        if (id != null) ids.add(id);
+      }
+    } else {
+      final id = cashRegisterParseId(raw);
       if (id != null) ids.add(id);
     }
   }
+
+  for (final key in [
+    'userID',
+    'user_ids',
+    'userIds',
+    'user_id',
+    'open_user_id',
+    'opened_by',
+    'openedBy',
+  ]) {
+    if (r.containsKey(key)) addRaw(r[key]);
+  }
+
   final staff = r['shift_staff'];
   if (staff is List) {
     for (final s in staff) {
       if (s is Map) {
-        final id = cashRegisterParseId(s['id']);
+        final id = cashRegisterParseId(s['id'] ?? s['user_id'] ?? s['userId']);
         if (id != null) ids.add(id);
       }
     }
   }
-  final opener = cashRegisterParseId(r['open_user_id']);
-  if (opener != null) ids.add(opener);
+
+  final log = r['log'];
+  if (log is Map) {
+    final opened = cashRegisterParseId(log['opened_by'] ?? log['user_id']);
+    if (opened != null) ids.add(opened);
+  }
+
   return ids.toList();
 }
 
 bool cashRegisterUserIsEnrolled(Map<String, dynamic> r, int? userId) {
   if (!cashRegisterIsOpen(r)) return false;
   if (userId == null) return cashRegisterLogId(r) != null;
-  return cashRegisterShiftUserIds(r).contains(userId);
+  if (cashRegisterShiftUserIds(r).contains(userId)) return true;
+  return cashRegisterUserIsOpener(r, userId);
 }
 
 bool cashRegisterUserIsOpener(Map<String, dynamic> r, int? userId) {

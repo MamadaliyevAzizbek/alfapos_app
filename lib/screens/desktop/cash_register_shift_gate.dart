@@ -56,7 +56,7 @@ class _CashRegisterShiftGateState extends State<CashRegisterShiftGate> {
   }
 
   Future<void> _syncRegisters() async {
-    final ok = await _shift.syncWithServer();
+    final ok = await _shift.syncWithServer(force: true);
     SalesSessionProvider.instance.syncFromShift();
     if (!mounted) return;
     if (ok && _shift.isShiftOpen) {

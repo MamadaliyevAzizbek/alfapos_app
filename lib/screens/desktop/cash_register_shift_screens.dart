@@ -182,7 +182,8 @@ class _CashRegisterPickScreenState extends State<CashRegisterPickScreen> {
     super.initState();
     _shift.addListener(_onShift);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (_shift.registers.isEmpty) await _shift.loadRegisters();
+      await _shift.ensureCurrentUserId(refreshFromApi: true);
+      await _shift.syncWithServer(force: true);
     });
   }
 
@@ -245,7 +246,7 @@ class _CashRegisterPickScreenState extends State<CashRegisterPickScreen> {
   }
 
   Future<void> _syncRegisters() async {
-    final ok = await _shift.syncWithServer();
+    final ok = await _shift.syncWithServer(force: true);
     SalesSessionProvider.instance.syncFromShift();
     if (!mounted) return;
     if (ok && _shift.isShiftOpen) {

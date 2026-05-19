@@ -46,8 +46,15 @@ class CashRegisterShiftProvider extends ChangeNotifier {
   bool get canLeaveCurrentShift =>
       isShiftOpen && activeRegister != null && !isCurrentUserOpener;
 
-  Future<void> ensureCurrentUserId() async {
-    currentUserId ??= await getCurrentUserId();
+  Future<void> ensureCurrentUserId({bool refreshFromApi = false}) async {
+    if (!refreshFromApi) {
+      currentUserId ??= await getCurrentUserId();
+      if (currentUserId != null) return;
+    }
+    try {
+      await syncSellerNameFromApi(force: true);
+    } catch (_) {}
+    currentUserId = await getCurrentUserId();
   }
 
   /// Serverdan kassalar ro‘yxatini qayta yuklaydi (telefon/desktop sinxron).
@@ -57,6 +64,7 @@ class CashRegisterShiftProvider extends ChangeNotifier {
       return error == null;
     }
     if (!force) ApiSyncThrottle.markRan('cash_register_sync');
+    await ensureCurrentUserId(refreshFromApi: force);
     await loadRegisters();
     if (reloadShiftDetail && isShiftOpen) {
       await loadShiftDetail();
@@ -69,7 +77,7 @@ class CashRegisterShiftProvider extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      await ensureCurrentUserId();
+      await ensureCurrentUserId(refreshFromApi: false);
       await _fetchRegisters();
     } on ApiException catch (e) {
       error = e.message;
@@ -151,6 +159,19 @@ class CashRegisterShiftProvider extends ChangeNotifier {
     }
   }
 
+  /// Enroll/ochishdan keyin server ro‘yxati kechikishi mumkin — bir necha marta yangilash.
+  Future<bool> _refreshUntilEnrolled(int registerId, {int attempts = 4}) async {
+    for (var i = 0; i < attempts; i++) {
+      await ensureCurrentUserId(refreshFromApi: i == 0);
+      await _reloadRegisterById(registerId);
+      if (isShiftOpen) return true;
+      if (i + 1 < attempts) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+    }
+    return isShiftOpen;
+  }
+
   void selectRegister(Map<String, dynamic> r) {
     _applyRegister(r);
     notifyListeners();
@@ -172,9 +193,9 @@ class CashRegisterShiftProvider extends ChangeNotifier {
         'openingTime': shiftOpeningTimeBody(),
         'access_password': accessPassword,
       });
-      await _reloadRegisterById(registerId);
-      if (!isShiftOpen) {
-        error = 'Kassa ochildi, lekin smena ma’lumoti kelmedi. Ro‘yxatni yangilang.';
+      final enrolled = await _refreshUntilEnrolled(registerId);
+      if (!enrolled) {
+        error = 'Kassa ochildi, lekin smena ma’lumoti kelmedi. «Sinxronlash» ni bosing.';
         return false;
       }
       unawaited(loadShiftDetail());
@@ -196,11 +217,23 @@ class CashRegisterShiftProvider extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      await ensureCurrentUserId();
+      await ensureCurrentUserId(refreshFromApi: true);
       await SalesApi.openCloseCashRegister({'id': registerId, 'status': 'enroll'});
-      await _reloadRegisterById(registerId);
-      if (!isShiftOpen) {
-        error = 'Birlashish amalga oshmadi. Kassa ochiq emas yoki ruxsat yo‘q.';
+      final enrolled = await _refreshUntilEnrolled(registerId);
+      if (!enrolled) {
+        Map<String, dynamic>? match;
+        for (final r in registers) {
+          if (cashRegisterParseId(r['id']) == registerId) {
+            match = r;
+            break;
+          }
+        }
+        if (match != null && cashRegisterIsOpen(match)) {
+          error =
+              'Kassa ochiq, lekin hisobingiz smenaga bog‘lanmadi. Chiqib qayta kiring yoki administratorga murojaat qiling.';
+        } else {
+          error = 'Birlashish amalga oshmadi. Kassa ochiq emas yoki ruxsat yo‘q.';
+        }
         return false;
       }
       unawaited(loadShiftDetail());
