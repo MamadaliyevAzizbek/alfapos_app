@@ -1,4 +1,4 @@
-import 'dart:io' show HttpOverrides;
+import 'dart:io' show HttpOverrides, Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -11,8 +11,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb && isDesktopNative) {
     HttpOverrides.global = AlfaposHttpOverrides();
-    // Windows: SSL/proksi zanjirini login oldidan tayyorlash
-    await ApiHttp.warmUp();
+    // SSL zanjiri — faqat Windows (macOS da keraksiz HEAD so‘rovini olib tashlash)
+    if (Platform.isWindows) {
+      await ApiHttp.warmUp();
+    }
   }
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

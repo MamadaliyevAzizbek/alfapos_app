@@ -168,20 +168,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _sellerName = await getSellerName();
       if (!mounted) return;
       if (isDesktopPosLayout) {
-        await _sales.init();
-        await _refreshSavedOrdersCount();
-        unawaited(_sales.ensureAllProductsLoaded().then((_) {
-          if (mounted) setState(() {});
-        }));
+        await _products.loadFromStorage(refreshInBackground: false);
+        await _sales.init(localFirst: true);
+        unawaited(_refreshSavedOrdersCount());
       } else {
         final shift = CashRegisterShiftProvider.instance;
         await shift.loadRegisters();
         _sales.syncFromShift();
         await _refreshSavedOrdersCount();
+        await _products.loadFromStorage(refreshInBackground: false);
         try {
-          await _sales.init();
+          await _sales.init(localFirst: true);
         } catch (_) {}
-        unawaited(_products.loadFromStorage());
         if (shift.isShiftOpen) {
           unawaited(shift.loadShiftDetail());
         }
@@ -805,7 +803,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         body: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
       );
     }
-    if (_sales.initError != null) {
+    if (_sales.initError != null && _sales.salesProducts.isEmpty) {
       return Scaffold(
         body: Center(
           child: Column(
@@ -813,7 +811,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             children: [
               Text(_sales.initError!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: () => _sales.init(), child: const Text('Qayta yuklash')),
+              FilledButton(
+                onPressed: () => _sales.init(localFirst: true),
+                child: const Text('Qayta yuklash'),
+              ),
             ],
           ),
         ),

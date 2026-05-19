@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/api_sync_throttle.dart';
 import '../services/api_service.dart';
 import '../core/api_client.dart';
 
@@ -17,6 +21,8 @@ class CategoriesProvider extends ChangeNotifier {
   bool _loaded = false;
   String? _loadError;
   final Set<String> _addingKeys = {};
+  static const _cacheKey = 'alfapos_categories_v1';
+  static const _staleAfter = Duration(hours: 12);
 
   List<String> get items => List.unmodifiable(_items);
 
@@ -52,8 +58,62 @@ class CategoriesProvider extends ChangeNotifier {
     return null;
   }
 
-  /// Lokal saqlash yo'q — faqat API dan yuklash (eski chaqiriqlar uchun nom).
-  Future<void> loadFromStorage() async => loadFromApi();
+  Future<void> _persistCache() async {
+    if (_rawList.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cacheKey, jsonEncode(_rawList));
+    await prefs.setInt('${_cacheKey}_at', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<void> _loadCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cacheKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      _rawList = list
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      _items = _rawList
+          .map((e) {
+            final name = e['name'] as String? ??
+                e['title'] as String? ??
+                e['category_name'] as String? ??
+                e['text'] as String? ??
+                '';
+            return name.toString().trim();
+          })
+          .where((s) => s.isNotEmpty)
+          .toList();
+      _loaded = true;
+      _controller.add(items);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Diskdan tez, API ixtiyoriy.
+  Future<void> loadFromStorage({bool refreshInBackground = true}) async {
+    await _loadCache();
+    if (refreshInBackground) {
+      unawaited(loadFromApiIfStale());
+    }
+  }
+
+  /// Kategoriyalar eskirgan bo‘lsa yoki kesh bo‘sh bo‘lsa API.
+  Future<void> loadFromApiIfStale() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ms = prefs.getInt('${_cacheKey}_at');
+    if (_loaded && _items.isNotEmpty && ms != null) {
+      final last = DateTime.fromMillisecondsSinceEpoch(ms);
+      if (DateTime.now().difference(last) < _staleAfter) return;
+    }
+    await ApiSyncThrottle.runIfDue(
+      'categories_api',
+      const Duration(minutes: 10),
+      loadFromApi,
+    );
+  }
 
   /// API javobidan ro'yxatni chiqarish (data, categories, datarows — to'g'ri yoki ichida)
   static List<dynamic> _extractList(Map<String, dynamic> res) {
@@ -93,6 +153,7 @@ class CategoriesProvider extends ChangeNotifier {
       _loaded = true;
       _controller.add(items);
       notifyListeners();
+      unawaited(_persistCache());
     } on ApiException catch (e) {
       _loadError = e.message;
       _loaded = true;

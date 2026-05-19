@@ -134,7 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       await saveAuth(token: token, companyId: companyId, email: login);
       await _saveLoginData(companyId, login, password);
-      await syncSellerNameFromApi();
+      await syncSellerNameFromApi(force: true);
       if (!mounted) return;
       setState(() => _isLoading = false);
       widget.onLoginSuccess?.call();

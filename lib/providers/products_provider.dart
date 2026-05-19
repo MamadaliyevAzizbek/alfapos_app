@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../core/api_client.dart';
+import '../core/api_sync_throttle.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
 import '../services/product_catalog_storage.dart';
@@ -41,8 +42,8 @@ class ProductsProvider extends ChangeNotifier {
   String? get loadError => _loadError;
   Map<String, dynamic>? get lastRawProducts => _lastRawProducts;
 
-  /// Avval diskdan (tez), keyin API dan yangilash (fon).
-  Future<void> loadFromStorage() async {
+  /// Avval diskdan (tez), keyin ixtiyoriy API dan yangilash (fon).
+  Future<void> loadFromStorage({bool refreshInBackground = true}) async {
     final cached = await ProductCatalogStorage.loadCatalog();
     if (cached.isNotEmpty) {
       _items = cached;
@@ -50,14 +51,22 @@ class ProductsProvider extends ChangeNotifier {
       _controller.add(items);
       notifyListeners();
     }
-    unawaited(_refreshCatalogFromApi());
+    if (refreshInBackground) {
+      unawaited(_refreshCatalogFromApi());
+    }
     unawaited(_drainSyncQueue());
   }
 
   Future<void> _refreshCatalogFromApi() async {
-    try {
-      await loadFromApi();
-    } catch (_) {}
+    await ApiSyncThrottle.runIfDue(
+      'products_full_catalog',
+      const Duration(minutes: 15),
+      () async {
+        try {
+          await loadFromApi();
+        } catch (_) {}
+      },
+    );
   }
 
   Future<void> _persistCatalog() => ProductCatalogStorage.saveCatalog(_items);

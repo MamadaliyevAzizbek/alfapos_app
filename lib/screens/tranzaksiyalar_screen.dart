@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/api_sync_throttle.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
@@ -39,7 +40,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   void didUpdateWidget(covariant TranzaksiyalarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentIndex != widget.tabIndex && widget.currentIndex == widget.tabIndex) {
-      _load();
+      _load(force: false);
     }
   }
 
@@ -61,7 +62,12 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     return _apiSales.where((m) => _chekMatchesSearch(m, _searchQuery)).toList();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
+    if (!force &&
+        !ApiSyncThrottle.shouldRun('transactions_sales_list', const Duration(minutes: 2))) {
+      return;
+    }
+    if (!force) ApiSyncThrottle.markRan('transactions_sales_list');
     await _loadApiSales();
     if (!mounted) return;
     setState(() {});

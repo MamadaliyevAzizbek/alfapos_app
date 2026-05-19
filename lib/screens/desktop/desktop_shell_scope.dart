@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api_pacing.dart';
+import '../../core/api_sync_throttle.dart';
 import '../../core/seller_preferences.dart';
 import '../../providers/cash_register_shift_provider.dart';
 import '../../providers/clients_provider.dart';
@@ -35,29 +37,32 @@ class DesktopShellSync {
   DesktopShellSync._();
 
   static Future<void> run(int tabIndex) async {
-    final tasks = <Future<void>>[
-      CashRegisterShiftProvider.instance.syncWithServer(),
-      syncSellerNameFromApi(),
-    ];
+    if (!ApiSyncThrottle.shouldRun('desktop_shell_sync_$tabIndex', const Duration(seconds: 45))) {
+      return;
+    }
+    ApiSyncThrottle.markRan('desktop_shell_sync_$tabIndex');
+
+    await CashRegisterShiftProvider.instance.syncWithServer();
+    await syncSellerNameFromApi();
+    await ApiPacing.staggerPause();
 
     switch (tabIndex) {
       case 0:
-        tasks.add(DashboardProvider.instance.loadFromApi());
+        await DashboardProvider.instance.loadFromApi();
         break;
       case 1:
-        tasks.add(ClientsProvider.instance.loadFromApi(force: true));
+        await ClientsProvider.instance.loadFromApi(force: false);
         break;
       case 2:
-        tasks.add(ProductsProvider.instance.loadFromApi());
-        tasks.add(CategoriesProvider.instance.loadFromApi());
+        await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
+        await ApiPacing.staggerPause();
+        await CategoriesProvider.instance.loadFromApiIfStale();
         break;
       case 3:
-        tasks.add(SalesSessionProvider.instance.ensurePaymentTypesLoaded());
-        tasks.add(ProductsProvider.instance.loadFromApi());
-        tasks.add(SalesSessionProvider.instance.loadProducts(reset: true));
+        await SalesSessionProvider.instance.syncFromServerInBackground();
         break;
       case 4:
-        tasks.add(ReceiveSessionProvider.instance.loadInit());
+        await ReceiveSessionProvider.instance.loadInit();
         break;
       case 5:
       case 6:
@@ -65,7 +70,6 @@ class DesktopShellSync {
         break;
     }
 
-    await Future.wait(tasks);
     SalesSessionProvider.instance.syncFromShift();
   }
 }

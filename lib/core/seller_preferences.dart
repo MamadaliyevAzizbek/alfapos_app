@@ -57,12 +57,26 @@ String sellerDisplayNameFromUserResponse(Map<String, dynamic> res) {
   return 'Sotuvchi';
 }
 
-/// Login yoki ilova ochilganda chaqiring — chek va "Sotuvchi" qatori API dagi nom bilan to'ldiriladi.
-Future<void> syncSellerNameFromApi() async {
+const String _keyUserSyncedAt = 'alfapos_user_synced_at_ms';
+
+/// Login yoki ilova ochilganda — keshda ism bo‘lsa har 6 soatda bir marta / [force] da.
+Future<void> syncSellerNameFromApi({bool force = false}) async {
+  if (!force) {
+    final prefs = await SharedPreferences.getInstance();
+    final ms = prefs.getInt(_keyUserSyncedAt);
+    if (ms != null) {
+      final last = DateTime.fromMillisecondsSinceEpoch(ms);
+      if (DateTime.now().difference(last) < const Duration(hours: 6)) return;
+    }
+    final cached = prefs.getString(_keySellerName);
+    if (cached != null && cached.isNotEmpty && cached != 'Sotuvchi') return;
+  }
   try {
     final res = await UserApi.getUser();
     await setSellerName(sellerDisplayNameFromUserResponse(res));
     await setCurrentUserId(userIdFromUserResponse(res));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyUserSyncedAt, DateTime.now().millisecondsSinceEpoch);
   } catch (_) {
     // tarmoq / 401 — saqlangan yoki default "Sotuvchi" qoladi
   }

@@ -79,7 +79,9 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
 
   @override
   Future<void> onDesktopShellSync() async {
-    await _syncAllData();
+    await _products.loadFromStorage(refreshInBackground: true);
+    await _categories.loadFromStorage(refreshInBackground: true);
+    if (mounted) setState(() {});
   }
 
   @override

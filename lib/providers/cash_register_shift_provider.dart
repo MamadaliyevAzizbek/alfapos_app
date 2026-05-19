@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/api_client.dart';
+import '../core/api_sync_throttle.dart';
 import '../core/input_formatters.dart';
 import '../core/seller_preferences.dart';
 import '../services/api_service.dart';
@@ -50,7 +51,12 @@ class CashRegisterShiftProvider extends ChangeNotifier {
   }
 
   /// Serverdan kassalar ro‘yxatini qayta yuklaydi (telefon/desktop sinxron).
-  Future<bool> syncWithServer({bool reloadShiftDetail = true}) async {
+  Future<bool> syncWithServer({bool reloadShiftDetail = true, bool force = false}) async {
+    if (!force &&
+        !ApiSyncThrottle.shouldRun('cash_register_sync', const Duration(seconds: 90))) {
+      return error == null;
+    }
+    if (!force) ApiSyncThrottle.markRan('cash_register_sync');
     await loadRegisters();
     if (reloadShiftDetail && isShiftOpen) {
       await loadShiftDetail();

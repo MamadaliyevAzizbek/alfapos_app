@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../models/product.dart';
 import '../models/receive_cart_item.dart';
 import '../models/receive_supplier.dart';
+import '../core/api_pacing.dart';
 import '../services/api_service.dart';
 import '../utils/receive_payment_types.dart';
 import '../utils/receive_products.dart';
@@ -145,24 +146,26 @@ class ReceiveSessionProvider extends ChangeNotifier {
     initError = null;
     notifyListeners();
     try {
-      final results = await Future.wait([
-        ContactsApi.getSuppliers(),
-        ReceivesApi.getPaymentTypes(),
-        ReceivesApi.getBranches(),
-        ReceivesApi.getCurrencies(),
-      ]);
-      suppliers = ReceiveSupplier.listFromResponse(results[0] as Map<String, dynamic>);
-      paymentTypes = ReceivePaymentTypes.parseAndFilter(results[1] as Map<String, dynamic>);
+      final suppliersRes = await ContactsApi.getSuppliers();
+      await ApiPacing.staggerPause();
+      final paymentRes = await ReceivesApi.getPaymentTypes();
+      await ApiPacing.staggerPause();
+      final branchesRes = await ReceivesApi.getBranches();
+      await ApiPacing.staggerPause();
+      final currenciesRes = await ReceivesApi.getCurrencies();
+
+      suppliers = ReceiveSupplier.listFromResponse(suppliersRes);
+      paymentTypes = ReceivePaymentTypes.parseAndFilter(paymentRes);
       if (paymentTypes.isNotEmpty) {
         selectedPaymentType = paymentTypes.first;
       }
-      branchId = _parseDefaultBranchId(results[2] as Map<String, dynamic>);
+      branchId = _parseDefaultBranchId(branchesRes);
       if (branchId != null) {
         try {
           await ReceivesApi.setBranch(branchId: branchId!);
         } catch (_) {}
       }
-      usdExchangeRate = _parseUsdRate(results[3] as Map<String, dynamic>);
+      usdExchangeRate = _parseUsdRate(currenciesRes);
       initError = null;
     } catch (e) {
       initError = e.toString();

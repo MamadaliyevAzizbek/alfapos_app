@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/api_client.dart';
+import '../core/api_pacing.dart';
 import '../models/cart_item.dart';
+import '../services/product_catalog_storage.dart';
+import '../services/sales_session_storage.dart';
 import '../models/product.dart';
 import '../providers/clients_provider.dart';
 import '../services/api_service.dart';
@@ -67,20 +70,81 @@ class SalesSessionProvider extends ChangeNotifier {
   bool _holdCartInFlight = false;
   bool get holdCartInFlight => _holdCartInFlight;
 
-  Future<void> init() async {
+  bool _backgroundSyncInFlight = false;
+  bool get backgroundSyncInFlight => _backgroundSyncInFlight;
+
+  /// Diskdan sessiyani tiklash (server kutmasdan katalog ko‘rsatish).
+  Future<bool> bootstrapFromLocal() async {
+    final meta = await SalesSessionStorage.loadMeta();
+    _applyMetaFromStorage(meta);
+
+    var products = await SalesSessionStorage.loadProducts();
+    if (products.isEmpty) {
+      products = await ProductCatalogStorage.loadCatalog();
+    }
+    if (products.isEmpty) return false;
+
+    salesProducts = ProductsProvider.instance.withCatalogStockAll(products);
+    _offset = salesProducts.length;
+    hasMoreProducts = true;
+    productsError = null;
+    notifyListeners();
+    return true;
+  }
+
+  void _applyMetaFromStorage(Map<String, dynamic> meta) {
+    final bid = meta['branchId'];
+    if (bid != null) {
+      branchId = bid is int ? bid : int.tryParse(bid.toString());
+    }
+    branchName = (meta['branchName'] ?? branchName).toString();
+    final rate = meta['usdRate'];
+    if (rate is num) usdRate = rate.toDouble();
+
+    final pt = meta['paymentTypes'];
+    if (pt is List) {
+      paymentTypes = pt.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    final cat = meta['categories'];
+    if (cat is List) {
+      categories = cat.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    final br = meta['brands'];
+    if (br is List) {
+      brands = br.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+  }
+
+  Future<void> _persistSessionSnapshot() async {
+    if (salesProducts.isNotEmpty) {
+      await SalesSessionStorage.saveProducts(salesProducts);
+    }
+    await SalesSessionStorage.saveMeta({
+      'branchId': branchId,
+      'branchName': branchName,
+      'usdRate': usdRate,
+      'paymentTypes': paymentTypes,
+      'categories': categories,
+      'brands': brands,
+    });
+  }
+
+  /// [localFirst]: avval kesh, keyin fon rejimida asta-sekin server.
+  Future<void> init({bool localFirst = false}) async {
     if (initLoading) return;
     initLoading = true;
     initError = null;
     notifyListeners();
+
+    if (localFirst && await bootstrapFromLocal()) {
+      initLoading = false;
+      notifyListeners();
+      unawaited(syncFromServerInBackground());
+      return;
+    }
+
     try {
-      await _loadBranchesAndSetDefault();
-      await Future.wait([
-        _loadPaymentTypes(),
-        _loadCurrencies(),
-        _loadFilterLists(),
-        _loadCashRegisters(),
-      ]);
-      await loadProducts(reset: true);
+      await _initFromServerSequential();
     } on ApiException catch (e) {
       initError = e.message;
     } catch (e) {
@@ -92,6 +156,42 @@ class SalesSessionProvider extends ChangeNotifier {
       }());
     } finally {
       initLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Serverga ketma-ket, pauza bilan (parallel emas).
+  Future<void> _initFromServerSequential() async {
+    await _loadBranchesAndSetDefault();
+    await ApiPacing.staggerPause();
+    await _loadCashRegisters();
+    await ApiPacing.staggerPause();
+    await _loadPaymentTypes();
+    await ApiPacing.staggerPause();
+    await _loadCurrencies();
+    await ApiPacing.staggerPause();
+    await loadProducts(reset: true);
+    await _persistSessionSnapshot();
+  }
+
+  /// Keshdan keyin yoki «Sinxronlash» dan keyin asta serverni yangilash.
+  Future<void> syncFromServerInBackground() async {
+    if (_backgroundSyncInFlight) return;
+    _backgroundSyncInFlight = true;
+    notifyListeners();
+    try {
+      await ApiPacing.staggerPause(const Duration(seconds: 1));
+      initError = null;
+      await _initFromServerSequential();
+      if (initError == null && productsError == null) {
+        unawaited(syncRemainingProductsInBackground());
+      }
+    } on ApiException catch (e) {
+      initError = e.message;
+    } catch (_) {
+      initError = 'Sotuv yuklanmadi';
+    } finally {
+      _backgroundSyncInFlight = false;
       notifyListeners();
     }
   }
@@ -153,42 +253,26 @@ class SalesSessionProvider extends ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> _fetchCategoryOptions() async {
-    var list = <Map<String, dynamic>>[];
+    if (categories.isNotEmpty) return categories;
+    var list = CategoriesProvider.instance.idNameOptions;
+    if (list.isNotEmpty) return list;
     try {
       list = FilterOptionsParser.parseIdNameList(await ProductsApi.postCategoriesList());
     } catch (_) {}
     if (list.isEmpty) {
-      try {
-        list = FilterOptionsParser.parseIdNameList(await CategoriesApi.getCategories());
-      } catch (_) {}
-    }
-    if (list.isEmpty) {
-      try {
-        await CategoriesProvider.instance.loadFromApi();
-        list = CategoriesProvider.instance.idNameOptions;
-      } catch (_) {}
-    }
-    if (list.isEmpty) {
-      try {
-        final support = await ProductsApi.getSupportingData();
-        list = FilterOptionsParser.parseIdNameList(support['categories'] ?? support);
-      } catch (_) {}
+      await CategoriesProvider.instance.loadFromApiIfStale();
+      list = CategoriesProvider.instance.idNameOptions;
     }
     return list;
   }
 
   Future<List<Map<String, dynamic>>> _fetchBrandOptions() async {
-    var list = <Map<String, dynamic>>[];
+    if (brands.isNotEmpty) return brands;
     try {
-      list = FilterOptionsParser.parseIdNameList(await ProductsApi.postBrandsList());
-    } catch (_) {}
-    if (list.isEmpty) {
-      try {
-        final support = await ProductsApi.getSupportingData();
-        list = FilterOptionsParser.parseIdNameList(support['brands'] ?? support);
-      } catch (_) {}
+      return FilterOptionsParser.parseIdNameList(await ProductsApi.postBrandsList());
+    } catch (_) {
+      return [];
     }
-    return list;
   }
 
   /// 0 qoldiq filtri qo'llangan katalog.
@@ -199,7 +283,9 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<void> _loadCashRegisters() async {
     final shift = CashRegisterShiftProvider.instance;
-    await shift.loadRegisters();
+    if (shift.registers.isEmpty) {
+      await shift.loadRegisters();
+    }
     cashRegisters = List<Map<String, dynamic>>.from(shift.registers);
     syncFromShift();
     if (cashRegisters.isNotEmpty && !isShiftOpenForSales) {
@@ -252,15 +338,21 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<void> loadMoreProducts() => loadProducts(reset: false);
 
-  /// Mahsulotlar bo'limidagi kabi to'liq katalogni yuklash (desktop qidiruv uchun).
-  Future<void> ensureAllProductsLoaded() async {
+  /// Qolgan sahifalarni fon rejimida, pauza bilan yuklash (server yukini kamaytirish).
+  Future<void> syncRemainingProductsInBackground() async {
+    if (_backgroundSyncInFlight || productsLoading) return;
     var guard = 0;
     while (hasMoreProducts && guard < 50) {
       guard++;
       await loadProducts(reset: false);
       if (productsError != null) break;
+      if (hasMoreProducts) await ApiPacing.staggerPause(ApiPacing.productPageStep);
     }
+    await _persistSessionSnapshot();
   }
+
+  @Deprecated('Use syncRemainingProductsInBackground')
+  Future<void> ensureAllProductsLoaded() => syncRemainingProductsInBackground();
 
   void setSearchQuery(String value) {
     _lastSearch = value.trim();
@@ -275,6 +367,7 @@ class SalesSessionProvider extends ChangeNotifier {
     }
     if (!hasMoreProducts && !reset) return;
 
+    final countBefore = salesProducts.length;
     productsLoading = true;
     productsError = null;
     notifyListeners();
@@ -309,12 +402,15 @@ class SalesSessionProvider extends ChangeNotifier {
       if (auto != null && _lastSearch.isNotEmpty && isBarcodeQuery) {
         _pendingBarcodeProduct = auto;
       }
+      if (salesProducts.isNotEmpty) {
+        unawaited(_persistSessionSnapshot());
+      }
     } on ApiException catch (e) {
       productsError = e.message;
-      if (reset) salesProducts = [];
+      if (reset && countBefore == 0) salesProducts = [];
     } catch (_) {
       productsError = 'Mahsulotlar yuklanmadi';
-      if (reset) salesProducts = [];
+      if (reset && countBefore == 0) salesProducts = [];
     } finally {
       productsLoading = false;
       notifyListeners();
