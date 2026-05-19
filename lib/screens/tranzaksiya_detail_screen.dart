@@ -24,6 +24,7 @@ import '../utils/platform_layout.dart';
 import '../utils/sale_store_due_amount.dart';
 import '../services/api_service.dart';
 import '../core/api_client.dart';
+import '../core/api_sync_throttle.dart';
 import '../widgets/receipt_widget.dart';
 import '../widgets/ios_style_modals.dart';
 import 'mijoz_screen.dart';
@@ -37,6 +38,8 @@ import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
+import '../utils/sale_store_response.dart';
+import '../utils/sale_store_validation.dart';
 import '../utils/customer_group_discount.dart';
 import '../utils/cart_discount_percent.dart';
 import '../widgets/mixed_payment_inline_card.dart';
@@ -93,21 +96,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   /// Faqat chek oldindan ko'rinishi uchun (sotuv yopilguncha). Yopilgandan keyin chek ID har doim API dan (storeRes).
   String get _txId => '${DateTime.now().millisecondsSinceEpoch % 1000000000}';
 
-  /// POST /sales/store javobidan chek ID — root, data, order ichidan; invoice_id / order_id (ro'yxat bilan bir xil)
-  static String? _extractChekIdFromStoreResponse(Map<String, dynamic>? res) {
-    if (res == null) return null;
-    final keys = ['invoice_id', 'order_id', 'invoiceId', 'orderId', 'orderID', 'id'];
-    for (final map in [res, res['data'] is Map ? res['data'] as Map<String, dynamic> : null, res['order'] is Map ? res['order'] as Map<String, dynamic> : null]) {
-      if (map == null) continue;
-      for (final k in keys) {
-        final v = map[k];
-        if (v == null) continue;
-        final s = v.toString().trim();
-        if (s.isNotEmpty) return s;
-      }
-    }
-    return null;
-  }
+  /// POST /sales/store javobidan chek ID.
+  static String? _extractChekIdFromStoreResponse(Map<String, dynamic>? res) =>
+      SaleStoreResponse.extractReceiptId(res);
 
   /// Agar store faqat id (raqam) qaytarsa, reports/sales dan shu id bo'yicha invoice_id ni olib modalda ro'yxat bilan bir xil ko'rsatamiz
   static Future<String?> _resolveInvoiceIdFromReports(String? rawId) async {
@@ -1563,14 +1554,23 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   /// Sotuvdan keyin: katalog yangilash. Balans va qarz /sales/store + payments orqali serverda.
   Future<void> _postSaleSideEffects() async {
+    ApiSyncThrottle.invalidate('transactions_sales_list');
     try {
-      await ProductsProvider.instance.loadFromApi();
+      await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
     } catch (_) {}
   }
 
   Future<void> _doPay() async {
     final allocated = _getAllocatedPaymentAmounts();
     if (allocated.isEmpty) return;
+    try {
+      SaleStoreValidation.validateCart(widget.items);
+      SaleStoreValidation.validateCashShift();
+      await SaleStoreValidation.ensureBranchOnServer();
+    } on ApiException catch (e) {
+      if (mounted) AppNotify.error(context, e.message);
+      return;
+    }
     setState(() => _submittingPay = true);
     final qarzAmount = _computeStoreDueAmount(allocated);
     int totalCostUzs = 0;

@@ -40,7 +40,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   void didUpdateWidget(covariant TranzaksiyalarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentIndex != widget.tabIndex && widget.currentIndex == widget.tabIndex) {
-      _load(force: false);
+      _load(force: true);
     }
   }
 
@@ -74,7 +74,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   }
 
   @override
-  Future<void> onDesktopShellSync() => _load();
+  Future<void> onDesktopShellSync() => _load(force: true);
 
   /// POST /api/v1/reports/sales — so'nggi 30 kun yoki searchValue bo'lsa qidiruv
   Future<void> _loadApiSales({String? searchValue}) async {

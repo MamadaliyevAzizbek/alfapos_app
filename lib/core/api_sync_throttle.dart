@@ -12,6 +12,8 @@ class ApiSyncThrottle {
 
   static void markRan(String key) => _lastRun[key] = DateTime.now();
 
+  static void invalidate(String key) => _lastRun.remove(key);
+
   /// [minInterval] ichida chaqirilmasa `null` qaytaradi.
   static Future<T?> runIfDue<T>(
     String key,

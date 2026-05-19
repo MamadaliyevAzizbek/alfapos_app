@@ -147,7 +147,10 @@ class ApiClient {
     final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (map['success'] == false) {
+      final success = map['success'];
+      if (success == false ||
+          success == 0 ||
+          (success is String && success.toString().toLowerCase().trim() == 'false')) {
         final msg = map['message'] as String? ?? 'So\'rov bajarilmadi';
         throw ApiException(msg, response.statusCode);
       }

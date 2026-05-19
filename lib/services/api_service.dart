@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 
 import '../core/api_client.dart';
 import '../core/auth_storage.dart';
+import '../utils/sale_store_response.dart';
 
 /// Dashboard — barcha statistikalar
 class DashboardApi {
@@ -615,7 +616,9 @@ class SalesApi {
   }
 
   static Future<Map<String, dynamic>> storeSale(Map<String, dynamic> data) async {
-    return ApiClient.post('/sales/store', body: data);
+    final res = await ApiClient.post('/sales/store', body: data);
+    SaleStoreResponse.ensureCreated(res);
+    return res;
   }
 
   static Future<Map<String, dynamic>> sendTelegramReceipt({
