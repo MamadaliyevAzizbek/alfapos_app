@@ -1,12 +1,9 @@
 import 'dart:io';
 
-import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/material.dart';
 
 import '../core/input_formatters.dart';
-import '../models/receipt_block_layout.dart';
 import '../models/receipt_design_config.dart';
-import '../utils/receipt_barcode.dart';
 
 /// Bir qator chek qatori: mahsulot, miqdor, narx, summa
 class ReceiptRow {
@@ -34,7 +31,7 @@ class ReceiptPaymentRow {
   });
 }
 
-/// Mahalliy chek — Xprinter 58/80mm, dizayn sozlamalariga mos.
+/// Mahalliy chek — Xprinter 80mm, dizayn sozlamalariga mos.
 class ReceiptWidget extends StatelessWidget {
   final ReceiptDesignConfig design;
   final String storeName;
@@ -50,8 +47,6 @@ class ReceiptWidget extends StatelessWidget {
   final int totalSum;
   final String barcodeData;
   final bool isPrecheck;
-  /// Sozlamalar tahrirchisida logo joyi ko‘rsatiladi.
-  final bool showEditorPlaceholders;
 
   const ReceiptWidget({
     super.key,
@@ -69,10 +64,9 @@ class ReceiptWidget extends StatelessWidget {
     required this.totalSum,
     this.barcodeData = '',
     this.isPrecheck = false,
-    this.showEditorPlaceholders = false,
   });
 
-  double get _receiptWidth => design.receiptPixelWidth;
+  static const double receiptWidth = 302;
 
   double get _fontSize => 13 * design.fontScale.clamp(0.85, 1.25);
   double get _titleSize => 20 * design.fontScale.clamp(0.9, 1.2);
@@ -85,55 +79,46 @@ class ReceiptWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const paddingH = 12.0;
-    const paddingTop = 8.0;
-    const paddingBottom = 12.0;
+    const padding = 12.0;
+    // Termal printer: faqat qora (kulrang anti-alias xira chiqadi).
     final textStyle = TextStyle(
       fontSize: _fontSize,
-      color: Colors.black87,
-      height: 1.35,
+      color: Colors.black,
+      fontWeight: FontWeight.w500,
+      height: 1.3,
+      letterSpacing: 0.1,
     );
     final headerStyle = TextStyle(
       fontSize: _headerSize,
       fontWeight: FontWeight.w700,
       color: Colors.black,
+      letterSpacing: 0.15,
     );
     final titleStyle = TextStyle(
       fontSize: _titleSize,
       fontWeight: FontWeight.w800,
       color: Colors.black,
-      height: 1.15,
+      height: 1.1,
+      letterSpacing: 0.2,
     );
 
     return Container(
-      width: _receiptWidth,
-      padding: const EdgeInsets.fromLTRB(paddingH, paddingTop, paddingH, paddingBottom),
+      width: receiptWidth,
+      padding: const EdgeInsets.all(padding),
       color: Colors.white,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_hasLogo)
-            _layoutBlock(
-              design.logoLayout,
-              Center(child: _buildLogo(maxHeight: 64 * design.logoLayout.scale)),
-            )
-          else if (showEditorPlaceholders)
-            _layoutBlock(
-              design.logoLayout,
-              _logoPlaceholder(),
-            ),
-          if (_hasLogo || showEditorPlaceholders) const SizedBox(height: 6),
-          _layoutBlock(
-            design.storeNameLayout,
-            Center(
-              child: Text(
-                storeName,
-                textAlign: TextAlign.center,
-                style: titleStyle.copyWith(
-                  fontSize: _titleSize * design.storeNameLayout.scale,
-                ),
-              ),
+          if (_hasLogo) ...[
+            Center(child: _buildLogo(maxHeight: 72)),
+            const SizedBox(height: 8),
+          ],
+          Center(
+            child: Text(
+              storeName,
+              textAlign: TextAlign.center,
+              style: titleStyle,
             ),
           ),
           if (design.headerExtraText.trim().isNotEmpty) ...[
@@ -210,9 +195,11 @@ class ReceiptWidget extends StatelessWidget {
           if (!isPrecheck) ...[
             if (design.showBarcode) ...[
               const SizedBox(height: 12),
-              _layoutBlock(
-                design.barcodeLayout,
-                Center(child: _buildScannableBarcode(_receiptWidth - paddingH * 2)),
+              Center(
+                child: _BarcodeStrip(
+                  data: barcodeData.isEmpty ? receiptNumber : barcodeData,
+                  width: receiptWidth - padding * 2,
+                ),
               ),
             ],
             ..._buildFooter(textStyle),
@@ -237,35 +224,6 @@ class ReceiptWidget extends StatelessWidget {
     return '${_dateStr(dateTime)}$sep${_timeStr(dateTime)}';
   }
 
-  Widget _layoutBlock(ReceiptBlockLayout layout, Widget child) {
-    return Transform.translate(
-      offset: Offset(0, layout.offsetY),
-      child: child,
-    );
-  }
-
-  Widget _logoPlaceholder() {
-    return Container(
-      height: 52,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade400, width: 1.2),
-        borderRadius: BorderRadius.circular(6),
-        color: const Color(0xFFF8FAFC),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        'LOGO',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: Colors.grey.shade600,
-          letterSpacing: 2,
-        ),
-      ),
-    );
-  }
-
   Widget _buildLogo({required double maxHeight}) {
     final path = design.logoPath!;
     return Image.file(
@@ -273,22 +231,6 @@ class ReceiptWidget extends StatelessWidget {
       height: maxHeight,
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildScannableBarcode(double width) {
-    final raw = barcodeData.isEmpty ? receiptNumber : barcodeData;
-    final data = ReceiptBarcode.encode(raw);
-    return SizedBox(
-      width: width * design.barcodeLayout.scale.clamp(0.5, 1.5),
-      child: BarcodeWidget(
-        barcode: Barcode.code128(),
-        data: data,
-        width: width * design.barcodeLayout.scale.clamp(0.5, 1.5),
-        height: 44 * design.barcodeLayout.scale.clamp(0.6, 1.4),
-        drawText: true,
-        style: const TextStyle(fontSize: 11, color: Colors.black),
-      ),
     );
   }
 
@@ -320,7 +262,7 @@ class ReceiptWidget extends StatelessWidget {
   }
 
   List<Widget> _buildTableProducts(TextStyle textStyle, TextStyle headerStyle) {
-    final w = _receiptWidth - 24;
+    final w = receiptWidth - 24;
     final out = <Widget>[];
     if (design.showTableHeaders) {
       out.add(
@@ -399,15 +341,12 @@ class ReceiptWidget extends StatelessWidget {
     if (_hasFooterImage) {
       out.add(const SizedBox(height: 10));
       out.add(
-        _layoutBlock(
-          design.footerImageLayout,
-          Center(
-            child: Image.file(
-              File(design.footerImagePath!),
-              height: 64 * design.footerImageLayout.scale,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
+        Center(
+          child: Image.file(
+            File(design.footerImagePath!),
+            height: 64,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
           ),
         ),
       );
@@ -415,16 +354,11 @@ class ReceiptWidget extends StatelessWidget {
     if (design.footerText.trim().isNotEmpty) {
       out.add(const SizedBox(height: 8));
       out.add(
-        _layoutBlock(
-          design.footerTextLayout,
-          Center(
-            child: Text(
-              design.footerText.trim(),
-              textAlign: TextAlign.center,
-              style: textStyle.copyWith(
-                fontSize: _fontSize * design.footerTextLayout.scale,
-              ),
-            ),
+        Center(
+          child: Text(
+            design.footerText.trim(),
+            textAlign: TextAlign.center,
+            style: textStyle.copyWith(fontSize: _fontSize),
           ),
         ),
       );
@@ -454,7 +388,7 @@ class ReceiptWidget extends StatelessWidget {
 class _DashedLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.grey..strokeWidth = 1;
+    final paint = Paint()..color = Colors.black..strokeWidth = 1;
     const dash = 4.0;
     const gap = 3.0;
     double x = 0;
@@ -468,3 +402,44 @@ class _DashedLinePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _BarcodeStrip extends StatelessWidget {
+  final String data;
+  final double width;
+
+  const _BarcodeStrip({required this.data, required this.width});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(width, 48),
+      painter: _BarcodePainter(seed: data),
+    );
+  }
+}
+
+class _BarcodePainter extends CustomPainter {
+  final String seed;
+
+  _BarcodePainter({required this.seed});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black;
+    final codes = seed.codeUnits;
+    var i = 0;
+    double x = 0;
+    while (x < size.width) {
+      final v = codes.isEmpty ? (i * 7 + 3) : codes[i % codes.length];
+      final w = 1.0 + (v % 4);
+      final isBar = ((v + i) % 2) == 0;
+      if (isBar) {
+        canvas.drawRect(Rect.fromLTWH(x, 0, w, size.height), paint);
+      }
+      x += w + 1;
+      i++;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

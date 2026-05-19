@@ -38,6 +38,7 @@ import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
 import '../models/receipt_design_config.dart';
+import '../utils/thermal_receipt_capture.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
@@ -45,7 +46,6 @@ import '../utils/sale_store_validation.dart';
 import '../utils/customer_group_discount.dart';
 import '../utils/cart_discount_percent.dart';
 import '../widgets/mixed_payment_inline_card.dart';
-import '../widgets/desktop_escape_scope.dart';
 
 class TranzaksiyaDetailScreen extends StatefulWidget {
   final List<CartItem> items;
@@ -250,15 +250,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }).toList();
   }
 
-  void _onDesktopPaymentBack() {
-    if (_submittingPay || _printingReceipt || _printingPrecheck) return;
-    if (_desktopPaymentComplete) {
-      _finishDesktopPaymentFlow();
-    } else {
-      _closeDesktopPayment();
-    }
-  }
-
   void _closeDesktopPayment() {
     if (_submittingPay || !mounted) return;
     final nav = Navigator.of(context);
@@ -298,13 +289,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     try {
       _receiptDesign = await ReceiptDesignStorage.load();
       final receiptWidget = _buildPrecheckReceiptWidget(DateTime.now());
-      final controller = ScreenshotController();
-      final pngBytes = await controller.captureFromWidget(
-        receiptWidget,
-        context: context,
-        pixelRatio: 2,
-        delay: const Duration(milliseconds: 80),
-      );
+      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
       final result = await ThermalReceiptPrinter.printPngBytes(pngBytes);
       if (!mounted) return;
       if (result.ok) {
@@ -332,13 +317,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         clientName: _completedClientName ?? _client?.name,
         receiptId: rid,
       );
-      final controller = ScreenshotController();
-      final pngBytes = await controller.captureFromWidget(
-        receiptWidget,
-        context: context,
-        pixelRatio: 2,
-        delay: const Duration(milliseconds: 80),
-      );
+      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
       var orderId = _completedOrderId;
       orderId ??= await ThermalReceiptPrinter.resolveOrderId(
         receiptId: rid,
@@ -570,15 +549,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         canPop: !_submittingPay && !_printingReceipt && !_printingPrecheck,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop || _submittingPay || _printingReceipt || _printingPrecheck) return;
-          _onDesktopPaymentBack();
+          if (_desktopPaymentComplete) {
+            _finishDesktopPaymentFlow();
+          } else {
+            _closeDesktopPayment();
+          }
         },
-        child: CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): _onDesktopPaymentBack,
-          },
-          child: Focus(
-            autofocus: true,
-            child: DesktopPaymentLayout(
+        child: DesktopPaymentLayout(
           items: widget.items,
           client: _client,
           totalRaw: _totalRaw,
@@ -614,13 +591,17 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           printing: _printingReceipt,
           printingPrecheck: _printingPrecheck,
           onComplete: _doPay,
-          onClose: _onDesktopPaymentBack,
+          onClose: () {
+            if (_desktopPaymentComplete) {
+              _finishDesktopPaymentFlow();
+            } else {
+              _closeDesktopPayment();
+            }
+          },
           onPrint: _printThermalReceipt,
           onPrintPrecheck: _printPrecheckReceipt,
           debtAmount: _desktopDebtAmount(),
           allocatedPayments: allocatedPayments,
-            ),
-          ),
         ),
       );
     }

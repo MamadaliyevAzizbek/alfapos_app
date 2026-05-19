@@ -24,8 +24,6 @@ dependencies:
   gal: ^2.3.2
   printing: ^5.14.2
   pdf: ^3.11.3
-  barcode: ^2.2.8
-  barcode_widget: ^2.0.4
 
 dev_dependencies:
   flutter_test:

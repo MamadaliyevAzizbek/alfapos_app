@@ -27,15 +27,16 @@ class CatalogProductPriceLabel {
         return p.priceFormatted;
       }
       if (usdRate > 0) {
-        final som = (p.sellUnitPriceNum * usdRate).round();
+        final som = (p.pieceSellPriceNum * usdRate).round();
         return '${formatThousands(som)} so\'m';
       }
       return p.priceFormatted;
     }
 
-    final sell = p.sellUnitPriceNum.round();
+    // Sotuv qidiruvi / katalog kartasi: har doim 1 dona sotish narxi (pachka emas).
+    final sell = p.pieceSellPriceNum.round();
     if (showUsdEquivalent && usdRate > 0) {
-      final usd = p.sellUnitPriceNum / usdRate;
+      final usd = p.pieceSellPriceNum / usdRate;
       return '${formatThousands(sell)} (\$${usd.toStringAsFixed(2)})';
     }
     return '${formatThousands(sell)} so\'m';

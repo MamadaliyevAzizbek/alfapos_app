@@ -97,7 +97,7 @@ class Product {
   /// Sotuvda pachka yoki dona tanlash mumkinmi
   bool get canSellByPack => packSellUnitPriceNum != null;
 
-  /// Katalog kartochkasi: pachka narxi mavjud bo'lsa u, aks holda dona
+  /// Eski: pachka ustunlik. UI ro‘yxatlarida [pieceSellPriceNum] ishlating.
   num get sellUnitPriceNum => packSellUnitPriceNum ?? pieceSellPriceNum;
 
   /// Dona sotish narxi (yaxlitlangan)

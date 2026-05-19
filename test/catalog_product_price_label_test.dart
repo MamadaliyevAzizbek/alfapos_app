@@ -29,4 +29,18 @@ void main() {
     expect(label.contains('\$'), true);
     expect(label, contains('22 000'));
   });
+
+  test('pachkali mahsulotda dona sotish narxi (pachka emas)', () {
+    const packProduct = Product(
+      id: '2',
+      name: 'Pachkali',
+      priceUzs: 52833,
+      quantityInPack: true,
+      quantityPerPack: 6,
+      sellPricePerPack: 317000,
+    );
+    final label = CatalogProductPriceLabel.primary(packProduct);
+    expect(label, '52 833 so\'m');
+    expect(label, isNot(contains('317')));
+  });
 }
