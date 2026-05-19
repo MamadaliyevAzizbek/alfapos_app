@@ -7,6 +7,7 @@ import 'dart:io' show Platform;
 import '../../core/desktop_runtime.dart';
 import '../../services/printer_settings.dart';
 import 'desktop_shell_scope.dart';
+import 'receipt_visual_editor.dart';
 
 /// Desktop: printer va boshqa sozlamalar.
 class SozlamalarDesktopScreen extends StatefulWidget {
@@ -118,8 +119,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Xprinter 80mm yoki boshqa termal printerni tizimga ulang, '
-                  'ro\'yxatdan tanlang va saqlang. To\'lovdan keyin chek avtomatik chop etiladi.',
+                  'Xprinter (58mm yoki 80mm) ni tizimga ulang, ro\'yxatdan tanlang. '
+                  'Qog\'oz kengligi — Chek dizayni bo\'limida. To\'lovdan keyin chek avtomatik chiqadi.',
                   style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
                 ),
                 const SizedBox(height: 20),
@@ -211,6 +212,10 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 20),
+          _card(
+            child: const ReceiptVisualEditor(),
           ),
         ],
       ),

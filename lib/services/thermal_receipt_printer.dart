@@ -6,7 +6,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/receipt_design_config.dart';
 import 'api_service.dart';
+import 'receipt_design_storage.dart';
 
 /// Termal printer (Xprinter 80mm va h.k.) orqali chek chop etish.
 class ThermalReceiptPrinter {
@@ -34,7 +36,7 @@ class ThermalReceiptPrinter {
     'thermal',
   ];
 
-  /// Chek rasmini 80mm PDF ga aylantirib chop etadi.
+  /// Chek rasmini termal qog‘oz kengligiga mos PDF ga aylantirib chop etadi (58/80mm).
   /// API HTML termal printerga yuborilmasin — Windows/macOS da HTML manbasi
   /// chop etilib «kodlar» ko‘rinishida chiqadi.
   static Future<ThermalPrintResult> printSaleReceipt({
@@ -51,8 +53,10 @@ class ThermalReceiptPrinter {
     bool directOnly = false,
   }) async {
     try {
-      final pdfBytes = await _pngToRoll80Pdf(pngBytes);
-      final direct = await _directPrintPdf(pdfBytes);
+      final design = await ReceiptDesignStorage.load();
+      final pageFormat = _pageFormatForPaper(design.paperWidth);
+      final pdfBytes = await _pngToThermalPdf(pngBytes, design.paperWidth);
+      final direct = await _directPrintPdf(pdfBytes, pageFormat);
       if (direct != null) return direct;
 
       if (directOnly) {
@@ -63,7 +67,7 @@ class ThermalReceiptPrinter {
 
       await Printing.layoutPdf(
         onLayout: (_) async => pdfBytes,
-        format: PdfPageFormat.roll80,
+        format: pageFormat,
         name: 'AlfaPos chek',
       );
       return ThermalPrintResult.ok('Chop etish oynasi ochildi — printerni tanlang');
@@ -76,7 +80,15 @@ class ThermalReceiptPrinter {
     }
   }
 
-  static Future<Uint8List> _pngToRoll80Pdf(Uint8List pngBytes) async {
+  static PdfPageFormat _pageFormatForPaper(ThermalPaperWidth paper) {
+    final w = paper.mm * PdfPageFormat.mm;
+    return PdfPageFormat(w, PdfPageFormat.roll80.height);
+  }
+
+  static Future<Uint8List> _pngToThermalPdf(
+    Uint8List pngBytes,
+    ThermalPaperWidth paper,
+  ) async {
     final doc = pw.Document();
     final image = pw.MemoryImage(pngBytes);
     final decoded = img.decodeImage(pngBytes);
@@ -84,9 +96,9 @@ class ThermalReceiptPrinter {
     const marginH = 2 * PdfPageFormat.mm;
     const marginTop = 2 * PdfPageFormat.mm;
     const marginBottom = 4 * PdfPageFormat.mm;
-    final rollWidth = PdfPageFormat.roll80.width;
+    final rollWidth = paper.mm * PdfPageFormat.mm;
 
-    var pageHeight = PdfPageFormat.roll80.height;
+    var pageHeight = _pageFormatForPaper(paper).height;
     if (decoded != null && decoded.width > 0 && decoded.height > 0) {
       final contentWidth = rollWidth - marginH * 2;
       final scale = contentWidth / decoded.width;
@@ -118,13 +130,16 @@ class ThermalReceiptPrinter {
     return doc.save();
   }
 
-  static Future<ThermalPrintResult?> _directPrintPdf(Uint8List pdfBytes) async {
+  static Future<ThermalPrintResult?> _directPrintPdf(
+    Uint8List pdfBytes,
+    PdfPageFormat format,
+  ) async {
     final printer = await _resolvePrinter();
     if (printer == null) return null;
     final ok = await Printing.directPrintPdf(
       printer: printer,
       onLayout: (_) async => pdfBytes,
-      format: PdfPageFormat.roll80,
+      format: format,
     );
     if (ok) {
       return ThermalPrintResult.ok('Chek printerga yuborildi (${printer.name})');
@@ -174,16 +189,18 @@ class ThermalReceiptPrinter {
   }
 
   static Future<ThermalPrintResult> printTestReceipt() async {
+    final design = await ReceiptDesignStorage.load();
+    final format = _pageFormatForPaper(design.paperWidth);
     final doc = pw.Document();
     doc.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.roll80,
+        pageFormat: format,
         build: (_) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
             pw.Text('AlfaPOS', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
-            pw.Text('Printer testi'),
+            pw.Text('Printer testi (${design.paperWidth.label})'),
             pw.SizedBox(height: 4),
             pw.Text(DateTime.now().toString().substring(0, 19)),
           ],
@@ -191,7 +208,7 @@ class ThermalReceiptPrinter {
       ),
     );
     final bytes = await doc.save();
-    final direct = await _directPrintPdf(bytes);
+    final direct = await _directPrintPdf(bytes, format);
     if (direct != null) return direct;
     return ThermalPrintResult.fail('Test chop etib bo\'lmadi — printerni tekshiring');
   }

@@ -36,6 +36,8 @@ import 'tavsif_screen.dart';
 import 'desktop/desktop_payment_screen.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
+import '../services/receipt_design_storage.dart';
+import '../models/receipt_design_config.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
@@ -43,6 +45,7 @@ import '../utils/sale_store_validation.dart';
 import '../utils/customer_group_discount.dart';
 import '../utils/cart_discount_percent.dart';
 import '../widgets/mixed_payment_inline_card.dart';
+import '../widgets/desktop_escape_scope.dart';
 
 class TranzaksiyaDetailScreen extends StatefulWidget {
   final List<CartItem> items;
@@ -91,6 +94,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   String _completedSellerName = '';
   String? _completedClientName;
   String _sellerDisplayName = '';
+  String? _sellerPhone;
+  ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.presetTableColumns();
   String? _desktopSelectedPaymentKey;
   final _desktopPayAmountController = TextEditingController();
   /// Faqat chek oldindan ko'rinishi uchun (sotuv yopilguncha). Yopilgandan keyin chek ID har doim API dan (storeRes).
@@ -245,6 +250,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }).toList();
   }
 
+  void _onDesktopPaymentBack() {
+    if (_submittingPay || _printingReceipt || _printingPrecheck) return;
+    if (_desktopPaymentComplete) {
+      _finishDesktopPaymentFlow();
+    } else {
+      _closeDesktopPayment();
+    }
+  }
+
   void _closeDesktopPayment() {
     if (_submittingPay || !mounted) return;
     final nav = Navigator.of(context);
@@ -282,6 +296,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (_printingPrecheck || _printingReceipt || widget.items.isEmpty) return;
     setState(() => _printingPrecheck = true);
     try {
+      _receiptDesign = await ReceiptDesignStorage.load();
       final receiptWidget = _buildPrecheckReceiptWidget(DateTime.now());
       final controller = ScreenshotController();
       final pngBytes = await controller.captureFromWidget(
@@ -309,6 +324,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (rid == null || _printingReceipt) return;
     setState(() => _printingReceipt = true);
     try {
+      _receiptDesign = await ReceiptDesignStorage.load();
+      _sellerPhone ??= await getSellerPhone();
       final receiptWidget = _buildReceiptWidget(
         DateTime.now(),
         sellerName: _completedSellerName.isNotEmpty ? _completedSellerName : _sellerDisplayName,
@@ -400,6 +417,25 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _client = widget.initialClient;
     _loadPaymentTypes();
     _loadSellerDisplayName();
+    _loadReceiptDesign();
+  }
+
+  Future<void> _loadReceiptDesign() async {
+    final design = await ReceiptDesignStorage.load();
+    final phone = await getSellerPhone();
+    if (!mounted) return;
+    setState(() {
+      _receiptDesign = design;
+      _sellerPhone = phone;
+    });
+  }
+
+  String _resolveStoreNameForReceipt() {
+    final sess = SalesSessionProvider.instance;
+    return _receiptDesign.resolveStoreName(
+      branchName: sess.branchName,
+      cashRegisterName: sess.cashRegisterName,
+    );
   }
 
   @override
@@ -473,12 +509,23 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   Future<void> _loadSellerDisplayName() async {
     final name = await getSellerName();
-    if (mounted) setState(() => _sellerDisplayName = name);
-    if (widget.useDesktopFullscreenLayout) return;
+    final phone = await getSellerPhone();
+    if (mounted) {
+      setState(() {
+        _sellerDisplayName = name;
+        _sellerPhone = phone;
+      });
+    }
     unawaited(syncSellerNameFromApi().then((_) async {
       if (!mounted) return;
       final fresh = await getSellerName();
-      if (mounted) setState(() => _sellerDisplayName = fresh);
+      final freshPhone = await getSellerPhone();
+      if (mounted) {
+        setState(() {
+          _sellerDisplayName = fresh;
+          _sellerPhone = freshPhone;
+        });
+      }
     }));
   }
 
@@ -512,10 +559,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (widget.useDesktopFullscreenLayout) {
-      final sess = SalesSessionProvider.instance;
-      final store = sess.cashRegisterName.isNotEmpty
-          ? sess.cashRegisterName
-          : (sess.branchName.isNotEmpty ? sess.branchName : 'Alfa market');
+      final store = _resolveStoreNameForReceipt();
 
       final allocated = _getAllocatedPaymentAmounts();
       final allocatedPayments = _paymentList
@@ -526,13 +570,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         canPop: !_submittingPay && !_printingReceipt && !_printingPrecheck,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop || _submittingPay || _printingReceipt || _printingPrecheck) return;
-          if (_desktopPaymentComplete) {
-            _finishDesktopPaymentFlow();
-          } else {
-            _closeDesktopPayment();
-          }
+          _onDesktopPaymentBack();
         },
-        child: DesktopPaymentLayout(
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): _onDesktopPaymentBack,
+          },
+          child: Focus(
+            autofocus: true,
+            child: DesktopPaymentLayout(
           items: widget.items,
           client: _client,
           totalRaw: _totalRaw,
@@ -568,17 +614,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           printing: _printingReceipt,
           printingPrecheck: _printingPrecheck,
           onComplete: _doPay,
-          onClose: () {
-            if (_desktopPaymentComplete) {
-              _finishDesktopPaymentFlow();
-            } else {
-              _closeDesktopPayment();
-            }
-          },
+          onClose: _onDesktopPaymentBack,
           onPrint: _printThermalReceipt,
           onPrintPrecheck: _printPrecheckReceipt,
           debtAmount: _desktopDebtAmount(),
           allocatedPayments: allocatedPayments,
+            ),
+          ),
         ),
       );
     }
@@ -1720,9 +1762,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }).toList();
     final discountUzs = _totalRaw - _totalAfterDiscount;
     return ReceiptWidget(
+      design: _receiptDesign,
+      storeName: _resolveStoreNameForReceipt(),
       dateTime: at,
       receiptNumber: '—',
       sellerName: _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi',
+      sellerPhone: _sellerPhone,
       clientName: _client?.name,
       description: _description,
       productRows: productRows,
@@ -1756,9 +1801,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }).toList();
     final discountUzs = _totalRaw - _totalAfterDiscount;
     return ReceiptWidget(
+      design: _receiptDesign,
+      storeName: _resolveStoreNameForReceipt(),
       dateTime: at,
       receiptNumber: posNumber.startsWith('POS') ? posNumber : 'POS$posNumber',
       sellerName: sellerName,
+      sellerPhone: _sellerPhone,
       clientName: clientName,
       description: _description,
       productRows: productRows,
