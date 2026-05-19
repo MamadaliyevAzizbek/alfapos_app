@@ -169,7 +169,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _sellerName = await getSellerName();
       if (!mounted) return;
       if (isDesktopPosLayout) {
-        await _products.loadFromStorage(refreshInBackground: false);
+        await _products.loadFromStorage(refreshInBackground: true);
         await _sales.init(localFirst: true);
         _sales.applyCatalogStock();
         unawaited(_refreshSavedOrdersCount());
@@ -350,19 +350,73 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         if (_searchController.text.trim() != q) return;
         unawaited(_desktopBarcodeSearchAndAdd(q));
       });
+      return;
     }
+
+    _catalogSearchDebounce?.cancel();
+    _catalogSearchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      if (_searchController.text.trim() != q) return;
+      unawaited(_desktopSearchProducts(q));
+    });
   }
 
   List<Product> get _filteredProducts =>
       product_search.filterProductsByQuery(_products.items, _query);
 
-  List<Product> get _desktopCatalogProducts {
-    var list = _sales.catalogProductsVisible;
-    final q = _query.trim();
-    if (q.isNotEmpty) {
-      list = product_search.filterCatalogProducts(list, q);
+  /// Desktop: filtrsiz ko‘rish — to‘liq mahalliy katalog (Mahsulotlar bo‘limi).
+  List<Product> get _desktopBrowseProducts {
+    if (_sales.categoryId != null || _sales.brandId != null) {
+      return _sales.catalogProductsVisible;
     }
-    return list;
+    if (_products.items.isNotEmpty) {
+      var list = ProductsProvider.instance.withCatalogStockAll(_products.items);
+      if (_sales.hideZeroStock) {
+        list = list.where((p) => p.hasStock).toList();
+      }
+      return list;
+    }
+    return _sales.catalogProductsVisible;
+  }
+
+  List<Product> get _desktopCatalogProducts {
+    final q = _query.trim();
+    if (q.isEmpty) return _desktopBrowseProducts;
+
+    final seen = <String>{};
+    final out = <Product>[];
+    void addMatches(Iterable<Product> source) {
+      for (final p in source) {
+        if (p.id.isEmpty || seen.contains(p.id)) continue;
+        if (!product_search.productMatchesSearchQuery(p, q)) continue;
+        seen.add(p.id);
+        out.add(p);
+      }
+    }
+
+    addMatches(ProductsProvider.instance.withCatalogStockAll(_products.items));
+    addMatches(ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts));
+    return out;
+  }
+
+  /// Desktop qidiruv: mahalliy katalog + server (filial narxi/qoldiq).
+  Future<void> _desktopSearchProducts(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) {
+      if (_sales.lastSearch.isNotEmpty) {
+        _sales.setSearchQuery('');
+        await _sales.loadProducts(reset: true, searchValue: '');
+      }
+      if (mounted) setState(() {});
+      return;
+    }
+    if (product_search.looksLikeBarcodeInput(q)) {
+      await _desktopBarcodeSearchAndAdd(q);
+      return;
+    }
+    _sales.setSearchQuery(q);
+    await _sales.loadProducts(reset: true, searchValue: q);
+    if (mounted) setState(() {});
   }
 
   int get _cartRawTotal => _cart.items.fold<int>(0, (s, e) => s + e.total);
@@ -1118,24 +1172,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   Future<void> _desktopSearchSubmit(String q) async {
     _barcodeSearchDebounce?.cancel();
-    final trimmed = q.trim();
-    if (trimmed.isEmpty) {
-      if (_sales.lastSearch.isNotEmpty) {
-        _sales.setSearchQuery('');
-        await _sales.loadProducts(reset: true, searchValue: '');
-      }
-      return;
-    }
-
-    if (product_search.looksLikeBarcodeInput(trimmed)) {
-      await _desktopBarcodeSearchAndAdd(trimmed);
-      return;
-    }
-
-    if (_desktopCatalogProducts.isEmpty) {
-      _sales.setSearchQuery(trimmed);
-      await _sales.loadProducts(reset: true, searchValue: trimmed);
-    }
+    _catalogSearchDebounce?.cancel();
+    await _desktopSearchProducts(q);
   }
 
   Future<void> _holdCart(BuildContext context) async {
