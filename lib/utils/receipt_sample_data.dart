@@ -19,13 +19,13 @@ class ReceiptSampleData {
         ),
         ReceiptRow(
           productName: 'salom',
-          quantityStr: '1шт',
+          quantityStr: '1 sht',
           price: 3000,
           sum: 3000,
         ),
         ReceiptRow(
           productName: 'Fanta 0.5L',
-          quantityStr: '1kg',
+          quantityStr: '1 kg',
           price: 21000,
           sum: 21000,
         ),
