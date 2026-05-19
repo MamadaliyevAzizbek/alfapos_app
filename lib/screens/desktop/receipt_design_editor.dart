@@ -8,7 +8,7 @@ import '../../services/printer_settings.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../services/thermal_receipt_printer.dart';
 import '../../utils/receipt_sample_data.dart';
-import '../../utils/thermal_receipt_capture.dart';
+import '../../models/receipt_print_data.dart';
 import '../../widgets/receipt_widget.dart';
 
 /// Sozlamalar: chek dizayni (2 ta shablon + custom).
@@ -178,10 +178,22 @@ class _ReceiptDesignEditorState extends State<ReceiptDesignEditor> {
     try {
       await ReceiptDesignStorage.save(_mergedConfig());
       if (!mounted) return;
-      final pngBytes = await captureReceiptForThermal(_previewWidget(), context: context);
+      final cfg = _mergedConfig();
+      final printData = ReceiptPrintData(
+        design: cfg,
+        storeName: _previewStoreName(),
+        dateTime: DateTime.now(),
+        receiptNumber: ReceiptSampleData.receiptNumber,
+        sellerName: ReceiptSampleData.sellerName,
+        sellerPhone: ReceiptSampleData.sellerPhone,
+        productRows: ReceiptSampleData.products,
+        paymentRows: ReceiptSampleData.payments,
+        discount: ReceiptSampleData.discount,
+        totalSum: ReceiptSampleData.total,
+      );
       final directOnly = await PrinterSettings.isPrinterReady();
-      final result = await ThermalReceiptPrinter.printPngBytes(
-        pngBytes,
+      final result = await ThermalReceiptPrinter.printReceiptData(
+        printData,
         directOnly: directOnly,
       );
       if (!mounted) return;

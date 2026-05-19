@@ -6,8 +6,13 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/receipt_design_config.dart';
+import '../models/receipt_print_data.dart';
+import '../utils/receipt_sample_data.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
+import 'escpos_receipt_builder.dart';
+import 'raw_printer_send.dart';
 
 /// Termal printer (Xprinter 80mm va h.k.) orqali chek chop etish.
 class ThermalReceiptPrinter {
@@ -35,15 +40,59 @@ class ThermalReceiptPrinter {
     'thermal',
   ];
 
-  /// Chek rasmini 80mm PDF ga aylantirib chop etadi.
-  /// API HTML termal printerga yuborilmasin — Windows/macOS da HTML manbasi
-  /// chop etilib «kodlar» ko‘rinishida chiqadi.
+  /// Chekni ESC/POS matn (asosiy) yoki rasm (zaxira) orqali chop etadi.
   static Future<ThermalPrintResult> printSaleReceipt({
-    required Uint8List receiptPng,
+    ReceiptPrintData? receiptData,
+    Uint8List? receiptPng,
     int? orderId,
     bool directOnly = false,
   }) async {
-    return printPngBytes(receiptPng, directOnly: directOnly);
+    if (receiptData != null) {
+      final esc = await printReceiptData(receiptData, directOnly: directOnly);
+      if (esc.ok) return esc;
+      if (receiptPng != null) {
+        return printPngBytes(receiptPng, directOnly: directOnly);
+      }
+      return esc;
+    }
+    if (receiptPng != null) {
+      return printPngBytes(receiptPng, directOnly: directOnly);
+    }
+    return ThermalPrintResult.fail('Chek ma\'lumoti yo\'q');
+  }
+
+  /// ESC/POS — printer o'z shrifti (aniq, 80mm ga sig'adi).
+  static Future<ThermalPrintResult> printReceiptData(
+    ReceiptPrintData data, {
+    bool directOnly = false,
+  }) async {
+    if (!Platform.isWindows && !Platform.isMacOS) {
+      return ThermalPrintResult.fail('ESC/POS faqat Windows/macOS da');
+    }
+    try {
+      final bytes = await EscPosReceiptBuilder.build(data);
+      final printer =
+          await savedPrinterName() ?? await _resolveSystemPrinterName();
+      if (printer == null || printer.isEmpty) {
+        if (directOnly) {
+          return ThermalPrintResult.fail(
+            'Printer tanlanmagan. Sozlamalar → printerni tanlang.',
+          );
+        }
+        return ThermalPrintResult.fail('Printer topilmadi');
+      }
+      final result = await RawPrinterSend.send(bytes, printerName: printer);
+      if (result.ok) {
+        await rememberPrinterName(printer);
+      }
+      return result;
+    } catch (e, st) {
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('[ThermalReceiptPrinter] ESC/POS $e\n$st');
+      }
+      return ThermalPrintResult.fail('ESC/POS chop etish: $e');
+    }
   }
 
   /// [directOnly] — faqat tanlangan printerga yuborish (dialog ochilmaydi).
@@ -223,26 +272,19 @@ class ThermalReceiptPrinter {
   }
 
   static Future<ThermalPrintResult> printTestReceipt() async {
-    final doc = pw.Document();
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.roll80,
-        build: (_) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.center,
-          children: [
-            pw.Text('AlfaPOS', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 8),
-            pw.Text('Printer testi'),
-            pw.SizedBox(height: 4),
-            pw.Text(DateTime.now().toString().substring(0, 19)),
-          ],
-        ),
-      ),
+    final data = ReceiptPrintData(
+      design: ReceiptDesignConfig.presetTableColumns(),
+      storeName: 'AlfaPOS',
+      dateTime: DateTime.now(),
+      receiptNumber: 'TEST',
+      sellerName: 'Test',
+      sellerPhone: null,
+      productRows: ReceiptSampleData.products,
+      paymentRows: ReceiptSampleData.payments,
+      discount: ReceiptSampleData.discount,
+      totalSum: ReceiptSampleData.total,
     );
-    final bytes = await doc.save();
-    final direct = await _directPrintPdf(bytes);
-    if (direct != null) return direct;
-    return ThermalPrintResult.fail('Test chop etib bo\'lmadi — printerni tekshiring');
+    return printReceiptData(data, directOnly: true);
   }
 
   static Future<Printer?> _resolvePrinter() async {

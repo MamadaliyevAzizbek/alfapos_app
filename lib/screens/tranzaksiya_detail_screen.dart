@@ -38,7 +38,7 @@ import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
 import '../models/receipt_design_config.dart';
-import '../utils/thermal_receipt_capture.dart';
+import '../models/receipt_print_data.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
@@ -288,9 +288,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     setState(() => _printingPrecheck = true);
     try {
       _receiptDesign = await ReceiptDesignStorage.load();
-      final receiptWidget = _buildPrecheckReceiptWidget(DateTime.now());
-      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
-      final result = await ThermalReceiptPrinter.printPngBytes(pngBytes);
+      final printData = _buildPrecheckPrintData(DateTime.now());
+      final result = await ThermalReceiptPrinter.printReceiptData(printData);
       if (!mounted) return;
       if (result.ok) {
         AppNotify.success(context, result.message);
@@ -311,22 +310,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     try {
       _receiptDesign = await ReceiptDesignStorage.load();
       _sellerPhone ??= await getSellerPhone();
-      final receiptWidget = _buildReceiptWidget(
+      final printData = _buildReceiptPrintData(
         DateTime.now(),
         sellerName: _completedSellerName.isNotEmpty ? _completedSellerName : _sellerDisplayName,
         clientName: _completedClientName ?? _client?.name,
         receiptId: rid,
       );
-      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
-      var orderId = _completedOrderId;
-      orderId ??= await ThermalReceiptPrinter.resolveOrderId(
-        receiptId: rid,
-        storeOrderId: orderId,
-      );
       final directOnly = await PrinterSettings.isPrinterReady();
       final result = await ThermalReceiptPrinter.printSaleReceipt(
-        receiptPng: pngBytes,
-        orderId: orderId,
+        receiptData: printData,
         directOnly: directOnly,
       );
       if (!mounted) return;
@@ -1728,6 +1720,79 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         ),
       );
     }
+  }
+
+  ReceiptPrintData _buildPrecheckPrintData(DateTime at) {
+    final productRows = widget.items.map((item) {
+      final p = item.product;
+      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
+      return ReceiptRow(
+        productName: p.name,
+        quantityStr: '${item.quantity} $unitLabel',
+        price: item.unitPriceDisplay,
+        sum: item.total,
+      );
+    }).toList();
+    final discountUzs = _totalRaw - _totalAfterDiscount;
+    return ReceiptPrintData(
+      design: _receiptDesign,
+      storeName: _resolveStoreNameForReceipt(),
+      dateTime: at,
+      receiptNumber: '—',
+      sellerName: _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi',
+      sellerPhone: _sellerPhone,
+      clientName: _client?.name,
+      description: _description,
+      productRows: productRows,
+      paymentRows: const [],
+      discount: discountUzs,
+      totalSum: _totalAfterDiscount,
+      isPrecheck: true,
+    );
+  }
+
+  ReceiptPrintData _buildReceiptPrintData(
+    DateTime at, {
+    String sellerName = 'Sotuvchi',
+    String? clientName,
+    String? receiptId,
+  }) {
+    final posNumber = receiptId ?? _txId;
+    final productRows = widget.items.map((item) {
+      final p = item.product;
+      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
+      final unitPrice = item.unitPriceDisplay;
+      return ReceiptRow(
+        productName: p.name,
+        quantityStr: '${item.quantity} $unitLabel',
+        price: unitPrice,
+        sum: item.total,
+      );
+    }).toList();
+    final allocated = _getAllocatedPaymentAmounts();
+    final paymentRows = allocated.entries.map((e) {
+      final label = _paymentList.firstWhere((m) => m.key == e.key, orElse: () => MapEntry(e.key, e.key)).value;
+      return ReceiptPaymentRow(
+        methodName: label,
+        sum: e.value,
+      );
+    }).toList();
+    final discountUzs = _totalRaw - _totalAfterDiscount;
+    return ReceiptPrintData(
+      design: _receiptDesign,
+      storeName: _resolveStoreNameForReceipt(),
+      dateTime: at,
+      receiptNumber: posNumber.startsWith('POS') ? posNumber : 'POS$posNumber',
+      sellerName: sellerName,
+      sellerPhone: _sellerPhone,
+      clientName: clientName,
+      description: _description,
+      productRows: productRows,
+      paymentRows: paymentRows,
+      discount: discountUzs,
+      totalSum: _totalAfterDiscount,
+      barcodeData: posNumber,
+    );
   }
 
   ReceiptWidget _buildPrecheckReceiptWidget(DateTime at) {
