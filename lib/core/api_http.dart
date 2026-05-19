@@ -50,7 +50,7 @@ class ApiHttp {
     client.idleTimeout = timeout;
     client.autoUncompress = true;
     client.findProxy = HttpClient.findProxyFromEnvironment;
-    client.userAgent = 'AlfaposPOS/1.0.7 (${Platform.operatingSystem})';
+    client.userAgent = 'AlfaposPOS/1.0.8 (${Platform.operatingSystem})';
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       client.badCertificateCallback = (cert, host, port) =>
           host == 'app.alfapos.uz' || host.endsWith('.alfapos.uz');

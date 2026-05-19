@@ -6,9 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/receipt_design_config.dart';
-import '../models/receipt_print_data.dart';
-import '../utils/receipt_sample_data.dart';
+import '../utils/api_receipt_html_parser.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
 import 'escpos_receipt_builder.dart';
@@ -40,62 +38,80 @@ class ThermalReceiptPrinter {
     'thermal',
   ];
 
-  /// Chekni ESC/POS matn (asosiy) yoki rasm (zaxira) orqali chop etadi.
+  /// Asosiy: API chek (orderId). Zaxira: mahalliy PNG (oldindan chek).
   static Future<ThermalPrintResult> printSaleReceipt({
-    ReceiptPrintData? receiptData,
     Uint8List? receiptPng,
     int? orderId,
     bool directOnly = false,
   }) async {
-    if (receiptData != null) {
-      final esc = await printReceiptData(receiptData, directOnly: directOnly);
-      if (esc.ok) return esc;
-      if (receiptPng != null) {
-        return printPngBytes(receiptPng, directOnly: directOnly);
-      }
-      return esc;
+    if (orderId != null && orderId > 0) {
+      final fromApi = await printFromApiOrder(orderId, directOnly: directOnly);
+      if (fromApi.ok) return fromApi;
     }
     if (receiptPng != null) {
       return printPngBytes(receiptPng, directOnly: directOnly);
     }
-    return ThermalPrintResult.fail('Chek ma\'lumoti yo\'q');
+    return ThermalPrintResult.fail(
+      orderId == null
+          ? 'Chek ID topilmadi — API chek chop etib bo\'lmadi'
+          : 'API chek chop etib bo\'lmadi',
+    );
   }
 
-  /// ESC/POS — printer o'z shrifti (aniq, 80mm ga sig'adi).
-  static Future<ThermalPrintResult> printReceiptData(
-    ReceiptPrintData data, {
+  /// GET /reports/sales/order/{id} — HTML ni chek ko'rinishiga aylantirib chop etadi.
+  static Future<ThermalPrintResult> printFromApiOrder(
+    int orderId, {
     bool directOnly = false,
   }) async {
-    if (!Platform.isWindows && !Platform.isMacOS) {
-      return ThermalPrintResult.fail('ESC/POS faqat Windows/macOS da');
-    }
     try {
-      final bytes = await EscPosReceiptBuilder.build(data);
-      final printer =
-          await savedPrinterName() ?? await _resolveSystemPrinterName();
-      if (printer == null || printer.isEmpty) {
-        if (directOnly) {
-          return ThermalPrintResult.fail(
-            'Printer tanlanmagan. Sozlamalar → printerni tanlang.',
-          );
-        }
-        return ThermalPrintResult.fail('Printer topilmadi');
+      final res = await ReportsApi.getOrderForPrint(orderId);
+      final html = _extractThermalHtml(res);
+      if (html == null || html.trim().isEmpty) {
+        return ThermalPrintResult.fail('API termal chek HTML topilmadi');
       }
-      final result = await RawPrinterSend.send(bytes, printerName: printer);
-      if (result.ok) {
-        await rememberPrinterName(printer);
+
+      final lines = ApiReceiptHtmlParser.toPrintLines(html);
+      if (lines.isEmpty) {
+        return ThermalPrintResult.fail('API chek matni bo\'sh');
       }
-      return result;
+
+      if (Platform.isWindows || Platform.isMacOS) {
+        final esc = await _printEscPosLines(lines, directOnly: directOnly);
+        if (esc.ok) return esc;
+      }
+
+      return ThermalPrintResult.fail('Chek chop etib bo\'lmadi');
     } catch (e, st) {
       if (kDebugMode) {
         // ignore: avoid_print
-        print('[ThermalReceiptPrinter] ESC/POS $e\n$st');
+        print('[ThermalReceiptPrinter] API chek: $e\n$st');
       }
-      return ThermalPrintResult.fail('ESC/POS chop etish: $e');
+      return ThermalPrintResult.fail('API chek: $e');
     }
   }
 
-  /// [directOnly] — faqat tanlangan printerga yuborish (dialog ochilmaydi).
+  static Future<ThermalPrintResult> _printEscPosLines(
+    List<String> lines, {
+    bool directOnly = false,
+  }) async {
+    final bytes = await EscPosReceiptBuilder.buildFromLines(lines);
+    final printer =
+        await savedPrinterName() ?? await _resolveSystemPrinterName();
+    if (printer == null || printer.isEmpty) {
+      return ThermalPrintResult.fail(
+        directOnly
+            ? 'Printer tanlanmagan. Sozlamalar → printerni tanlang.'
+            : 'Printer topilmadi',
+      );
+    }
+    final result = await RawPrinterSend.send(bytes, printerName: printer);
+    if (result.ok) {
+      await rememberPrinterName(printer);
+    }
+    return result;
+  }
+
+  /// Mahalliy widget skrinshoti (oldindan chek va h.k.).
   static Future<ThermalPrintResult> printPngBytes(
     Uint8List pngBytes, {
     bool directOnly = false,
@@ -183,7 +199,6 @@ class ThermalReceiptPrinter {
     return doc.save();
   }
 
-  /// macOS: PNG ni to'g'ridan-to'g'ri CUPS orqali yuborish (PDF qayta rasterizatsiyasiz).
   static Future<ThermalPrintResult?> _directPrintPngViaLp(Uint8List pngBytes) async {
     final printer = await _resolveSystemPrinterName();
     if (printer == null) return null;
@@ -198,8 +213,6 @@ class ThermalReceiptPrinter {
       printer,
       '-o',
       'fit-to-page',
-      '-o',
-      'media=Custom.80x297mm',
       file.path,
     ]);
 
@@ -230,7 +243,6 @@ class ThermalReceiptPrinter {
     return null;
   }
 
-  /// Tizim va `printing` paketidagi printerlar ro'yxati.
   static Future<List<String>> discoverPrinterNames() async {
     final names = <String>{};
     try {
@@ -272,19 +284,14 @@ class ThermalReceiptPrinter {
   }
 
   static Future<ThermalPrintResult> printTestReceipt() async {
-    final data = ReceiptPrintData(
-      design: ReceiptDesignConfig.presetTableColumns(),
-      storeName: 'AlfaPOS',
-      dateTime: DateTime.now(),
-      receiptNumber: 'TEST',
-      sellerName: 'Test',
-      sellerPhone: null,
-      productRows: ReceiptSampleData.products,
-      paymentRows: ReceiptSampleData.payments,
-      discount: ReceiptSampleData.discount,
-      totalSum: ReceiptSampleData.total,
+    return _printEscPosLines(
+      [
+        'AlfaPOS',
+        'Printer testi',
+        DateTime.now().toString().substring(0, 19),
+      ],
+      directOnly: true,
     );
-    return printReceiptData(data, directOnly: true);
   }
 
   static Future<Printer?> _resolvePrinter() async {
@@ -313,28 +320,6 @@ class ThermalReceiptPrinter {
     await prefs.setString(_prefsPrinterKey, name);
   }
 
-  static Future<ThermalPrintResult> _tryPrintApiThermalHtml(
-    int orderId, {
-    bool directOnly = false,
-  }) async {
-    try {
-      final res = await ReportsApi.getOrderForPrint(orderId);
-      final html = _extractThermalHtml(res);
-      if (html == null || html.trim().isEmpty) {
-        return ThermalPrintResult.fail('API termal chek HTML topilmadi');
-      }
-      if (Platform.isMacOS) {
-        return _printHtmlViaLp(html);
-      }
-      if (Platform.isWindows) {
-        return _printHtmlViaWindows(html);
-      }
-      return ThermalPrintResult.fail('API HTML chop etish faqat macOS/Windows');
-    } catch (e) {
-      return ThermalPrintResult.fail('API chek: $e');
-    }
-  }
-
   static String? _extractThermalHtml(Map<String, dynamic> res) {
     final template = res['templateData'];
     if (template is Map) {
@@ -348,44 +333,6 @@ class ThermalReceiptPrinter {
       return large.toString();
     }
     return null;
-  }
-
-  static Future<ThermalPrintResult> _printHtmlViaLp(String html) async {
-    final printer = await _resolveSystemPrinterName();
-    if (printer == null) {
-      return ThermalPrintResult.fail('Termal printer topilmadi (lpstat)');
-    }
-    final dir = Directory.systemTemp;
-    final file = File('${dir.path}/alfapos_receipt_${DateTime.now().millisecondsSinceEpoch}.html');
-    await file.writeAsString(html);
-    final result = await Process.run('lp', ['-d', printer, file.path]);
-    if (result.exitCode == 0) {
-      await rememberPrinterName(printer);
-      return ThermalPrintResult.ok('Chek yuborildi ($printer)');
-    }
-    return ThermalPrintResult.fail('lp xato: ${result.stderr}');
-  }
-
-  static Future<ThermalPrintResult> _printHtmlViaWindows(String html) async {
-    final printer = await _resolveSystemPrinterName();
-    if (printer == null) {
-      return ThermalPrintResult.fail('Termal printer topilmadi');
-    }
-    final dir = Directory.systemTemp;
-    final file = File('${dir.path}\\alfapos_receipt_${DateTime.now().millisecondsSinceEpoch}.html');
-    await file.writeAsString(html);
-    final escaped = printer.replaceAll("'", "''");
-    final path = file.path.replaceAll("'", "''");
-    final ps = "Get-Content -Raw '$path' | Out-Printer -Name '$escaped'";
-    final result = await Process.run(
-      'powershell',
-      ['-NoProfile', '-Command', ps],
-    );
-    if (result.exitCode == 0) {
-      await rememberPrinterName(printer);
-      return ThermalPrintResult.ok('Chek yuborildi ($printer)');
-    }
-    return ThermalPrintResult.fail('Windows chop etish xato: ${result.stderr}');
   }
 
   static Future<String?> _resolveSystemPrinterName() async {
@@ -427,7 +374,6 @@ class ThermalReceiptPrinter {
     return false;
   }
 
-  /// Store javobidan order id (reports/sales/order/{id} uchun).
   static int? orderIdFromStoreResponse(Map<String, dynamic>? res) {
     if (res == null) return null;
     final maps = <Map<String, dynamic>>[res];
@@ -455,7 +401,6 @@ class ThermalReceiptPrinter {
     return null;
   }
 
-  /// Chek raqamidan order id ni topish (invoice_id bo'lsa reports orqali).
   static Future<int?> resolveOrderId({
     required String receiptId,
     int? storeOrderId,

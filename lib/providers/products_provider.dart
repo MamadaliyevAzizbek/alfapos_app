@@ -9,6 +9,7 @@ import '../models/product.dart';
 import '../services/api_service.dart';
 import '../services/product_catalog_storage.dart';
 import '../utils/barcode_validation.dart';
+import '../utils/product_image_upload.dart';
 import '../utils/product_web_store_body.dart';
 import 'categories_provider.dart';
 
@@ -111,9 +112,14 @@ class ProductsProvider extends ChangeNotifier {
       }
     }
     _assertBarcodesUnique(product);
-    _upsertCachedProduct(product);
+    var toSave = product;
+    final persistedImage = await ProductImageUpload.prepareUploadPath(product.imageUrl);
+    if (persistedImage != null) {
+      toSave = _withImageUrl(product, persistedImage);
+    }
+    _upsertCachedProduct(toSave);
     await _persistCatalog();
-    await _enqueueSync(product, isCreate: isCreate, deleteImage: deleteImage);
+    await _enqueueSync(toSave, isCreate: isCreate, deleteImage: deleteImage);
     unawaited(_drainSyncQueue());
   }
 
@@ -486,14 +492,46 @@ class ProductsProvider extends ChangeNotifier {
     return hint;
   }
 
-  /// HTTP URL emas, diskdagi fayl bo‘lsa multipart `image` uchun yo‘l.
-  static String? _localImagePathForUpload(String? imageUrl) {
-    if (imageUrl == null || imageUrl.trim().isEmpty) return null;
-    var t = imageUrl.trim();
-    if (t.startsWith('file://')) t = t.substring(7);
-    final lower = t.toLowerCase();
-    if (lower.startsWith('http://') || lower.startsWith('https://')) return null;
-    return t;
+  static Product _withImageUrl(Product p, String imageUrl) {
+    return Product(
+      id: p.id,
+      name: p.name,
+      imageUrl: imageUrl,
+      sku: p.sku,
+      variantId: p.variantId,
+      barcode: p.barcode,
+      additionalBarcodes: p.additionalBarcodes,
+      priceUzs: p.priceUzs,
+      costPriceUzs: p.costPriceUzs,
+      sellingPriceCurrency: p.sellingPriceCurrency,
+      purchasePriceCurrency: p.purchasePriceCurrency,
+      sellingPriceApi: p.sellingPriceApi,
+      purchasePriceApi: p.purchasePriceApi,
+      quantityInfo: p.quantityInfo,
+      unit: p.unit,
+      category: p.category,
+      description: p.description,
+      quantityInPack: p.quantityInPack,
+      quantityPerPack: p.quantityPerPack,
+      costPricePerPack: p.costPricePerPack,
+      sellPricePerPack: p.sellPricePerPack,
+      wholesalePriceUzs: p.wholesalePriceUzs,
+      wholesalePriceCurrency: p.wholesalePriceCurrency,
+      wholesalePriceApi: p.wholesalePriceApi,
+      reorderLevel: p.reorderLevel,
+      initialQuantity: p.initialQuantity,
+    );
+  }
+
+  static String? _imagePathFromApiResponse(Map<String, dynamic> res) {
+    final data = res['data'] ?? res['product'];
+    if (data is Map) {
+      final img = Product.imageUrlFromApiMap(Map<String, dynamic>.from(data));
+      if (img != null && img.trim().isNotEmpty) return img.trim();
+    }
+    final top = Product.imageUrlFromApiMap(res);
+    if (top != null && top.trim().isNotEmpty) return top.trim();
+    return null;
   }
 
   /// API javobidan ro'yxatni chiqarish (data/datarows/products — to'g'ridan-to'g'ri yoki data ichida)
@@ -591,15 +629,14 @@ class ProductsProvider extends ChangeNotifier {
         branchId: branchId,
         isCreate: true,
       );
-      final uploadPath = _localImagePathForUpload(product.imageUrl);
-      final useMultipart =
-          uploadPath != null && await File(uploadPath).exists();
+      final uploadPath = await ProductImageUpload.prepareUploadPath(product.imageUrl);
+      final useMultipart = uploadPath != null;
 
       assert(() {
         // ignore: avoid_print
         print('=== POST /api/v1/products/store (yangi mahsulot) ===');
         // ignore: avoid_print
-        print('Body: $body multipart: $useMultipart');
+        print('Body: $body rasm: $uploadPath multipart: $useMultipart');
         return true;
       }());
       Map<String, dynamic> res;
@@ -607,6 +644,7 @@ class ProductsProvider extends ChangeNotifier {
         res = await ProductsApi.storeProduct(
           body,
           localImagePath: useMultipart ? uploadPath : null,
+          imageHintProduct: product,
         );
         assert(() {
           // ignore: avoid_print
@@ -621,6 +659,7 @@ class ProductsProvider extends ChangeNotifier {
           res = await ProductsApi.storeProduct(
             body,
             localImagePath: useMultipart ? uploadPath : null,
+            imageHintProduct: product,
           );
         } else {
           rethrow;
@@ -634,13 +673,18 @@ class ProductsProvider extends ChangeNotifier {
       } else {
         Product result = merged;
         final idNum = int.tryParse(result.id);
-        if (idNum != null) {
+        final fromRes = _imagePathFromApiResponse(res);
+        if (fromRes != null) {
+          result = _withImageUrl(result, fromRes);
+        }
+        if (idNum != null && (result.imageUrl == null || result.imageUrl!.trim().isEmpty || useMultipart)) {
           try {
             final fresh = await ProductsApi.getProduct(idNum);
             final hydrated = _mergeProductFromApiResponse(fresh, quantityHint: product);
             if (hydrated != null) result = hydrated;
           } catch (_) {}
         }
+        _upsertCachedProduct(result);
         if (result.id != oldId) {
           await _repointSyncJobs(oldId, result.id);
         }
@@ -695,15 +739,14 @@ class ProductsProvider extends ChangeNotifier {
         isCreate: false,
       );
       // Debug: yuborilayotgan ma'lumot va javob
-      final uploadPath = _localImagePathForUpload(product.imageUrl);
-      final useMultipart =
-          uploadPath != null && await File(uploadPath).exists();
+      final uploadPath = await ProductImageUpload.prepareUploadPath(product.imageUrl);
+      final useMultipart = uploadPath != null;
 
       assert(() {
         // ignore: avoid_print
         print('=== POST /api/v1/products/$idNum/edit (tahrirlash) ===');
         // ignore: avoid_print
-        print('Body: $body multipart: $useMultipart');
+        print('Body: $body rasm: $uploadPath multipart: $useMultipart');
         return true;
       }());
       var response = await ProductsApi.updateProduct(
@@ -719,6 +762,10 @@ class ProductsProvider extends ChangeNotifier {
         return true;
       }());
       var merged = _mergeProductFromApiResponse(response, quantityHint: product);
+      final fromRes = _imagePathFromApiResponse(response);
+      if (merged != null && fromRes != null) {
+        merged = _withImageUrl(merged, fromRes);
+      }
       if (merged == null || useMultipart || deleteImage) {
         try {
           final fresh = await ProductsApi.getProduct(idNum);
@@ -728,6 +775,9 @@ class ProductsProvider extends ChangeNotifier {
       }
       if (merged == null) {
         _upsertCachedProduct(product);
+        await _persistCatalog();
+      } else {
+        _upsertCachedProduct(merged);
         await _persistCatalog();
       }
     } catch (_) {

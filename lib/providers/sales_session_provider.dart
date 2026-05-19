@@ -209,17 +209,35 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<void> _loadBranchesAndSetDefault() async {
     final res = await SalesApi.getBranches();
-    final raw = res['branches'] ?? res['data'] ?? res;
-    if (raw is! List || raw.isEmpty) {
-      branchId = 1;
+    final parsed = _parseFirstBranchFromApiResponse(res);
+    if (parsed == null) {
+      branchId = null;
       branchName = 'Filial';
-      return;
+      throw ApiException('Filiallar ro\'yxati bo\'sh yoki noto\'g\'ri formatda');
     }
-    final first = Map<String, dynamic>.from(raw.first as Map);
-    final id = first['id'] ?? first['branchID'];
-    branchId = id is int ? id : int.tryParse(id?.toString() ?? '') ?? 1;
-    branchName = (first['name'] ?? first['title'] ?? 'Filial').toString();
+    branchId = parsed.$1;
+    branchName = parsed.$2;
     await SalesApi.setBranch(branchID: branchId!, orderType: 'sales');
+  }
+
+  /// GET /sales/branches — `{ text, value }` yoki `{ id, name }`.
+  static (int, String)? _parseFirstBranchFromApiResponse(Map<String, dynamic> res) {
+    List<dynamic>? list = res['branches'] as List<dynamic>?;
+    list ??= res['data'] as List<dynamic>?;
+    if (res['data'] is Map<String, dynamic>) {
+      final dm = res['data'] as Map<String, dynamic>;
+      list ??= dm['branches'] as List<dynamic>? ?? dm['data'] as List<dynamic>?;
+    }
+    if (list == null || list.isEmpty) return null;
+    final first = list.first;
+    if (first is! Map) return null;
+    final m = Map<String, dynamic>.from(first);
+    final idRaw = m['value'] ?? m['id'] ?? m['branchID'] ?? m['branch_id'];
+    if (idRaw == null) return null;
+    final id = idRaw is int ? idRaw : int.tryParse(idRaw.toString());
+    if (id == null) return null;
+    final name = (m['text'] ?? m['name'] ?? m['title'] ?? 'Filial').toString();
+    return (id, name);
   }
 
   Future<void> _loadPaymentTypes() async {

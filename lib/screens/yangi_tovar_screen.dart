@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../core/product_image_utils.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
+import '../utils/product_image_upload.dart';
 import '../providers/categories_provider.dart';
 import '../services/api_service.dart';
 import 'scanner_screen.dart' show showCompactScanner;
@@ -330,9 +332,8 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
   }
 
   void _showImageSourcePicker() {
-    // Windows/macOS/Linux: kamera yo‘q — fayl tanlash (file_selector).
     if (isDesktopPosLayout) {
-      _pickImage(ImageSource.gallery);
+      unawaited(_pickDesktopImageFile());
       return;
     }
     IosStyleModals.showSheet(
@@ -364,6 +365,27 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     );
   }
 
+  Future<void> _pickDesktopImageFile() async {
+    try {
+      final persisted = await ProductImageUpload.pickDesktopImageFile();
+      if (!mounted) return;
+      if (persisted != null) {
+        setState(() {
+          _localImagePath = persisted;
+          _imageDeleted = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        AppNotify.warning(
+          context,
+          '${desktopImagePickHelpText()} Xato: $e',
+          duration: const Duration(seconds: 5),
+        );
+      }
+    }
+  }
+
   Future<void> _pickImage(ImageSource source) async {
     try {
       final picker = ImagePicker();
@@ -376,8 +398,10 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       );
       if (!mounted) return;
       if (xFile != null) {
+        final persisted = await ProductImageUpload.persistFromXFile(xFile);
+        if (!mounted) return;
         setState(() {
-          _localImagePath = xFile.path;
+          _localImagePath = persisted ?? xFile.path;
           _imageDeleted = false;
         });
       }
@@ -526,7 +550,11 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
         : '0 $_unit';
 
     final productId = existing?.id ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-    final savedImagePath = _localImagePath ?? (_imageDeleted ? null : _remoteImagePath);
+    String? savedImagePath = _imageDeleted ? null : (_localImagePath ?? _remoteImagePath);
+    if (_localImagePath != null && !_imageDeleted) {
+      savedImagePath =
+          await ProductImageUpload.persistLocalFile(_localImagePath!) ?? _localImagePath;
+    }
     final additionalBarcodesRaw = _collectAdditionalBarcodes();
     final product = Product(
       id: productId,

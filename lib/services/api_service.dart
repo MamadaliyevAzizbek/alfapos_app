@@ -6,6 +6,8 @@ import 'package:http_parser/http_parser.dart';
 
 import '../core/api_client.dart';
 import '../core/auth_storage.dart';
+import '../models/product.dart';
+import '../utils/product_web_store_body.dart';
 import '../utils/sale_store_response.dart';
 
 /// Dashboard — barcha statistikalar
@@ -369,59 +371,163 @@ class ProductsApi {
     return null;
   }
 
-  static Future<Map<String, dynamic>> _postWithProductImage(
+  static bool _isPlaceholderImagePath(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return true;
+    final l = raw.toLowerCase();
+    return l.contains('non.jpg') ||
+        l.contains('no_image') ||
+        l.contains('no-image') ||
+        l.contains('placeholder');
+  }
+
+  static bool _responseHasProductImage(Map<String, dynamic> res) {
+    final data = res['data'] ?? res['product'];
+    if (data is Map) {
+      final img = Product.imageUrlFromApiMap(Map<String, dynamic>.from(data));
+      if (!_isPlaceholderImagePath(img)) return true;
+    }
+    final top = Product.imageUrlFromApiMap(res);
+    return !_isPlaceholderImagePath(top);
+  }
+
+  static int? _productIdFromResponse(Map<String, dynamic> res) {
+    final data = res['data'] ?? res['product'];
+    if (data is Map) {
+      final id = data['id'] ?? data['productID'] ?? data['product_id'];
+      if (id is int && id > 0) return id;
+      final n = int.tryParse(id?.toString() ?? '');
+      if (n != null && n > 0) return n;
+    }
+    final id = res['id'] ?? res['productID'];
+    if (id is int && id > 0) return id;
+    return int.tryParse(id?.toString() ?? '');
+  }
+
+  static Future<Map<String, dynamic>> _postMultipartWithImageField(
     String path,
     Map<String, dynamic> data,
     String localImagePath,
+    String fieldName,
   ) async {
     final fields = dataToMultipartFields(data);
     final file = File(localImagePath);
     final name = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'image.jpg';
     final contentType = _imageMediaTypeForPath(localImagePath);
-    final variantId = _variantIdFromData(data);
+    final multipartFile = await http.MultipartFile.fromPath(
+      fieldName,
+      localImagePath,
+      filename: name,
+      contentType: contentType,
+    );
+    return ApiClient.postMultipart(path, fields: fields, file: multipartFile);
+  }
 
-    final fieldNames = <String>['image', 'productImage', 'product_image'];
-    if (variantId != null) {
-      fieldNames.addAll(['variant_image', 'variantDetails[0][image]']);
+  /// Avval JSON base64 (`image`), keyin multipart — server `public/uploads/products/`.
+  static Future<Map<String, dynamic>> _postProductWithImageFallback(
+    String path,
+    Map<String, dynamic> data,
+    String localImagePath,
+  ) async {
+    final f = File(localImagePath);
+    if (!await f.exists()) {
+      return ApiClient.post(path, body: data);
     }
 
+    final b64 = await _readImageBase64(localImagePath);
+    if (b64 == null) {
+      throw ApiException('Rasm fayli o\'qilmadi', 400);
+    }
+    final dataUri = _imageDataUri(localImagePath, b64);
+
     ApiException? lastError;
-    for (final fieldName in fieldNames) {
+    Map<String, dynamic>? lastOk;
+
+    final jsonBodies = <Map<String, dynamic>>[
+      {...data, 'image': dataUri, 'image_base64': b64},
+      {...data, 'image': dataUri},
+      {...data, 'image_base64': b64},
+      {...data, 'productImage': dataUri},
+    ];
+    for (final body in jsonBodies) {
       try {
-        final multipartFile = await http.MultipartFile.fromPath(
-          fieldName,
-          localImagePath,
-          filename: name,
-          contentType: contentType,
-        );
-        return await ApiClient.postMultipart(path, fields: fields, file: multipartFile);
+        final res = await ApiClient.post(path, body: body);
+        if (_responseHasProductImage(res)) return res;
+        lastOk = res;
       } on ApiException catch (e) {
         lastError = e;
       }
     }
-    if (lastError != null) throw lastError!;
-    throw ApiException('Rasm yuborilmadi', 500);
+
+    final multipartFields = <String>['image', 'productImage', 'product_image'];
+    final variantId = _variantIdFromData(data);
+    if (variantId != null) {
+      multipartFields.addAll(['variant_image', 'variantDetails[0][image]']);
+    }
+    for (final field in multipartFields) {
+      try {
+        final res = await _postMultipartWithImageField(path, data, localImagePath, field);
+        if (_responseHasProductImage(res)) return res;
+        lastOk = res;
+      } on ApiException catch (e) {
+        lastError = e;
+      }
+    }
+
+    if (lastOk != null) return lastOk;
+    throw lastError ?? ApiException('Rasm yuborilmadi', 500);
   }
 
   /// Yangi mahsulot — web bilan bir xil (`wholesalePrice`, pachka maydonlari).
   static Future<Map<String, dynamic>> storeProduct(
     Map<String, dynamic> data, {
     String? localImagePath,
+    Product? imageHintProduct,
   }) async {
-    if (localImagePath != null && localImagePath.isNotEmpty) {
-      final f = File(localImagePath);
-      if (await f.exists()) {
-        return _postWithProductImage('/products/store', data, localImagePath);
-      }
+    if (localImagePath == null || localImagePath.isEmpty) {
+      return ApiClient.post('/products/store', body: data);
     }
-    return ApiClient.post('/products/store', body: data);
+
+    var res = await _postProductWithImageFallback('/products/store', data, localImagePath);
+    if (_responseHasProductImage(res)) return res;
+
+    final id = _productIdFromResponse(res);
+    if (id == null) return res;
+
+    final patch = Map<String, dynamic>.from(data);
+    if (imageHintProduct != null) {
+      try {
+        final fresh = await getProduct(id);
+        final raw = fresh['data'] ?? fresh['product'] ?? fresh;
+        if (raw is Map) {
+          final parsed = Product.fromApiJson(Map<String, dynamic>.from(raw));
+          final vid = parsed.variantId;
+          if (vid != null && vid > 0) {
+            patch['variantID'] = vid;
+            patch['variantDetails'] = [
+              ProductWebStoreBody.variantDetailEntry(vid, imageHintProduct),
+            ];
+          }
+        }
+      } catch (_) {}
+    }
+
+    try {
+      res = await _postProductWithImageFallback(
+        '/products/$id/edit',
+        patch,
+        localImagePath,
+      );
+    } catch (_) {}
+    return res;
   }
 
   /// Eski V1 — cheklangan maydonlar; faqat fallback.
   static Future<Map<String, dynamic>> createProduct(
     Map<String, dynamic> data, {
     String? localImagePath,
-  }) async => storeProduct(data, localImagePath: localImagePath);
+    Product? imageHintProduct,
+  }) async =>
+      storeProduct(data, localImagePath: localImagePath, imageHintProduct: imageHintProduct);
 
   static Future<Map<String, dynamic>> updateProduct(
     int id,
@@ -429,34 +535,7 @@ class ProductsApi {
     String? localImagePath,
   }) async {
     if (localImagePath != null && localImagePath.isNotEmpty) {
-      final f = File(localImagePath);
-      if (await f.exists()) {
-        // Tahrirlash: yangi mahsulot kabi avval multipart (ishlaydi)
-        try {
-          return await _postWithProductImage('/products/$id/edit', data, localImagePath);
-        } on ApiException catch (multipartError) {
-          final b64 = await _readImageBase64(localImagePath);
-          if (b64 == null) throw multipartError;
-          final dataUri = _imageDataUri(localImagePath, b64);
-          final imageAttempts = <Map<String, dynamic>>[
-            {'image_base64': b64},
-            {'image_base64': dataUri},
-            {'image': dataUri},
-          ];
-          ApiException? lastJsonError = multipartError;
-          for (final extra in imageAttempts) {
-            try {
-              return await ApiClient.post(
-                '/products/$id/edit',
-                body: {...data, ...extra},
-              );
-            } on ApiException catch (e) {
-              lastJsonError = e;
-            }
-          }
-          if (lastJsonError != null) throw lastJsonError;
-        }
-      }
+      return _postProductWithImageFallback('/products/$id/edit', data, localImagePath);
     }
     return ApiClient.post('/products/$id/edit', body: data);
   }

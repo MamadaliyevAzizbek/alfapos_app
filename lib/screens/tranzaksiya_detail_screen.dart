@@ -36,9 +36,7 @@ import 'tavsif_screen.dart';
 import 'desktop/desktop_payment_screen.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
-import '../services/receipt_design_storage.dart';
-import '../models/receipt_design_config.dart';
-import '../models/receipt_print_data.dart';
+import '../utils/thermal_receipt_capture.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
@@ -94,8 +92,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   String _completedSellerName = '';
   String? _completedClientName;
   String _sellerDisplayName = '';
-  String? _sellerPhone;
-  ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.presetTableColumns();
   String? _desktopSelectedPaymentKey;
   final _desktopPayAmountController = TextEditingController();
   /// Faqat chek oldindan ko'rinishi uchun (sotuv yopilguncha). Yopilgandan keyin chek ID har doim API dan (storeRes).
@@ -287,9 +283,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (_printingPrecheck || _printingReceipt || widget.items.isEmpty) return;
     setState(() => _printingPrecheck = true);
     try {
-      _receiptDesign = await ReceiptDesignStorage.load();
-      final printData = _buildPrecheckPrintData(DateTime.now());
-      final result = await ThermalReceiptPrinter.printReceiptData(printData);
+      final receiptWidget = _buildPrecheckReceiptWidget(DateTime.now());
+      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
+      final result = await ThermalReceiptPrinter.printPngBytes(pngBytes);
       if (!mounted) return;
       if (result.ok) {
         AppNotify.success(context, result.message);
@@ -308,17 +304,22 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (rid == null || _printingReceipt) return;
     setState(() => _printingReceipt = true);
     try {
-      _receiptDesign = await ReceiptDesignStorage.load();
-      _sellerPhone ??= await getSellerPhone();
-      final printData = _buildReceiptPrintData(
+      final receiptWidget = _buildReceiptWidget(
         DateTime.now(),
         sellerName: _completedSellerName.isNotEmpty ? _completedSellerName : _sellerDisplayName,
         clientName: _completedClientName ?? _client?.name,
         receiptId: rid,
       );
+      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
+      var orderId = _completedOrderId;
+      orderId ??= await ThermalReceiptPrinter.resolveOrderId(
+        receiptId: rid,
+        storeOrderId: orderId,
+      );
       final directOnly = await PrinterSettings.isPrinterReady();
       final result = await ThermalReceiptPrinter.printSaleReceipt(
-        receiptData: printData,
+        receiptPng: pngBytes,
+        orderId: orderId,
         directOnly: directOnly,
       );
       if (!mounted) return;
@@ -388,25 +389,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _client = widget.initialClient;
     _loadPaymentTypes();
     _loadSellerDisplayName();
-    _loadReceiptDesign();
-  }
-
-  Future<void> _loadReceiptDesign() async {
-    final design = await ReceiptDesignStorage.load();
-    final phone = await getSellerPhone();
-    if (!mounted) return;
-    setState(() {
-      _receiptDesign = design;
-      _sellerPhone = phone;
-    });
-  }
-
-  String _resolveStoreNameForReceipt() {
-    final sess = SalesSessionProvider.instance;
-    return _receiptDesign.resolveStoreName(
-      branchName: sess.branchName,
-      cashRegisterName: sess.cashRegisterName,
-    );
   }
 
   @override
@@ -480,23 +462,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   Future<void> _loadSellerDisplayName() async {
     final name = await getSellerName();
-    final phone = await getSellerPhone();
-    if (mounted) {
-      setState(() {
-        _sellerDisplayName = name;
-        _sellerPhone = phone;
-      });
-    }
+    if (mounted) setState(() => _sellerDisplayName = name);
     unawaited(syncSellerNameFromApi().then((_) async {
       if (!mounted) return;
       final fresh = await getSellerName();
-      final freshPhone = await getSellerPhone();
-      if (mounted) {
-        setState(() {
-          _sellerDisplayName = fresh;
-          _sellerPhone = freshPhone;
-        });
-      }
+      if (mounted) setState(() => _sellerDisplayName = fresh);
     }));
   }
 
@@ -530,7 +500,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (widget.useDesktopFullscreenLayout) {
-      final store = _resolveStoreNameForReceipt();
+      final sess = SalesSessionProvider.instance;
+      final store = sess.cashRegisterName.isNotEmpty
+          ? sess.cashRegisterName
+          : (sess.branchName.isNotEmpty ? sess.branchName : 'Alfa market');
 
       final allocated = _getAllocatedPaymentAmounts();
       final allocatedPayments = _paymentList
@@ -1722,79 +1695,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }
   }
 
-  ReceiptPrintData _buildPrecheckPrintData(DateTime at) {
-    final productRows = widget.items.map((item) {
-      final p = item.product;
-      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
-      return ReceiptRow(
-        productName: p.name,
-        quantityStr: '${item.quantity} $unitLabel',
-        price: item.unitPriceDisplay,
-        sum: item.total,
-      );
-    }).toList();
-    final discountUzs = _totalRaw - _totalAfterDiscount;
-    return ReceiptPrintData(
-      design: _receiptDesign,
-      storeName: _resolveStoreNameForReceipt(),
-      dateTime: at,
-      receiptNumber: '—',
-      sellerName: _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi',
-      sellerPhone: _sellerPhone,
-      clientName: _client?.name,
-      description: _description,
-      productRows: productRows,
-      paymentRows: const [],
-      discount: discountUzs,
-      totalSum: _totalAfterDiscount,
-      isPrecheck: true,
-    );
-  }
-
-  ReceiptPrintData _buildReceiptPrintData(
-    DateTime at, {
-    String sellerName = 'Sotuvchi',
-    String? clientName,
-    String? receiptId,
-  }) {
-    final posNumber = receiptId ?? _txId;
-    final productRows = widget.items.map((item) {
-      final p = item.product;
-      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
-      final unitPrice = item.unitPriceDisplay;
-      return ReceiptRow(
-        productName: p.name,
-        quantityStr: '${item.quantity} $unitLabel',
-        price: unitPrice,
-        sum: item.total,
-      );
-    }).toList();
-    final allocated = _getAllocatedPaymentAmounts();
-    final paymentRows = allocated.entries.map((e) {
-      final label = _paymentList.firstWhere((m) => m.key == e.key, orElse: () => MapEntry(e.key, e.key)).value;
-      return ReceiptPaymentRow(
-        methodName: label,
-        sum: e.value,
-      );
-    }).toList();
-    final discountUzs = _totalRaw - _totalAfterDiscount;
-    return ReceiptPrintData(
-      design: _receiptDesign,
-      storeName: _resolveStoreNameForReceipt(),
-      dateTime: at,
-      receiptNumber: posNumber.startsWith('POS') ? posNumber : 'POS$posNumber',
-      sellerName: sellerName,
-      sellerPhone: _sellerPhone,
-      clientName: clientName,
-      description: _description,
-      productRows: productRows,
-      paymentRows: paymentRows,
-      discount: discountUzs,
-      totalSum: _totalAfterDiscount,
-      barcodeData: posNumber,
-    );
-  }
-
   ReceiptWidget _buildPrecheckReceiptWidget(DateTime at) {
     final productRows = widget.items.map((item) {
       final p = item.product;
@@ -1808,12 +1708,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }).toList();
     final discountUzs = _totalRaw - _totalAfterDiscount;
     return ReceiptWidget(
-      design: _receiptDesign,
-      storeName: _resolveStoreNameForReceipt(),
       dateTime: at,
       receiptNumber: '—',
       sellerName: _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi',
-      sellerPhone: _sellerPhone,
       clientName: _client?.name,
       description: _description,
       productRows: productRows,
@@ -1847,12 +1744,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }).toList();
     final discountUzs = _totalRaw - _totalAfterDiscount;
     return ReceiptWidget(
-      design: _receiptDesign,
-      storeName: _resolveStoreNameForReceipt(),
       dateTime: at,
       receiptNumber: posNumber.startsWith('POS') ? posNumber : 'POS$posNumber',
       sellerName: sellerName,
-      sellerPhone: _sellerPhone,
       clientName: clientName,
       description: _description,
       productRows: productRows,

@@ -396,10 +396,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
     addMatches(ProductsProvider.instance.withCatalogStockAll(_products.items));
     addMatches(ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts));
-    return out;
+    return product_search.sortProductsBySearchRelevance(out, q);
   }
 
-  /// Desktop qidiruv: mahalliy katalog + server (filial narxi/qoldiq).
+  /// Desktop: nom bo'yicha mahalliy qidiruv (Katalog kabi); shtrix — alohida.
   Future<void> _desktopSearchProducts(String query) async {
     final q = query.trim();
     if (q.isEmpty) {
@@ -414,8 +414,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       await _desktopBarcodeSearchAndAdd(q);
       return;
     }
-    _sales.setSearchQuery(q);
-    await _sales.loadProducts(reset: true, searchValue: q);
     if (mounted) setState(() {});
   }
 

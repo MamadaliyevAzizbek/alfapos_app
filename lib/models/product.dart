@@ -360,6 +360,26 @@ class Product {
     return false;
   }
 
+  /// Shtrix oxirgi [minSuffix]… raqam (masalan oxirgi 4 ta) bilan mos keladimi.
+  bool matchesBarcodeSuffix(String query, {int minSuffix = 4}) {
+    final suffix = normalizeBarcode(query);
+    if (suffix.length < minSuffix) return false;
+
+    bool endsOk(String? code) {
+      if (code == null || code.isEmpty) return false;
+      final digits = normalizeBarcode(code);
+      return digits.length >= suffix.length && digits.endsWith(suffix);
+    }
+
+    if (endsOk(barcode)) return true;
+    if (additionalBarcodes != null) {
+      for (final ab in additionalBarcodes!) {
+        if (endsOk(ab)) return true;
+      }
+    }
+    return false;
+  }
+
   String get priceFormatted {
     if (sellingPriceCurrency.toLowerCase() == 'usd') {
       final v = sellingPriceApi ?? priceUzs;
@@ -498,6 +518,10 @@ class Product {
     }
     return null;
   }
+
+  /// API javob / list qatoridan rasm yo'li (`uploads/products/...` yoki fayl nomi).
+  static String? imageUrlFromApiMap(Map<String, dynamic> m) =>
+      _productImageFromRowFields(m);
 
   static String? _productImageFromRowFields(Map<String, dynamic> m) {
     const keys = <String>[

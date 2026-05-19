@@ -7,7 +7,6 @@ import 'dart:io' show Platform;
 import '../../core/desktop_runtime.dart';
 import '../../services/printer_settings.dart';
 import 'desktop_shell_scope.dart';
-import 'receipt_design_editor.dart';
 
 /// Desktop: printer va boshqa sozlamalar.
 class SozlamalarDesktopScreen extends StatefulWidget {
@@ -212,10 +211,6 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 20),
-          _card(
-            child: ReceiptDesignEditor(),
           ),
         ],
       ),
