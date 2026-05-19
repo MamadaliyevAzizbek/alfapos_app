@@ -289,7 +289,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         context: context,
         pixelRatio: 2,
         delay: const Duration(milliseconds: 80),
-        targetSize: const Size(360, 720),
       );
       final result = await ThermalReceiptPrinter.printPngBytes(pngBytes);
       if (!mounted) return;
@@ -322,7 +321,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         context: context,
         pixelRatio: 2,
         delay: const Duration(milliseconds: 80),
-        targetSize: const Size(360, 720),
       );
       var orderId = _completedOrderId;
       orderId ??= await ThermalReceiptPrinter.resolveOrderId(

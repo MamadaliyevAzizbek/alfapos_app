@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -33,16 +34,14 @@ class ThermalReceiptPrinter {
     'thermal',
   ];
 
-  /// API termal HTML, keyin raster PDF orqali chop etish.
+  /// Chek rasmini 80mm PDF ga aylantirib chop etadi.
+  /// API HTML termal printerga yuborilmasin — Windows/macOS da HTML manbasi
+  /// chop etilib «kodlar» ko‘rinishida chiqadi.
   static Future<ThermalPrintResult> printSaleReceipt({
     required Uint8List receiptPng,
     int? orderId,
     bool directOnly = false,
   }) async {
-    if (orderId != null && orderId > 0) {
-      final fromApi = await _tryPrintApiThermalHtml(orderId, directOnly: directOnly);
-      if (fromApi.ok) return fromApi;
-    }
     return printPngBytes(receiptPng, directOnly: directOnly);
   }
 
@@ -80,23 +79,38 @@ class ThermalReceiptPrinter {
   static Future<Uint8List> _pngToRoll80Pdf(Uint8List pngBytes) async {
     final doc = pw.Document();
     final image = pw.MemoryImage(pngBytes);
-    final format = PdfPageFormat.roll80.copyWith(
-      marginLeft: 2 * PdfPageFormat.mm,
-      marginRight: 2 * PdfPageFormat.mm,
-      marginTop: 2 * PdfPageFormat.mm,
-      marginBottom: 4 * PdfPageFormat.mm,
+    final decoded = img.decodeImage(pngBytes);
+
+    const marginH = 2 * PdfPageFormat.mm;
+    const marginTop = 2 * PdfPageFormat.mm;
+    const marginBottom = 4 * PdfPageFormat.mm;
+    final rollWidth = PdfPageFormat.roll80.width;
+
+    var pageHeight = PdfPageFormat.roll80.height;
+    if (decoded != null && decoded.width > 0 && decoded.height > 0) {
+      final contentWidth = rollWidth - marginH * 2;
+      final scale = contentWidth / decoded.width;
+      pageHeight = decoded.height * scale + marginTop + marginBottom;
+      pageHeight = pageHeight.clamp(60 * PdfPageFormat.mm, 1200 * PdfPageFormat.mm);
+    }
+
+    final format = PdfPageFormat(
+      rollWidth,
+      pageHeight,
+      marginLeft: marginH,
+      marginRight: marginH,
+      marginTop: marginTop,
+      marginBottom: marginBottom,
     );
 
     doc.addPage(
       pw.Page(
         pageFormat: format,
         build: (ctx) {
-          return pw.Center(
-            child: pw.Image(
-              image,
-              width: format.availableWidth,
-              fit: pw.BoxFit.contain,
-            ),
+          return pw.Image(
+            image,
+            width: format.availableWidth,
+            fit: pw.BoxFit.fitWidth,
           );
         },
       ),
