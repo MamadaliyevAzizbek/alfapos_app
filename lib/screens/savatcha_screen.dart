@@ -157,6 +157,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (mounted) setState(() {});
     });
     _productsSub = _products.stream.listen((_) {
+      _sales.applyCatalogStock();
       if (mounted) setState(() {});
     });
     _sales.addListener(_onSalesSessionChanged);
@@ -170,6 +171,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (isDesktopPosLayout) {
         await _products.loadFromStorage(refreshInBackground: false);
         await _sales.init(localFirst: true);
+        _sales.applyCatalogStock();
         unawaited(_refreshSavedOrdersCount());
       } else {
         final shift = CashRegisterShiftProvider.instance;

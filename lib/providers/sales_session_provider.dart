@@ -73,14 +73,25 @@ class SalesSessionProvider extends ChangeNotifier {
   bool _backgroundSyncInFlight = false;
   bool get backgroundSyncInFlight => _backgroundSyncInFlight;
 
+  /// Mahsulotlar bo‘limi yangilanganda sotuv kartochkalaridagi miqdorni moslashtirish.
+  void applyCatalogStock() {
+    if (salesProducts.isEmpty) return;
+    salesProducts = ProductsProvider.instance.withCatalogStockAll(salesProducts);
+    notifyListeners();
+  }
+
   /// Diskdan sessiyani tiklash (server kutmasdan katalog ko‘rsatish).
   Future<bool> bootstrapFromLocal() async {
     final meta = await SalesSessionStorage.loadMeta();
     _applyMetaFromStorage(meta);
 
-    var products = await SalesSessionStorage.loadProducts();
+    // Avval mahsulotlar katalogi (to‘g‘ri ombor), eski sotuv keshi faqat zaxira.
+    var products = ProductsProvider.instance.items;
     if (products.isEmpty) {
       products = await ProductCatalogStorage.loadCatalog();
+    }
+    if (products.isEmpty) {
+      products = await SalesSessionStorage.loadProducts();
     }
     if (products.isEmpty) return false;
 
@@ -402,6 +413,7 @@ class SalesSessionProvider extends ChangeNotifier {
       if (auto != null && _lastSearch.isNotEmpty && isBarcodeQuery) {
         _pendingBarcodeProduct = auto;
       }
+      applyCatalogStock();
       if (salesProducts.isNotEmpty) {
         unawaited(_persistSessionSnapshot());
       }

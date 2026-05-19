@@ -743,11 +743,11 @@ class ProductsProvider extends ChangeNotifier {
     }
   }
 
-  /// Kirim/sotuv API mahsulotini katalogdagi ombor miqdori bilan bir xil qiladi.
-  Product withCatalogStock(Product fromReceivingApi) {
-    final catalog = getProductById(fromReceivingApi.id);
-    if (catalog == null) return fromReceivingApi;
-    return catalog.mergeWithLocalFallback(fromReceivingApi);
+  /// Sotuv/kirim API mahsulotiga katalogdagi ombor miqdorini qo‘llaydi (GET /products aniqroq).
+  Product withCatalogStock(Product fromSalesOrReceiveApi) {
+    final catalog = getProductById(fromSalesOrReceiveApi.id);
+    if (catalog == null) return fromSalesOrReceiveApi;
+    return catalog.mergeWithLocalFallback(fromSalesOrReceiveApi, preferServerStock: true);
   }
 
   List<Product> withCatalogStockAll(Iterable<Product> products) =>

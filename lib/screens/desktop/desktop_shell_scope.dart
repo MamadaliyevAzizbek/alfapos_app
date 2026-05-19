@@ -59,6 +59,8 @@ class DesktopShellSync {
         await CategoriesProvider.instance.loadFromApiIfStale();
         break;
       case 3:
+        await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
+        SalesSessionProvider.instance.applyCatalogStock();
         await SalesSessionProvider.instance.syncFromServerInBackground();
         break;
       case 4:
