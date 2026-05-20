@@ -66,8 +66,8 @@ class Product {
 
   /// Ombordagi mavjud miqdor (dona).
   int get availableStockQuantity {
-    if (initialQuantity > 0) return initialQuantity;
-    final m = RegExp(r'(\d+)').firstMatch(quantityInfo);
+    if (initialQuantity != 0) return initialQuantity;
+    final m = RegExp(r'(-?\d+)').firstMatch(quantityInfo);
     if (m != null) {
       final n = int.tryParse(m.group(1)!);
       if (n != null) return n;
@@ -161,14 +161,14 @@ class Product {
     final mergedCost = (costPriceUzs != null && costPriceUzs! > 0) ? costPriceUzs : local.costPriceUzs;
     final mergedQty = preferServerStock
         ? initialQuantity
-        : (initialQuantity > 0 ? initialQuantity : local.initialQuantity);
+        : (initialQuantity != 0 ? initialQuantity : local.initialQuantity);
     final mergedImage = _hasNonEmptyText(imageUrl) ? imageUrl : local.imageUrl;
     final mergedUnitRaw = _hasNonEmptyText(unit) ? unit : local.unit;
     final mergedUnit = sanitizeUnitLabel(mergedUnitRaw) ?? mergedUnitRaw ?? 'dona';
     final mergedQtyInfoRaw = preferServerStock
         ? quantityInfo
-        : (mergedQty > 0
-            ? (initialQuantity > 0 ? quantityInfo : local.quantityInfo)
+        : (mergedQty != 0
+            ? (initialQuantity != 0 ? quantityInfo : local.quantityInfo)
             : (_hasNonEmptyText(quantityInfo) ? quantityInfo : local.quantityInfo));
     final mergedQtyInfo = _sanitizeQuantityInfo(mergedQtyInfoRaw, mergedQty, mergedUnit)!;
     final mergedCategory = (!_isCategoryIdOnly(category) && _hasNonEmptyText(category))
@@ -625,7 +625,7 @@ class Product {
     final s = v.toString().trim();
     final n = int.tryParse(s);
     if (n != null) return n;
-    final digits = RegExp(r'(\d+)').firstMatch(s);
+    final digits = RegExp(r'(-?\d+)').firstMatch(s);
     if (digits != null) {
       final parsed = int.tryParse(digits.group(1)!);
       if (parsed != null) return parsed;

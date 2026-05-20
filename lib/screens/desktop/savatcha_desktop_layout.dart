@@ -312,20 +312,31 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
+                    color: const Color(0xFFEAF2FF),
+                    borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       onTap: onFilterTap,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 44,
+                        width: 50,
                         height: 44,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.divider),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF93C5FD), width: 1.3),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x1A2563EB),
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        child: const Icon(Icons.filter_list_rounded, color: AppTheme.textSecondary),
+                        child: const Icon(
+                          Icons.tune_rounded,
+                          size: 22,
+                          color: Color(0xFF1D4ED8),
+                        ),
                       ),
                     ),
                   ),

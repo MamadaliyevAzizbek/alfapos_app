@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import '../../core/app_notify.dart';
 import '../../core/seller_preferences.dart';
 import '../../core/theme.dart';
@@ -265,25 +266,25 @@ class _DesktopSidebar extends StatelessWidget {
     this.onLogout,
   });
 
-  static const _bg = Color(0xFF1E293B);
-  static const _activeBg = Color(0xFF334155);
-  static const double width = 140;
+  static const _bg = Color(0xFF132238);
+  static const _activeBg = Color(0xFF1E293B);
+  static const double width = 268;
   static const double _width = width;
-  static const double _logoHeight = 76;
-  static const double _iconSize = 30;
-  static const double _labelSize = 12;
+  static const double _logoHeight = 78;
+  static const double _iconSize = 20;
+  static const double _labelSize = 15;
 
-  /// Har bir bo'lim uchun ma'noga mos icon.
+  /// Lucide — yupqa stroke, professional sidebar iconlari.
   static const _items = [
-    (Icons.query_stats_rounded, 'Statistika'),
-    (Icons.groups_rounded, 'Mijozlar'),
-    (Icons.category_rounded, 'Mahsulotlar'),
-    (Icons.point_of_sale_rounded, "Sotuv bo'limi"),
-    (Icons.move_to_inbox_rounded, 'Kirimlar'),
-    (Icons.account_balance_wallet_rounded, 'Xarajatlar'),
-    (Icons.swap_horiz_rounded, 'Tranzaksiyalar'),
-    (Icons.summarize_rounded, 'Hisobotlar'),
-    (Icons.settings_rounded, 'Sozlamalar'),
+    (LucideIcons.layout_dashboard, 'Statistika'),
+    (LucideIcons.users, 'Mijozlar'),
+    (LucideIcons.package, 'Mahsulotlar'),
+    (LucideIcons.shopping_cart, "Sotuv bo'limi"),
+    (LucideIcons.package_plus, 'Kirimlar'),
+    (LucideIcons.wallet, 'Xarajatlar'),
+    (LucideIcons.arrow_left_right, 'Tranzaksiyalar'),
+    (LucideIcons.file_text, 'Hisobotlar'),
+    (LucideIcons.settings, 'Sozlamalar'),
   ];
 
   @override
@@ -294,40 +295,68 @@ class _DesktopSidebar extends StatelessWidget {
         width: _width,
         child: Column(
           children: [
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: SizedBox(
-                width: _width - 16,
-                height: _logoHeight,
-                child: Image.asset(
-                  'assets/branding/alfapos_sidebar_logo.png',
-                  width: _width - 16,
-                  height: _logoHeight,
-                  fit: BoxFit.contain,
-                  alignment: Alignment.center,
-                  filterQuality: FilterQuality.high,
-                  errorBuilder: (_, __, ___) => Image.asset(
-                    'assets/branding/alfapos_logo.png',
-                    width: _width - 16,
-                    height: _logoHeight,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Text(
-                      'alfapos',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 20,
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+              child: Container(
+                height: 88,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B2C46),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF314967)),
+                ),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: SizedBox(
+                      height: _logoHeight + 4,
+                      width: double.infinity,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.asset(
+                          'Untitled-1-01.png',
+                          fit: BoxFit.cover,
+                          alignment: Alignment.center,
+                          errorBuilder: (_, __, ___) => const Text(
+                            'alfapos',
+                            style: TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 24,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Divider(color: Color(0x2AFFFFFF), height: 1),
+            ),
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+              child: Row(
+                children: [
+                  Text(
+                    'BO‘LIMLAR',
+                    style: TextStyle(
+                      color: Color(0xFFA8B7CC),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.9,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
                 itemCount: _items.length,
                 itemBuilder: (context, i) {
                   final item = _items[i];
@@ -341,7 +370,39 @@ class _DesktopSidebar extends StatelessWidget {
                 },
               ),
             ),
-            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Divider(color: Color(0x335A6D88), height: 1),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B2C46),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF314967)),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.verified_rounded, color: Color(0xFF16A34A), size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sistema faol',
+                          style: TextStyle(
+                            color: Color(0xFFD7E1F0),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -367,47 +428,60 @@ class _SidebarTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fg = selected
-        ? Colors.white
+        ? const Color(0xFFEAF1FF)
         : muted
-            ? Colors.white54
-            : Colors.white70;
+            ? const Color(0xFF7185A3)
+            : const Color(0xFFC2CFE2);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: selected ? _DesktopSidebar._activeBg : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        color: selected ? _DesktopSidebar._activeBg : const Color(0xFF1A2D48),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: selected
-                  ? const Border(
-                      left: BorderSide(color: AppTheme.primary, width: 3),
-                    )
-                  : null,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: selected ? const Color(0xFF5F7EA8) : const Color(0xFF365276),
+                width: 1.0,
+              ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: Row(
               children: [
-                Icon(icon, color: fg, size: _DesktopSidebar._iconSize),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: _DesktopSidebar._labelSize,
-                    height: 1.25,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Icon(
+                    icon,
                     color: fg,
+                    size: _DesktopSidebar._iconSize,
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: _DesktopSidebar._labelSize,
+                      height: 1.25,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: fg,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    LucideIcons.chevron_right,
+                    color: const Color(0xFF9FB6D9),
+                    size: 18,
+                  ),
               ],
             ),
           ),

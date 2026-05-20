@@ -1,7 +1,7 @@
 name: alfapos_app
 description: Alfapos - POS tizimi (Flutter).
 publish_to: none
-version: 1.0.8+20
+version: 1.0.8+23
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -27,6 +27,8 @@ dependencies:
   pdf: ^3.11.3
   esc_pos_utils_plus: ^2.0.4
   charset_converter: ^2.3.0
+  flutter_svg: ^2.0.10+1
+  flutter_lucide: ^1.11.0
 
 dev_dependencies:
   flutter_test:
@@ -45,5 +47,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    - Untitled-1-01.svg
+    - Untitled-1-01.png
+    - Untitled-1-03.png
+    - Untitled-3-01.jpg
     - assets/branding/alfapos_logo.png
     - assets/branding/alfapos_sidebar_logo.png

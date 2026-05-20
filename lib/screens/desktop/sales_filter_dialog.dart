@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../providers/sales_session_provider.dart';
@@ -19,11 +20,23 @@ class SalesFilterDialog extends StatefulWidget {
 
   static Future<bool?> show(BuildContext context) {
     if (isDesktopPosLayout) {
-      return showDialog<bool>(
+      return showGeneralDialog<bool>(
         context: context,
         barrierDismissible: true,
+        barrierLabel: 'Filtr',
         barrierColor: Colors.black38,
-        builder: (_) => const SalesFilterDialog(),
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, __, ___) => const Align(
+          alignment: Alignment.centerRight,
+          child: SalesFilterDialog(),
+        ),
+        transitionBuilder: (context, animation, _, child) {
+          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+          return SlideTransition(
+            position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(curved),
+            child: child,
+          );
+        },
       );
     }
     return _showMobileSheet(context);
@@ -140,7 +153,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
 
   void _clearAndApply() {
     _reset();
-    _apply();
+    _applyLive();
   }
 
   void _apply() {
@@ -154,6 +167,18 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
       showUsdOnCards: _showUsdEquivalent,
     );
     Navigator.pop(context, true);
+  }
+
+  void _applyLive() {
+    _sales.applySalesFilters(
+      category: _categoryId,
+      brand: _brandId,
+      hideZero: _hideZeroStock,
+      sellWholesale: _sellAtWholesale,
+      sellPurchase: _sellAtPurchase,
+      showPurchaseOnCards: _showPurchasePrice,
+      showUsdOnCards: _showUsdEquivalent,
+    );
   }
 
   @override
@@ -172,38 +197,72 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
       );
     }
 
-    return Dialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 420, maxWidth: 520),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Filtr',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    icon: const Icon(Icons.close_rounded, color: AppTheme.textSecondary),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                  ),
-                ],
-              ),
+    return Align(
+      alignment: Alignment.centerRight,
+      child: SafeArea(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 560,
+            height: double.infinity,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(left: BorderSide(color: Color(0xFFE2E8F0))),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x2E0F172A),
+                  blurRadius: 28,
+                  offset: Offset(-8, 0),
+                ),
+              ],
             ),
-            form,
-            const Divider(height: 1),
-            actions,
-          ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 18, 12, 16),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF2FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.tune_rounded, size: 24, color: AppTheme.primary),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Filtr',
+                          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                        ),
+                      ),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F6FB),
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: IconButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                Expanded(child: form),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                actions,
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -212,7 +271,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   Widget _buildForm() {
     return SingleChildScrollView(
       controller: widget.scrollController,
-      padding: EdgeInsets.fromLTRB(20, 0, 20, widget.compactActions ? 12 : 8),
+      padding: EdgeInsets.fromLTRB(22, 4, 22, widget.compactActions ? 12 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -236,51 +295,88 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
                 label: const Text('Kategoriya va brendlarni yuklash'),
               ),
             ),
-          _FilterDropdown(
-            label: 'Kategoriya',
-            value: _categoryId,
-            options: _sales.categories,
-            onChanged: (v) => setState(() => _categoryId = v),
+          _FilterSection(
+            desktop: !widget.compactActions,
+            child: Column(
+              children: [
+                _FilterDropdown(
+                  label: 'Kategoriya',
+                  value: _categoryId,
+                  options: _sales.categories,
+                  onChanged: (v) => setState(() {
+                    _categoryId = v;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+                const SizedBox(height: 14),
+                _FilterDropdown(
+                  label: 'Brend',
+                  value: _brandId,
+                  options: _sales.brands,
+                  onChanged: (v) => setState(() {
+                    _brandId = v;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _FilterDropdown(
-            label: 'Brend',
-            value: _brandId,
-            options: _sales.brands,
-            onChanged: (v) => setState(() => _brandId = v),
-          ),
-          const SizedBox(height: 8),
-          const Divider(height: 24),
-          _FilterToggle(
-            label: '0 qoldiqni yashirish',
-            value: _hideZeroStock,
-            onChanged: (v) => setState(() => _hideZeroStock = v),
-          ),
-          _FilterToggle(
-            label: 'Ulgurji narx',
-            value: _sellAtWholesale,
-            onChanged: (v) => setState(() {
-              _sellAtWholesale = v;
-              if (v) _sellAtPurchase = false;
-            }),
-          ),
-          _FilterToggle(
-            label: 'Kelish narx',
-            value: _sellAtPurchase,
-            onChanged: (v) => setState(() {
-              _sellAtPurchase = v;
-              if (v) _sellAtWholesale = false;
-            }),
-          ),
-          _FilterToggle(
-            label: "Kelish narxini ko'rsatish",
-            value: _showPurchasePrice,
-            onChanged: (v) => setState(() => _showPurchasePrice = v),
-          ),
-          _FilterToggle(
-            label: 'Dollar ekvivalentini ko\'rsatish (\$)',
-            value: _showUsdEquivalent,
-            onChanged: (v) => setState(() => _showUsdEquivalent = v),
+          const SizedBox(height: 14),
+          _FilterSection(
+            desktop: !widget.compactActions,
+            child: Column(
+              children: [
+                _FilterToggle(
+                  label: '0 qoldiqni yashirish',
+                  value: _hideZeroStock,
+                  onChanged: (v) => setState(() {
+                    _hideZeroStock = v;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+                _FilterToggle(
+                  label: 'Ulgurji narx',
+                  value: _sellAtWholesale,
+                  onChanged: (v) => setState(() {
+                    _sellAtWholesale = v;
+                    if (v) _sellAtPurchase = false;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+                _FilterToggle(
+                  label: 'Kelish narx',
+                  value: _sellAtPurchase,
+                  onChanged: (v) => setState(() {
+                    _sellAtPurchase = v;
+                    if (v) _sellAtWholesale = false;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+                _FilterToggle(
+                  label: "Kelish narxini ko'rsatish",
+                  value: _showPurchasePrice,
+                  onChanged: (v) => setState(() {
+                    _showPurchasePrice = v;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+                _FilterToggle(
+                  label: 'Dollar ekvivalentini ko\'rsatish (\$)',
+                  value: _showUsdEquivalent,
+                  onChanged: (v) => setState(() {
+                    _showUsdEquivalent = v;
+                    if (!widget.compactActions) _applyLive();
+                  }),
+                  desktop: !widget.compactActions,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -297,27 +393,20 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
       child: Row(
         children: [
           OutlinedButton(
             onPressed: _clearAndApply,
             style: OutlinedButton.styleFrom(
+              minimumSize: const Size(180, 58),
               foregroundColor: const Color(0xFFDC2626),
-              backgroundColor: const Color(0xFFFEF2F2),
-              side: const BorderSide(color: Color(0xFFDC2626)),
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFF87171), width: 1.4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+              textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
             ),
             child: const Text('Tozalash'),
-          ),
-          const Spacer(),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Bekor qilish'),
-          ),
-          const SizedBox(width: 10),
-          FilledButton(
-            onPressed: _apply,
-            child: const Text('Saqlash'),
           ),
         ],
       ),
@@ -330,25 +419,27 @@ class _FilterDropdown extends StatelessWidget {
   final String? value;
   final List<Map<String, dynamic>> options;
   final ValueChanged<String?> onChanged;
+  final bool desktop;
 
   const _FilterDropdown({
     required this.label,
     required this.value,
     required this.options,
     required this.onChanged,
+    this.desktop = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final items = <DropdownMenuItem<String?>>[
-      const DropdownMenuItem(
+      DropdownMenuItem(
         value: null,
-        child: _DropdownLabel('Hammasi'),
+        child: _DropdownLabel('Hammasi', desktop: desktop),
       ),
       ...options.map(
         (o) => DropdownMenuItem(
           value: o['id']?.toString(),
-          child: _DropdownLabel((o['name'] ?? '').toString()),
+          child: _DropdownLabel((o['name'] ?? '').toString(), desktop: desktop),
         ),
       ),
     ];
@@ -357,30 +448,38 @@ class _FilterDropdown extends StatelessWidget {
       value: _safeValue(value, options),
       isExpanded: true,
       menuMaxHeight: SalesFilterDialog.menuMaxHeight,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(desktop ? 14 : 8),
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: TextStyle(
+          color: desktop ? const Color(0xFF64748B) : AppTheme.textSecondary,
+          fontWeight: desktop ? FontWeight.w600 : FontWeight.normal,
+        ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: desktop ? const Color(0xFFFBFDFF) : Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppTheme.divider),
+          borderRadius: BorderRadius.circular(desktop ? 14 : 8),
+          borderSide: BorderSide(color: desktop ? const Color(0xFFDDE5F0) : AppTheme.divider),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppTheme.divider),
+          borderRadius: BorderRadius.circular(desktop ? 14 : 8),
+          borderSide: BorderSide(color: desktop ? const Color(0xFFDDE5F0) : AppTheme.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(desktop ? 14 : 8),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.4),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
       selectedItemBuilder: (context) => [
-        const Align(
+        Align(
           alignment: AlignmentDirectional.centerStart,
-          child: _DropdownLabel('Hammasi', dense: true),
+          child: _DropdownLabel('Hammasi', dense: true, desktop: desktop),
         ),
         ...options.map(
           (o) => Align(
             alignment: AlignmentDirectional.centerStart,
-            child: _DropdownLabel((o['name'] ?? '').toString(), dense: true),
+            child: _DropdownLabel((o['name'] ?? '').toString(), dense: true, desktop: desktop),
           ),
         ),
       ],
@@ -399,8 +498,9 @@ class _FilterDropdown extends StatelessWidget {
 class _DropdownLabel extends StatelessWidget {
   final String text;
   final bool dense;
+  final bool desktop;
 
-  const _DropdownLabel(this.text, {this.dense = false});
+  const _DropdownLabel(this.text, {this.dense = false, this.desktop = false});
 
   @override
   Widget build(BuildContext context) {
@@ -409,8 +509,8 @@ class _DropdownLabel extends StatelessWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        fontSize: dense ? 14 : 15,
-        fontWeight: dense ? FontWeight.w500 : FontWeight.normal,
+        fontSize: desktop ? (dense ? 22 : 23) : (dense ? 14 : 15),
+        fontWeight: dense ? FontWeight.w600 : FontWeight.w500,
       ),
     );
   }
@@ -420,32 +520,87 @@ class _FilterToggle extends StatelessWidget {
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
+  final bool desktop;
 
   const _FilterToggle({
     required this.label,
     required this.value,
     required this.onChanged,
+    this.desktop = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 15, color: AppTheme.textPrimary),
+    final row = Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: desktop ? 22 : 15,
+              color: AppTheme.textPrimary,
+              fontWeight: desktop ? FontWeight.w500 : FontWeight.normal,
             ),
           ),
+        ),
+        if (desktop)
+          Transform.scale(
+            scale: 1.28,
+            child: CupertinoSwitch(
+              value: value,
+              onChanged: onChanged,
+              activeTrackColor: AppTheme.primary,
+            ),
+          )
+        else
           Switch(
             value: value,
             onChanged: onChanged,
             activeColor: AppTheme.primary,
           ),
-        ],
+      ],
+    );
+
+    if (!desktop) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: row,
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
+      child: row,
+    );
+  }
+}
+
+class _FilterSection extends StatelessWidget {
+  final Widget child;
+  final bool desktop;
+
+  const _FilterSection({
+    required this.child,
+    required this.desktop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!desktop) return child;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: child,
     );
   }
 }
