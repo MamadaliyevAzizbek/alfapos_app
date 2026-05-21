@@ -59,6 +59,7 @@ jobs:
           ) | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $iscc) { throw 'Inno Setup ISCC.exe topilmadi' }
           & $iscc "/DMyAppVersion=$ver" 'scripts/alfapos_installer.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup xato: $LASTEXITCODE" }
           $setup = "$outDir/alfapos_app-windows-x64-setup.exe"
           if (-not (Test-Path $setup)) { throw "Setup topilmadi: $setup" }
           Write-Host "SETUP: $setup ($((Get-Item $setup).Length) bytes)"
