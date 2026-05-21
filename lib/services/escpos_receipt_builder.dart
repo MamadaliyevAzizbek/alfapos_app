@@ -32,12 +32,11 @@ class EscPosReceiptBuilder {
         ? kThermalChars58mm
         : kThermalChars80mm;
     final wrapped = ThermalReceiptLineWrap.wrapAll(lines, maxWidth: maxWidth);
+    final cfg = design ?? ReceiptDesignConfig.defaults;
 
     bytes.addAll(g.reset());
     final codeTable = _codeTableId(cfg.printerCodePage);
     bytes.addAll(g.setGlobalCodeTable(codeTable));
-
-    final cfg = design ?? ReceiptDesignConfig.defaults;
     if (cfg.showLogo && cfg.logoFilePath != null && cfg.logoFilePath!.isNotEmpty) {
       final logoBytes = await _loadLogoBytes(cfg.logoFilePath!);
       if (logoBytes != null) {
