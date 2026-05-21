@@ -26,7 +26,17 @@ class EscPosTextCodec {
         .replaceAll('—', '-')
         .replaceAll('…', '...')
         .replaceAll('₽', 'sum')
-        .replaceAll('’', "'");
+        .replaceAll('’', "'")
+        .replaceAll('×', 'x')
+        .replaceAll('°', '')
+        .replaceAll('≥', '')
+        .replaceAll('шт', 'dona')
+        .replaceAll('Шт', 'dona')
+        .replaceAll('ШТ', 'dona')
+        .replaceAll('дона', 'dona')
+        .replaceAll('Дона', 'dona')
+        .replaceAll('сум', "so'm")
+        .replaceAll('Сум', "so'm");
   }
 
   /// Printerda bo'lmasa — lotin/alifbo almashtirish.

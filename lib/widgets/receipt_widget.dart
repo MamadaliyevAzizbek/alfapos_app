@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
+import '../utils/receipt_store_title.dart';
 import '../utils/thermal_receipt_formatter.dart';
 
 /// Bir qator chek qatori: mahsulot, miqdor, narx, summa
@@ -72,9 +73,10 @@ class ReceiptWidget extends StatelessWidget {
     this.design = ReceiptDesignConfig.defaults,
   });
 
-  static String _fmt(int n) => formatThousands(n);
+  static String _fmt(int n) => formatThousandsComma(n);
 
-  String get _displayTitle => design.titleForBranch(branchName);
+  String get _displayTitle =>
+      ReceiptStoreTitle.resolve(design: design, branchName: branchName);
 
   List<String> toThermalPrintLines() {
     return ThermalReceiptFormatter.toPrintLines(
@@ -227,23 +229,29 @@ class ReceiptWidget extends StatelessWidget {
                   : productRows[i].productName,
               style: headerStyle,
             ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    '${productRows[i].quantityStr} x ${_fmt(productRows[i].price)} $som.',
-                    style: textStyle,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_normalizeQty(productRows[i].quantityStr)} x ${_fmt(productRows[i].price)} $som.',
+                      style: textStyle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${_fmt(productRows[i].sum)} $som',
-                  style: textStyle,
-                  textAlign: TextAlign.right,
-                  softWrap: false,
-                ),
-              ],
+                  SizedBox(
+                    width: 108,
+                    child: Text(
+                      '${_fmt(productRows[i].sum)} $som',
+                      style: textStyle,
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.visible,
+                      softWrap: false,
+                    ),
+                  ),
+                ],
+              ),
             ),
             if (design.showItemSeparator) ...[
               const SizedBox(height: 4),
@@ -330,6 +338,13 @@ class ReceiptWidget extends StatelessWidget {
 
   static String _timeStr(DateTime d) {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
+  }
+
+  static String _normalizeQty(String qty) {
+    return qty
+        .replaceAll('шт', 'dona')
+        .replaceAll('Шт', 'dona')
+        .replaceAll('×', 'x');
   }
 }
 

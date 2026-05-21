@@ -1,4 +1,6 @@
+import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
+import 'receipt_store_title.dart';
 import 'thermal_receipt_line_wrap.dart';
 
 /// Termal chek mahsulot qatori (Alfapos.pdf ko‘rinishi).
@@ -64,6 +66,7 @@ class ThermalReceiptPrintData {
 class ThermalReceiptFormatter {
   ThermalReceiptFormatter._();
 
+  static const kReceiptAmountColumnWidth = 20;
   static const _itemSep = '--------------------------------';
   static const _tableHeaders = {'mahsulot', 'miqdor', 'narx', 'summa'};
 
@@ -237,7 +240,10 @@ class ThermalReceiptFormatter {
       }
     }
 
-    final title = config.titleForBranch(d.storeName);
+    final title = ReceiptStoreTitle.resolve(
+      design: config,
+      branchName: d.storeName,
+    );
     center(title);
     if (config.showDateTime) {
       center(_fmtDateTime(d.dateTime));
@@ -282,12 +288,14 @@ class ThermalReceiptFormatter {
       } else {
         left(p.name);
       }
-      final sumPart = p.lineTotal.contains('so\'m') || p.lineTotal.contains('sum')
-          ? p.lineTotal
-          : som(p.lineTotal);
+      final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
       final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
       lines.add(
-        ThermalReceiptLineWrap.formatTwoColumns(qtyPart, sumPart, rightWidth: 16),
+        ThermalReceiptLineWrap.formatTwoColumns(
+          qtyPart,
+          sumPart,
+          rightWidth: kReceiptAmountColumnWidth,
+        ),
       );
       if (config.showItemSeparator) {
         lines.add(sep);
@@ -299,8 +307,8 @@ class ThermalReceiptFormatter {
         lines.add(
           ThermalReceiptLineWrap.formatTwoColumns(
             pay.method,
-            som(pay.amount),
-            rightWidth: 16,
+            som(formatAmountForReceipt(pay.amount)),
+            rightWidth: kReceiptAmountColumnWidth,
           ),
         );
       }
@@ -309,8 +317,8 @@ class ThermalReceiptFormatter {
     lines.add(
       ThermalReceiptLineWrap.formatTwoColumns(
         config.discountLabel,
-        som(d.discountAmount),
-        rightWidth: 16,
+        som(formatAmountForReceipt(d.discountAmount)),
+        rightWidth: kReceiptAmountColumnWidth,
       ),
     );
     if (config.showItemSeparator) {
@@ -319,8 +327,8 @@ class ThermalReceiptFormatter {
     lines.add(
       ThermalReceiptLineWrap.formatTwoColumns(
         config.totalLabel,
-        som(d.totalAmount),
-        rightWidth: 16,
+        som(formatAmountForReceipt(d.totalAmount)),
+        rightWidth: kReceiptAmountColumnWidth,
       ),
     );
 
@@ -484,6 +492,16 @@ class ThermalReceiptFormatter {
     return m?.group(1)?.trim();
   }
 
+  static String _lineTotalSom(String lineTotal, String suffix) {
+    final t = lineTotal.trim();
+    if (t.toLowerCase().contains("so'm") || t.toLowerCase().contains('sum')) {
+      final amount = formatAmountForReceipt(t);
+      final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
+      return '$amount $suf';
+    }
+    return _withSom(formatAmountForReceipt(t), suffix: suffix);
+  }
+
   static String _withSom(String amount, {String suffix = "so'm"}) {
     final t = amount.trim();
     final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
@@ -496,19 +514,28 @@ class ThermalReceiptFormatter {
   }
 
   static String _productQtyLine(ThermalReceiptProductLine p, {String suffix = "so'm"}) {
-    final qty = p.quantity.trim();
-    final price = p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), '').trim();
-    final total = p.lineTotal.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), '').trim();
+    final qty = _normalizeQtyUnit(p.quantity.trim());
+    final price = formatAmountForReceipt(
+      p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+    );
     final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
     if (qty.contains('x') || qty.contains('×')) {
       return '${qty.replaceAll('×', 'x')} $suf.';
     }
-    if (price.isNotEmpty && price != total && _looksNumeric(price)) {
+    if (price.isNotEmpty && _looksNumeric(price.replaceAll(',', ''))) {
       return '$qty x $price $suf.';
     }
-    if (price.isNotEmpty && price == qty && _looksNumeric(total)) {
-      return '$qty x $total $suf.';
-    }
-    return '$qty x $price $suf.';
+    return '$qty $suf.';
+  }
+
+  static String _normalizeQtyUnit(String qty) {
+    return qty
+        .replaceAll('шт', 'dona')
+        .replaceAll('Шт', 'dona')
+        .replaceAll('ШТ', 'dona')
+        .replaceAll('дона', 'dona')
+        .replaceAll('Дона', 'dona')
+        .replaceAll('пachka', 'pachka')
+        .replaceAll('×', 'x');
   }
 }

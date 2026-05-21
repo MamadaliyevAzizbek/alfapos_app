@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'thermal_receipt_printer.dart';
 
@@ -34,14 +34,65 @@ class RawPrinterSend {
   }
 
   static Future<ThermalPrintResult> _sendWindows(List<int> bytes, String printer) async {
-    final file = File(
-      '${Directory.systemTemp.path}\\alfapos_esc_${DateTime.now().millisecondsSinceEpoch}.bin',
+    final temp = Directory.systemTemp.path;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final binFile = File('$temp\\alfapos_esc_$ts.bin');
+    await binFile.writeAsBytes(bytes);
+
+    final psFile = File('$temp\\alfapos_print_$ts.ps1');
+    psFile.writeAsStringSync(await _windowsPrintScript());
+
+    final result = await Process.run(
+      'powershell',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        psFile.path,
+        '-PrinterName',
+        printer,
+        '-DataFile',
+        binFile.path,
+      ],
     );
-    await file.writeAsBytes(bytes);
-    final b64 = base64Encode(bytes);
-    final escapedPrinter = printer.replaceAll("'", "''");
-    final ps = r'''
-Add-Type -Language CSharp -TypeDefinition @"
+
+    try {
+      await binFile.delete();
+      await psFile.delete();
+    } catch (_) {}
+
+    if (result.exitCode == 0) {
+      return ThermalPrintResult.ok('Chek yuborildi ($printer)');
+    }
+    final err = '${result.stderr}${result.stdout}'.trim();
+    return ThermalPrintResult.fail(
+      err.isEmpty ? 'Windows RAW chop etib bo\'lmadi. Printerni tekshiring.' : err,
+    );
+  }
+
+  static Future<String> _windowsPrintScript() async {
+    try {
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final beside = File('$exeDir\\windows_raw_print.ps1');
+      if (beside.existsSync()) return beside.readAsStringSync();
+    } catch (_) {}
+
+    try {
+      return await rootBundle.loadString('scripts/windows_raw_print.ps1');
+    } catch (_) {}
+
+    return _embeddedWindowsPrintScript;
+  }
+
+  static const _embeddedWindowsPrintScript = r'''
+param(
+    [Parameter(Mandatory = $true)][string]$PrinterName,
+    [Parameter(Mandatory = $true)][string]$DataFile
+)
+$ErrorActionPreference = 'Stop'
+if (-not (Test-Path -LiteralPath $DataFile)) { exit 2 }
+Add-Type -Language CSharp @"
 using System;
 using System.Runtime.InteropServices;
 public class AlfaPosRawPrint {
@@ -72,7 +123,7 @@ public class AlfaPosRawPrint {
     if (!StartDocPrinter(h, 1, ref di)) { ClosePrinter(h); return false; }
     if (!StartPagePrinter(h)) { EndDocPrinter(h); ClosePrinter(h); return false; }
     int written;
-  WritePrinter(h, data, data.Length, out written);
+    WritePrinter(h, data, data.Length, out written);
     EndPagePrinter(h);
     EndDocPrinter(h);
     ClosePrinter(h);
@@ -80,25 +131,10 @@ public class AlfaPosRawPrint {
   }
 }
 "@
-$bytes = [Convert]::FromBase64String('__B64__')
-$ok = [AlfaPosRawPrint]::Send('__PRINTER__', $bytes)
+$bytes = [System.IO.File]::ReadAllBytes($DataFile)
+$ok = [AlfaPosRawPrint]::Send($PrinterName, $bytes)
 if ($ok) { exit 0 } else { exit 1 }
-'''
-        .replaceAll('__B64__', b64)
-        .replaceAll('__PRINTER__', escapedPrinter);
-
-    final result = await Process.run(
-      'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-    );
-    if (result.exitCode == 0) {
-      return ThermalPrintResult.ok('Chek yuborildi ($printer)');
-    }
-    final err = '${result.stderr}'.trim();
-    return ThermalPrintResult.fail(
-      err.isEmpty ? 'Windows RAW chop etib bo\'lmadi. Printerni tekshiring.' : err,
-    );
-  }
+''';
 
   static Future<ThermalPrintResult> _sendMac(List<int> bytes, String printer) async {
     final file = File(

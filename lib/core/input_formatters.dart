@@ -126,3 +126,22 @@ String formatThousands(int n) {
   }
   return buf.toString();
 }
+
+/// Chekda: 38000 -> "38,000" (Alfapos.pdf)
+String formatThousandsComma(int n) {
+  final s = n.abs().toString();
+  if (s.length <= 3) return s;
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+    buf.write(s[i]);
+  }
+  return n < 0 ? '-${buf.toString()}' : buf.toString();
+}
+
+/// Matndan raqamni ajratib chek formatida qaytarish.
+String formatAmountForReceipt(String raw) {
+  final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
+  if (digits.isEmpty) return raw.trim();
+  return formatThousandsComma(int.parse(digits));
+}

@@ -19,9 +19,22 @@ class ThermalReceiptLineWrap {
         out.add('');
         continue;
       }
+      if (line.startsWith('^')) {
+        out.addAll(wrapLine(line.substring(1), maxWidth: maxWidth).map((p) => '^$p'));
+        continue;
+      }
+      if (_isSeparatorLine(line)) {
+        out.add(line.length <= maxWidth ? line : line.substring(0, maxWidth));
+        continue;
+      }
       out.addAll(wrapLine(line, maxWidth: maxWidth));
     }
     return out;
+  }
+
+  static bool _isSeparatorLine(String line) {
+    final t = line.trim();
+    return t.isNotEmpty && RegExp(r'^[-─—]+$').hasMatch(t);
   }
 
   static List<String> wrapLine(String line, {int maxWidth = kThermalChars80mm}) {
@@ -41,19 +54,20 @@ class ThermalReceiptLineWrap {
     return out.isEmpty ? [t.substring(0, maxWidth)] : out;
   }
 
-  /// Jadval qatori: chap ustun + o‘ng ustun(lar) 80mm chekda.
+  /// Jadval qatori: chap (miqdor x narx) + o‘ng (summa so'm).
   static String formatTwoColumns(
     String left,
     String right, {
     int totalWidth = kThermalChars80mm,
-    int rightWidth = 14,
+    int rightWidth = 20,
   }) {
     final l = left.trim();
     final r = right.trim();
     if (r.isEmpty) return l;
-    final leftMax = (totalWidth - rightWidth - 1).clamp(8, totalWidth);
-    if (l.length <= leftMax) {
-      return '${l.padRight(leftMax)} ${r.padLeft(rightWidth)}';
+    final gap = 1;
+    final leftMax = (totalWidth - rightWidth - gap).clamp(10, totalWidth);
+    if (l.length + gap + r.length <= totalWidth) {
+      return '${l.padRight(leftMax)}${' ' * gap}${r.padLeft(rightWidth)}';
     }
     return '$l  $r';
   }

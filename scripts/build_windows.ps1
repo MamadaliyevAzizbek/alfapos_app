@@ -24,6 +24,10 @@ $readme = Join-Path $ProjectRoot "release\WINDOWS_OCHISH.txt"
 if (Test-Path $readme) {
     Copy-Item $readme (Join-Path $ReleaseDir "WINDOWS_OCHISH.txt") -Force
 }
+$rawPs = Join-Path $ProjectRoot "scripts\windows_raw_print.ps1"
+if (Test-Path $rawPs) {
+    Copy-Item $rawPs (Join-Path $ReleaseDir "windows_raw_print.ps1") -Force
+}
 
 $OutDir = Join-Path $ProjectRoot "release\alfapos-windows-release"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

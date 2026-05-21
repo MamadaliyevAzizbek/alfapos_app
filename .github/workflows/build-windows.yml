@@ -45,6 +45,9 @@ jobs:
           if (Test-Path 'release/WINDOWS_OCHISH.txt') {
             Copy-Item 'release/WINDOWS_OCHISH.txt' "$src/WINDOWS_OCHISH.txt" -Force
           }
+          if (Test-Path 'scripts/windows_raw_print.ps1') {
+            Copy-Item 'scripts/windows_raw_print.ps1' "$src/windows_raw_print.ps1" -Force
+          }
 
           $zip = "$outDir/alfapos_app-windows-x64.zip"
           if (Test-Path $zip) { Remove-Item $zip -Force }

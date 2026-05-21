@@ -1,6 +1,6 @@
 import '../models/receipt_design_config.dart';
 
-/// Chek sarlavhasidagi do‘kon nomi (Kassa 1 emas — filial yoki qo‘lda yozilgan).
+/// Chek sarlavhasi: sozlamalardagi do'kon nomi ustuvor.
 class ReceiptStoreTitle {
   ReceiptStoreTitle._();
 
@@ -8,13 +8,14 @@ class ReceiptStoreTitle {
     required ReceiptDesignConfig design,
     String branchName = '',
   }) {
-    if (!design.useBranchNameAsTitle) {
-      final custom = design.storeTitle.trim();
-      return custom.isEmpty ? 'Alfa market' : custom;
-    }
+    final custom = design.storeTitle.trim();
     final branch = branchName.trim();
+
+    // Foydalanuvchi yozgan do'kon nomi — doim birinchi (4-rasm: Alfa market).
+    if (custom.isNotEmpty) return custom;
+
+    if (design.useBranchNameAsTitle && branch.isNotEmpty) return branch;
     if (branch.isNotEmpty) return branch;
-    final fallback = design.storeTitle.trim();
-    return fallback.isEmpty ? 'Alfa market' : fallback;
+    return 'Alfa market';
   }
 }

@@ -73,12 +73,17 @@ class EscPosReceiptBuilder {
           ),
         );
       } else {
+        final isTotal = text.toLowerCase().contains('umumiy summa') ||
+            text.toLowerCase().contains('jami');
         bytes.addAll(
           g.textEncoded(
             enc,
-            styles: const PosStyles(
+            styles: PosStyles(
               codeTable: 'CP1251',
               fontType: PosFontType.fontA,
+              bold: isTotal,
+              height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
+              width: isTotal ? PosTextSize.size1 : PosTextSize.size1,
             ),
             maxCharsPerLine: maxWidth,
           ),

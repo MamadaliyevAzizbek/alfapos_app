@@ -29,7 +29,8 @@ void main() {
     final lines = ThermalReceiptFormatter.fromApiRawLines(raw);
     expect(lines.any((l) => l.contains('^Alfa market') || l == '^Alfa market'), isTrue);
     expect(lines.any((l) => l.startsWith('1) sprite')), isTrue);
-    expect(lines.any((l) => l.contains('4шт') && l.contains("so'm")), isTrue);
+    expect(lines.any((l) => l.contains('sprite')), isTrue);
+    expect(lines.any((l) => l.contains('x') && l.contains("so'm")), isTrue);
     expect(lines, isNot(contains('Mahsulot')));
     expect(lines, isNot(contains('Miqdor')));
   });

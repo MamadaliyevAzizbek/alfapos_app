@@ -46,6 +46,7 @@ Source: "{#MyReleaseDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdi
 Source: "..\release\WINDOWS_OCHISH.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install_firewall.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\windows\scripts\allow_alfapos_firewall.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\scripts\windows_raw_print.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"

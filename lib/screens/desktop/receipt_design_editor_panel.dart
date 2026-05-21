@@ -245,7 +245,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Barcha yozuvlar, valyuta, ajratgich va logo tahrirlanadi. Sarlavhada «Kassa 1» emas — filial (do‘kon) nomi yoki qo‘lda yozilgan nom chiqadi.',
+          'Do\'kon nomi maydoni chek boshida chiqadi (4-rasmdagi kabi). Bo\'sh qoldirsangiz — filial nomi ishlatiladi.',
           style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
         ),
         const SizedBox(height: 20),
@@ -258,9 +258,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
         ),
         const SizedBox(height: 12),
         _field(
-          _config.useBranchNameAsTitle
-              ? 'Do‘kon nomi (filial bo‘sh bo‘lsa)'
-              : 'Do‘kon nomi (sarlavha)',
+          'Do\'kon nomi (chek sarlavhasi)',
           _storeTitle,
           onChanged: (_) => _refreshPreview(),
         ),
