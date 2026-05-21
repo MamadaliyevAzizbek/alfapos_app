@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-
 import '../../core/app_notify.dart';
 import '../../core/theme.dart';
 import 'dart:io' show Platform;
 
 import '../../core/desktop_runtime.dart';
+import '../../services/local_receipt_sample.dart';
 import '../../services/printer_settings.dart';
+import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
+import 'receipt_design_editor_panel.dart';
 
 /// Desktop: printer va boshqa sozlamalar.
 class SozlamalarDesktopScreen extends StatefulWidget {
@@ -24,10 +26,14 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   bool _loading = true;
   bool _testing = false;
 
+  List<String> _sampleLines = [];
+  bool _previewLoading = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLocalReceiptPreview());
   }
 
   @override
@@ -64,6 +70,22 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
           ? 'Printer tanlanmadi'
           : 'Printer saqlandi: $_selected',
     );
+  }
+
+  Future<void> _loadLocalReceiptPreview() async {
+    setState(() => _previewLoading = true);
+    try {
+      final lines = await LocalReceiptSample.sampleSalePrintLines();
+      if (!mounted) return;
+      setState(() {
+        _sampleLines = lines;
+        _previewLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _previewLoading = false);
+      AppNotify.error(context, 'Chek namunasi: $e');
+    }
   }
 
   Future<void> _testPrint() async {
@@ -211,6 +233,88 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 20),
+          _card(child: ReceiptDesignEditorPanel(onSaved: _loadLocalReceiptPreview)),
+          const SizedBox(height: 20),
+          _buildReceiptPreviewCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceiptPreviewCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long_outlined, color: AppTheme.primary, size: 28),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Mahalliy chek ko\'rinishi',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _previewLoading ? null : _loadLocalReceiptPreview,
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                label: const Text('Yangilash'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Chek serverdan emas — dastur o\'zi yig\'adi (savatcha, to\'lov, filial nomi) va shu formatda termal printerga yuboriladi.',
+            style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+          ),
+          const SizedBox(height: 20),
+          if (_previewLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(color: AppTheme.primary),
+              ),
+            )
+          else
+            _previewColumn(
+              title: 'Printerdan chiqadigan chek',
+              subtitle: 'Sotuv yakunlanganda shu ko\'rinish chop etiladi',
+              child: SingleChildScrollView(
+                child: Center(
+                  child: ReceiptLinesPreview(lines: _sampleLines),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewColumn({
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: child,
           ),
         ],
       ),

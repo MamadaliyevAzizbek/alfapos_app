@@ -10,6 +10,7 @@ import '../utils/api_receipt_html_parser.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
 import 'escpos_receipt_builder.dart';
+import 'receipt_design_storage.dart';
 import 'raw_printer_send.dart';
 
 /// Termal printer (Xprinter 80mm va h.k.) orqali chek chop etish.
@@ -38,27 +39,30 @@ class ThermalReceiptPrinter {
     'thermal',
   ];
 
-  /// Asosiy: API chek (orderId). Zaxira: mahalliy PNG (oldindan chek).
-  static Future<ThermalPrintResult> printSaleReceipt({
-    Uint8List? receiptPng,
-    int? orderId,
+  /// Mahalliy chek (dastur yig‘adi) — ESC/POS printerga yuborish.
+  static Future<ThermalPrintResult> printLocalReceipt(
+    List<String> lines, {
     bool directOnly = false,
   }) async {
-    if (orderId != null && orderId > 0) {
-      final fromApi = await printFromApiOrder(orderId, directOnly: directOnly);
-      if (fromApi.ok) return fromApi;
+    if (lines.isEmpty) {
+      return ThermalPrintResult.fail('Chek matni bo\'sh');
     }
-    if (receiptPng != null) {
-      return printPngBytes(receiptPng, directOnly: directOnly);
+    if (!Platform.isWindows && !Platform.isMacOS) {
+      return ThermalPrintResult.fail(
+        'Termal chop etish faqat Windows yoki macOS desktop ilovasida',
+      );
     }
-    return ThermalPrintResult.fail(
-      orderId == null
-          ? 'Chek ID topilmadi — API chek chop etib bo\'lmadi'
-          : 'API chek chop etib bo\'lmadi',
-    );
+    return _printEscPosLines(lines, directOnly: directOnly);
   }
 
-  /// GET /reports/sales/order/{id} — HTML ni chek ko'rinishiga aylantirib chop etadi.
+  /// Sotuv / oldindan chek — faqat mahalliy qatorlar (server API ishlatilmaydi).
+  static Future<ThermalPrintResult> printSaleReceipt({
+    required List<String> localLines,
+    bool directOnly = false,
+  }) =>
+      printLocalReceipt(localLines, directOnly: directOnly);
+
+  /// Eski API HTML chek (faqat maxsus holatlar / debug; sotuvda ishlatilmaydi).
   static Future<ThermalPrintResult> printFromApiOrder(
     int orderId, {
     bool directOnly = false,
@@ -94,7 +98,11 @@ class ThermalReceiptPrinter {
     List<String> lines, {
     bool directOnly = false,
   }) async {
-    final bytes = await EscPosReceiptBuilder.buildFromLines(lines);
+    final design = await ReceiptDesignStorage.load();
+    final bytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: lines,
+      design: design,
+    );
     final printer =
         await savedPrinterName() ?? await _resolveSystemPrinterName();
     if (printer == null || printer.isEmpty) {
@@ -320,19 +328,30 @@ class ThermalReceiptPrinter {
     await prefs.setString(_prefsPrinterKey, name);
   }
 
-  static String? _extractThermalHtml(Map<String, dynamic> res) {
+  /// API javobidan termal chek HTML (sozlamalar ko‘rinishi uchun ham).
+  static ThermalHtmlExtract? thermalHtmlFromOrderResponse(Map<String, dynamic> res) {
     final template = res['templateData'];
     if (template is Map) {
       final content = template['content'];
       if (content != null && content.toString().trim().isNotEmpty) {
-        return content.toString();
+        return ThermalHtmlExtract(
+          html: content.toString(),
+          source: 'templateData.content',
+        );
       }
     }
     final large = res['largeInvoiceView'];
     if (large != null && large.toString().trim().isNotEmpty) {
-      return large.toString();
+      return ThermalHtmlExtract(
+        html: large.toString(),
+        source: 'largeInvoiceView',
+      );
     }
     return null;
+  }
+
+  static String? _extractThermalHtml(Map<String, dynamic> res) {
+    return thermalHtmlFromOrderResponse(res)?.html;
   }
 
   static Future<String?> _resolveSystemPrinterName() async {
@@ -443,6 +462,13 @@ class ThermalReceiptPrinter {
     } catch (_) {}
     return null;
   }
+}
+
+class ThermalHtmlExtract {
+  final String html;
+  final String source;
+
+  const ThermalHtmlExtract({required this.html, required this.source});
 }
 
 class ThermalPrintResult {

@@ -1,0 +1,14 @@
+ALFAPOS — Windows o'rnatuvchi (SETUP)
+
+1. alfapos_app-windows-x64-setup.exe ni ishga tushiring.
+2. O'rnatish joyini tanlang (odatda: C:\Program Files\AlfaPOS).
+3. «Ish stolida yorliq» va «Firewall ruxsati» ni tavsiya etiladi.
+4. O'rnatish tugagach Start menyudan yoki ish stolidan AlfaPOS ni oching.
+
+MUHIM:
+- Setup ichida exe, barcha .dll va data\ papkasi o'rnatiladi — alohida ZIP ochish shart emas.
+- Eski ZIP usuli ham ishlaydi: papkani to'liq chiqarib alfapos_app.exe ni shu papkadan ishga tushiring.
+
+Yangilash: yangi setup.exe ni eski ustidan ishga tushiring (yoki avval «O'chirish» orqali eski versiyani olib tashlang).
+
+Tarmoq: app.alfapos.uz — firewall so'rovida «Ruxsat berish» bosing.

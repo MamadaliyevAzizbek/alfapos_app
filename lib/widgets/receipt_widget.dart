@@ -1,10 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+
 import '../core/input_formatters.dart';
+import '../models/receipt_design_config.dart';
+import '../utils/thermal_receipt_formatter.dart';
 
 /// Bir qator chek qatori: mahsulot, miqdor, narx, summa
 class ReceiptRow {
   final String productName;
-  final String quantityStr; // "0.67kg", "2 dona"
+  final String quantityStr;
   final int price;
   final int sum;
 
@@ -16,7 +21,7 @@ class ReceiptRow {
   });
 }
 
-/// To'lov qatori: usul, vaqt, summa
+/// To'lov qatori: usul, summa
 class ReceiptPaymentRow {
   final String methodName;
   final int sum;
@@ -27,27 +32,36 @@ class ReceiptPaymentRow {
   });
 }
 
-/// Chek boshida matnli ALFAPOS, keyin: sana/vaqt, raqam, sotuvchi, jadval, ...
+/// Alfapos.pdf ko‘rinishidagi chek (tahrirlanadigan dizayn bilan).
 class ReceiptWidget extends StatelessWidget {
   final DateTime dateTime;
   final String receiptNumber;
   final String sellerName;
+  final String? sellerPhone;
+  /// API filial nomi (sarlavha uchun; Kassa 1 emas).
+  final String branchName;
   final String? clientName;
+  final String? clientPhone;
+  final String? clientAddress;
   final String? description;
   final List<ReceiptRow> productRows;
   final List<ReceiptPaymentRow> paymentRows;
   final int discount;
   final int totalSum;
   final String barcodeData;
-  /// To'lovdan oldin mijozga beriladigan oldindan chek.
   final bool isPrecheck;
+  final ReceiptDesignConfig design;
 
   const ReceiptWidget({
     super.key,
     required this.dateTime,
     required this.receiptNumber,
     required this.sellerName,
+    this.sellerPhone,
+    this.branchName = '',
     this.clientName,
+    this.clientPhone,
+    this.clientAddress,
     this.description,
     required this.productRows,
     required this.paymentRows,
@@ -55,9 +69,49 @@ class ReceiptWidget extends StatelessWidget {
     required this.totalSum,
     this.barcodeData = '',
     this.isPrecheck = false,
+    this.design = ReceiptDesignConfig.defaults,
   });
 
   static String _fmt(int n) => formatThousands(n);
+
+  String get _displayTitle => design.titleForBranch(branchName);
+
+  List<String> toThermalPrintLines() {
+    return ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: branchName,
+        dateTime: dateTime,
+        receiptNumber: receiptNumber,
+        sellerName: sellerName,
+        sellerPhone: sellerPhone,
+        clientName: clientName,
+        clientPhone: clientPhone,
+        clientAddress: clientAddress,
+        isPrecheck: isPrecheck,
+        products: productRows
+            .map(
+              (r) => ThermalReceiptProductLine(
+                name: r.productName,
+                quantity: r.quantityStr,
+                unitPrice: _fmt(r.price),
+                lineTotal: _fmt(r.sum),
+              ),
+            )
+            .toList(),
+        payments: paymentRows
+            .map(
+              (r) => ThermalReceiptPaymentLine(
+                method: r.methodName,
+                amount: _fmt(r.sum),
+              ),
+            )
+            .toList(),
+        discountAmount: _fmt(discount),
+        totalAmount: _fmt(totalSum),
+      ),
+      config: design,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +127,7 @@ class ReceiptWidget extends StatelessWidget {
       fontWeight: FontWeight.w700,
       color: Colors.grey.shade900,
     );
+    final som = design.currencySuffix;
 
     return Container(
       width: width,
@@ -80,17 +135,29 @@ class ReceiptWidget extends StatelessWidget {
       color: Colors.white,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (design.showLogo &&
+              design.logoFilePath != null &&
+              design.logoFilePath!.isNotEmpty &&
+              File(design.logoFilePath!).existsSync()) ...[
+            Center(
+              child: Image.file(
+                File(design.logoFilePath!),
+                height: 56,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Center(
             child: Text(
-              'ALFAPOS',
+              _displayTitle,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 4,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
                 color: Colors.grey.shade900,
-                height: 1.1,
               ),
             ),
           ),
@@ -104,7 +171,7 @@ class ReceiptWidget extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  "OLDINDAN CHEK",
+                  design.precheckBanner,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -115,96 +182,140 @@ class ReceiptWidget extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          // Sana va vaqt
-          Center(
-            child: Text(
-              '${_dateStr(dateTime)} - ${_timeStr(dateTime)}',
-              style: textStyle,
+          if (design.showDateTime) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                '${_dateStr(dateTime)} | ${_timeStr(dateTime)}',
+                style: textStyle,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
+          ],
+          const SizedBox(height: 8),
           Text(
-            isPrecheck ? "Chek raqami: to'lov oldin" : 'Chek raqami: $receiptNumber',
+            isPrecheck
+                ? "${design.receiptNumberLabel}: to'lov oldin"
+                : '${design.receiptNumberLabel}: $receiptNumber',
             style: textStyle,
           ),
-          Text('Sotuvchi: $sellerName', style: textStyle),
-          if (clientName != null && clientName!.trim().isNotEmpty)
-            Text('Mijoz: ${clientName!.trim()}', style: textStyle),
+          Text('${design.sellerLabel}: $sellerName', style: textStyle),
+          if (design.showSellerPhone &&
+              sellerPhone != null &&
+              sellerPhone!.trim().isNotEmpty)
+            Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}', style: textStyle),
+          if (design.showClientLine &&
+              clientName != null &&
+              clientName!.trim().isNotEmpty)
+            Text('${design.clientLabel}: ${clientName!.trim()}', style: textStyle),
+          if (design.showClientPhone &&
+              clientPhone != null &&
+              clientPhone!.trim().isNotEmpty)
+            Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}', style: textStyle),
+          if (design.showClientAddress &&
+              clientAddress != null &&
+              clientAddress!.trim().isNotEmpty)
+            Text('${design.clientAddressLabel}: ${clientAddress!.trim()}', style: textStyle),
           if ((description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text('Tavsif: ${description!.trim()}', style: textStyle),
           ],
-          const SizedBox(height: 12),
-          // Jadval sarlavha
+          const SizedBox(height: 10),
+          for (var i = 0; i < productRows.length; i++) ...[
+            Text(
+              design.numberedProducts
+                  ? '${i + 1}) ${productRows[i].productName}'
+                  : productRows[i].productName,
+              style: headerStyle,
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${productRows[i].quantityStr} x ${_fmt(productRows[i].price)} $som.',
+                    style: textStyle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${_fmt(productRows[i].sum)} $som',
+                  style: textStyle,
+                  textAlign: TextAlign.right,
+                  softWrap: false,
+                ),
+              ],
+            ),
+            if (design.showItemSeparator) ...[
+              const SizedBox(height: 4),
+              Text(design.itemSeparator, style: textStyle.copyWith(fontSize: 11)),
+            ],
+            const SizedBox(height: 6),
+          ],
+          if (!isPrecheck)
+            for (final row in paymentRows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(row.methodName, style: textStyle)),
+                    Text(
+                      '${_fmt(row.sum)} $som',
+                      style: textStyle,
+                      softWrap: false,
+                    ),
+                  ],
+                ),
+              ),
           Row(
             children: [
-              SizedBox(width: width * 0.35, child: Text('Mahsulot', style: headerStyle)),
-              SizedBox(width: width * 0.18, child: Text('Miqdor', style: headerStyle)),
-              SizedBox(width: width * 0.22, child: Text('Narx', style: headerStyle)),
-              Expanded(child: Text('Summa', style: headerStyle)),
+              Expanded(child: Text(design.discountLabel, style: textStyle)),
+              Text('${_fmt(discount)} $som', style: textStyle, softWrap: false),
             ],
           ),
-          _dashedLine(width - padding * 2),
-          // Mahsulot qatorlari
-          for (final row in productRows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(width: width * 0.35, child: Text(row.productName, style: textStyle)),
-                  SizedBox(width: width * 0.18, child: Text(row.quantityStr, style: textStyle)),
-                  SizedBox(width: width * 0.22, child: Text(_fmt(row.price), style: textStyle)),
-                  Expanded(child: Text(_fmt(row.sum), style: textStyle)),
-                ],
-              ),
-            ),
-          _dashedLine(width - padding * 2),
-          // To'lov qatorlari
-          if (!isPrecheck)
-          for (final row in paymentRows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  Expanded(child: Text(row.methodName, style: textStyle)),
-                  Text(_fmt(row.sum), style: textStyle),
-                ],
-              ),
-            ),
-          _dashedLine(width - padding * 2),
-          Text('Chegirma: ${_fmt(discount)}', style: textStyle),
-          _dashedLine(width - padding * 2),
+          if (design.showItemSeparator) ...[
+            const SizedBox(height: 4),
+            Text(design.itemSeparator, style: textStyle.copyWith(fontSize: 11)),
+          ],
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Umumiy summa', style: headerStyle),
-              Text(_fmt(totalSum), style: headerStyle),
+              Expanded(child: Text(design.totalLabel, style: headerStyle)),
+              Text(
+                '${_fmt(totalSum)} $som',
+                style: headerStyle,
+                softWrap: false,
+              ),
             ],
           ),
           if (!isPrecheck) ...[
-            const SizedBox(height: 16),
-            Center(
-              child: _BarcodeStrip(
-                data: barcodeData.isEmpty ? receiptNumber : barcodeData,
-                width: width - padding * 2,
+            if (design.showBarcode) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: _BarcodeStrip(
+                  data: barcodeData.isEmpty ? receiptNumber : barcodeData,
+                  width: width - padding * 2,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Center(
-              child: Text(
-                'Спасибо за покупку!',
-                style: TextStyle(fontSize: 12, color: Colors.black87),
+            ],
+            if (design.showFooter && design.footerText.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  design.footerText.trim(),
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                ),
               ),
-            ),
+            ],
           ] else ...[
             const SizedBox(height: 12),
             Center(
               child: Text(
                 "To'lov hali amalga oshirilmagan",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ),
           ],
@@ -220,33 +331,8 @@ class ReceiptWidget extends StatelessWidget {
   static String _timeStr(DateTime d) {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
   }
-
-  static Widget _dashedLine(double w) {
-    return CustomPaint(
-      size: Size(w, 1),
-      painter: _DashedLinePainter(),
-    );
-  }
 }
 
-class _DashedLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.grey..strokeWidth = 1;
-    const dash = 4.0;
-    const gap = 3.0;
-    double x = 0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset((x + dash).clamp(0, size.width), 0), paint);
-      x += dash + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Oddiy shtrix-kod ko‘rinishi (vertikal chiziqlar)
 class _BarcodeStrip extends StatelessWidget {
   final String data;
   final double width;
@@ -273,16 +359,14 @@ class _BarcodePainter extends CustomPainter {
     final codes = seed.codeUnits;
     var i = 0;
     double x = 0;
-    // Uzun shtrix-kod uchun: seed bo'yicha 1..4 px chiziqlarni takrorlab to'ldiramiz.
     while (x < size.width) {
       final v = codes.isEmpty ? (i * 7 + 3) : codes[i % codes.length];
-      final w = 1.0 + (v % 4); // 1..4
+      final w = 1.0 + (v % 4);
       final isBar = ((v + i) % 2) == 0;
-      final bw = w;
       if (isBar) {
-        canvas.drawRect(Rect.fromLTWH(x, 0, bw, size.height), paint);
+        canvas.drawRect(Rect.fromLTWH(x, 0, w, size.height), paint);
       }
-      x += bw + 1; // gap = 1
+      x += w + 1;
       i++;
     }
   }

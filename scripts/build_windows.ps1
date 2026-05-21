@@ -32,9 +32,20 @@ $ZipPath = Join-Path $OutDir $ZipName
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
 Compress-Archive -Path (Join-Path $ReleaseDir "*") -DestinationPath $ZipPath -Force
 
+$Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+if (-not (Test-Path $Iscc)) { $Iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
+if (Test-Path $Iscc) {
+    Write-Host ">> Inno Setup o'rnatuvchi..." -ForegroundColor Cyan
+    $ver = ((Get-Content (Join-Path $ProjectRoot "pubspec.yaml") | Select-String '^version:').Line -replace 'version:\s*','' -replace '\+.*','').Trim()
+    & $Iscc "/DMyAppVersion=$ver" (Join-Path $ProjectRoot "scripts\alfapos_installer.iss")
+}
+
 Write-Host ""
 Write-Host "Tayyor!" -ForegroundColor Green
 Write-Host "  EXE: $ExePath"
 Write-Host "  ZIP: $ZipPath"
+if (Test-Path (Join-Path $OutDir "alfapos_app-windows-x64-setup.exe")) {
+    Write-Host "  SETUP: $(Join-Path $OutDir 'alfapos_app-windows-x64-setup.exe')"
+}
 Write-Host ""
-Write-Host "Eslatma: alfapos_app.exe ni alohida ko'chirmang — Release papkasidagi barcha fayllar kerak." -ForegroundColor Yellow
+Write-Host "Eslatma: ZIP/setup ichida barcha fayllar bor — exe ni yolg'iz ko'chirmang." -ForegroundColor Yellow

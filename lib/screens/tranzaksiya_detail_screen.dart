@@ -34,9 +34,10 @@ import '../utils/cart_payment_discount.dart';
 import 'yangi_mijoz_screen.dart';
 import 'tavsif_screen.dart';
 import 'desktop/desktop_payment_screen.dart';
+import '../models/receipt_design_config.dart';
+import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
-import '../utils/thermal_receipt_capture.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
@@ -92,6 +93,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   String _completedSellerName = '';
   String? _completedClientName;
   String _sellerDisplayName = '';
+  ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.defaults;
   String? _desktopSelectedPaymentKey;
   final _desktopPayAmountController = TextEditingController();
   /// Faqat chek oldindan ko'rinishi uchun (sotuv yopilguncha). Yopilgandan keyin chek ID har doim API dan (storeRes).
@@ -283,9 +285,16 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (_printingPrecheck || _printingReceipt || widget.items.isEmpty) return;
     setState(() => _printingPrecheck = true);
     try {
-      final receiptWidget = _buildPrecheckReceiptWidget(DateTime.now());
-      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
-      final result = await ThermalReceiptPrinter.printPngBytes(pngBytes);
+      final sellerPhone = await getSellerPhone();
+      final receiptWidget = _buildPrecheckReceiptWidget(
+        DateTime.now(),
+        sellerPhone: sellerPhone,
+      );
+      final directOnly = await PrinterSettings.isPrinterReady();
+      final result = await ThermalReceiptPrinter.printLocalReceipt(
+        receiptWidget.toThermalPrintLines(),
+        directOnly: directOnly,
+      );
       if (!mounted) return;
       if (result.ok) {
         AppNotify.success(context, result.message);
@@ -304,22 +313,18 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (rid == null || _printingReceipt) return;
     setState(() => _printingReceipt = true);
     try {
+      final sellerPhone = await getSellerPhone();
       final receiptWidget = _buildReceiptWidget(
         DateTime.now(),
         sellerName: _completedSellerName.isNotEmpty ? _completedSellerName : _sellerDisplayName,
+        sellerPhone: sellerPhone,
         clientName: _completedClientName ?? _client?.name,
         receiptId: rid,
       );
-      final pngBytes = await captureReceiptForThermal(receiptWidget, context: context);
-      var orderId = _completedOrderId;
-      orderId ??= await ThermalReceiptPrinter.resolveOrderId(
-        receiptId: rid,
-        storeOrderId: orderId,
-      );
+      final localLines = receiptWidget.toThermalPrintLines();
       final directOnly = await PrinterSettings.isPrinterReady();
-      final result = await ThermalReceiptPrinter.printSaleReceipt(
-        receiptPng: pngBytes,
-        orderId: orderId,
+      final result = await ThermalReceiptPrinter.printLocalReceipt(
+        localLines,
         directOnly: directOnly,
       );
       if (!mounted) return;
@@ -389,6 +394,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _client = widget.initialClient;
     _loadPaymentTypes();
     _loadSellerDisplayName();
+    unawaited(_loadReceiptDesign());
+  }
+
+  Future<void> _loadReceiptDesign() async {
+    final d = await ReceiptDesignStorage.load();
+    if (mounted) setState(() => _receiptDesign = d);
   }
 
   @override
@@ -501,9 +512,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   Widget build(BuildContext context) {
     if (widget.useDesktopFullscreenLayout) {
       final sess = SalesSessionProvider.instance;
-      final store = sess.cashRegisterName.isNotEmpty
-          ? sess.cashRegisterName
-          : (sess.branchName.isNotEmpty ? sess.branchName : 'Alfa market');
+      final store = sess.branchName.isNotEmpty ? sess.branchName : 'Alfa market';
 
       final allocated = _getAllocatedPaymentAmounts();
       final allocatedPayments = _paymentList
@@ -1695,7 +1704,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }
   }
 
-  ReceiptWidget _buildPrecheckReceiptWidget(DateTime at) {
+  String get _receiptBranchName =>
+      SalesSessionProvider.instance.branchName.trim();
+
+  ReceiptWidget _buildPrecheckReceiptWidget(
+    DateTime at, {
+    String? sellerPhone,
+  }) {
     final productRows = widget.items.map((item) {
       final p = item.product;
       final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
@@ -1711,17 +1726,28 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       dateTime: at,
       receiptNumber: '—',
       sellerName: _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi',
+      sellerPhone: sellerPhone,
+      branchName: _receiptBranchName,
       clientName: _client?.name,
+      clientPhone: _client?.phone,
+      clientAddress: _client?.address,
       description: _description,
       productRows: productRows,
       paymentRows: const [],
       discount: discountUzs,
       totalSum: _totalAfterDiscount,
       isPrecheck: true,
+      design: _receiptDesign,
     );
   }
 
-  ReceiptWidget _buildReceiptWidget(DateTime at, {String sellerName = 'Sotuvchi', String? clientName, String? receiptId}) {
+  ReceiptWidget _buildReceiptWidget(
+    DateTime at, {
+    String sellerName = 'Sotuvchi',
+    String? sellerPhone,
+    String? clientName,
+    String? receiptId,
+  }) {
     final posNumber = receiptId ?? _txId;
     final productRows = widget.items.map((item) {
       final p = item.product;
@@ -1747,13 +1773,18 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       dateTime: at,
       receiptNumber: posNumber.startsWith('POS') ? posNumber : 'POS$posNumber',
       sellerName: sellerName,
-      clientName: clientName,
+      sellerPhone: sellerPhone,
+      branchName: _receiptBranchName,
+      clientName: clientName ?? _client?.name,
+      clientPhone: _client?.phone,
+      clientAddress: _client?.address,
       description: _description,
       productRows: productRows,
       paymentRows: paymentRows,
       discount: discountUzs,
       totalSum: _totalAfterDiscount,
       barcodeData: posNumber,
+      design: _receiptDesign,
     );
   }
 
@@ -1850,8 +1881,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
     if (!share) {
       try {
-        if (!await Gal.hasAccess(toAlbum: true)) {
-          final granted = await Gal.requestAccess(toAlbum: true);
+        // Faqat yozish (add-only): to'liq galereya o'qish ruxsati talab qilinmaydi (App Store / Play policy).
+        if (!await Gal.hasAccess(toAlbum: false)) {
+          final granted = await Gal.requestAccess(toAlbum: false);
           if (!granted) {
             if (dialogContext.mounted) {
               AppNotify.warning(dialogContext, "Galereyaga yozish uchun ruxsat berilmadi");
@@ -1859,7 +1891,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
             return;
           }
         }
-        await Gal.putImageBytes(bytes, name: safeFileName, album: 'AlfaPos');
+        await Gal.putImageBytes(bytes, name: safeFileName);
         if (dialogContext.mounted) {
           AppNotify.success(dialogContext, "Chek galereyaga saqlandi");
         }

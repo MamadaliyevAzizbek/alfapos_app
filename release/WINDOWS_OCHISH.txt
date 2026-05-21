@@ -1,5 +1,11 @@
 ALFAPOS — Windows (x64)
 
+TAVSIYA — o'rnatuvchi:
+1. alfapos_app-windows-x64-setup.exe ni ishga tushiring.
+2. O'rnatish tugagach Start yoki ish stolidan AlfaPOS ni oching.
+   Barcha fayllar (exe, dll, data\) avtomatik o'rnatiladi.
+
+ZIP (portativ):
 1. ZIP ni to'liq oching (masalan: C:\Alfapos\).
 2. alfapos_app.exe ni shu papkadan ishga tushiring.
    MUHIM: exe ni boshqa joyga yolg'iz ko'chirmang — yonidagi .dll va data\ papkasi kerak.

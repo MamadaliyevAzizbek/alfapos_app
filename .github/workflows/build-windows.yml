@@ -22,51 +22,82 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build Windows release
         run: flutter build windows --release
 
-      - name: Package release (ZIP)
+      - name: Package ZIP and installer
         shell: pwsh
         run: |
-          $src = "build/windows/x64/runner/Release"
-          $outDir = "release/alfapos-windows-release"
+          $ErrorActionPreference = 'Stop'
+          $src = 'build/windows/x64/runner/Release'
+          $outDir = 'release/alfapos-windows-release'
           New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          $zip = "$outDir/alfapos_app-windows-x64.zip"
+
           if (-not (Test-Path "$src/alfapos_app.exe")) {
-            Write-Error "alfapos_app.exe topilmadi: $src"
+            throw "alfapos_app.exe topilmadi: $src"
           }
-          if (Test-Path "release/WINDOWS_OCHISH.txt") {
-            Copy-Item "release/WINDOWS_OCHISH.txt" "$src/WINDOWS_OCHISH.txt" -Force
+          if (Test-Path 'release/WINDOWS_OCHISH.txt') {
+            Copy-Item 'release/WINDOWS_OCHISH.txt' "$src/WINDOWS_OCHISH.txt" -Force
           }
+
+          $zip = "$outDir/alfapos_app-windows-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path "$src/*" -DestinationPath $zip -Force
-          Write-Host "Yaratildi: $zip ($(Get-Item $zip).Length bytes)"
+          Write-Host "ZIP: $zip ($((Get-Item $zip).Length) bytes)"
+
+          $line = (Get-Content pubspec.yaml | Select-String '^version:').Line
+          $ver = $line -replace 'version:\s*','' -replace '\+.*',''
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'Inno Setup ISCC.exe topilmadi' }
+          & $iscc "/DMyAppVersion=$ver" 'scripts/alfapos_installer.iss'
+          $setup = "$outDir/alfapos_app-windows-x64-setup.exe"
+          if (-not (Test-Path $setup)) { throw "Setup topilmadi: $setup" }
+          Write-Host "SETUP: $setup ($((Get-Item $setup).Length) bytes)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: alfapos-windows-release
-          path: release/alfapos-windows-release/alfapos_app-windows-x64.zip
+          path: |
+            release/alfapos-windows-release/alfapos_app-windows-x64.zip
+            release/alfapos-windows-release/alfapos_app-windows-x64-setup.exe
+            release/WINDOWS_SETUP.txt
           retention-days: 90
 
-      - name: Publish GitHub Release (push main, workflow_dispatch yoki tag)
+      - name: Publish GitHub Release
         if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $zip = "release/alfapos-windows-release/alfapos_app-windows-x64.zip"
-          if (-not (Test-Path $zip)) { Write-Error "ZIP topilmadi: $zip" }
+          $zip = 'release/alfapos-windows-release/alfapos_app-windows-x64.zip'
+          $setup = 'release/alfapos-windows-release/alfapos_app-windows-x64-setup.exe'
+          if (-not (Test-Path $zip)) { throw "ZIP topilmadi" }
+          if (-not (Test-Path $setup)) { throw "Setup topilmadi" }
           $line = (Get-Content pubspec.yaml | Select-String '^version:').Line
           $ver = $line -replace 'version:\s*','' -replace '\+.*',''
-          if ("${{ github.ref }}" -like 'refs/tags/v*') {
-            $tag = "${{ github.ref_name }}"
+          if ('${{ github.ref }}' -like 'refs/tags/v*') {
+            $tag = '${{ github.ref_name }}'
           } else {
             $tag = "windows-$ver-build${{ github.run_number }}"
           }
-          gh release create $tag $zip `
+          $notes = @"
+          ## AlfaPOS Windows $ver (x64)
+
+          **O'rnatish (tavsiya):** ``alfapos_app-windows-x64-setup.exe`` — barcha fayllar (exe, dll, data) avtomatik o'rnatiladi.
+
+          **Portativ:** ``alfapos_app-windows-x64.zip`` — papkani chiqarib ``alfapos_app.exe`` ni shu papkadan ishga tushiring.
+          "@
+          gh release create $tag $setup $zip `
             --title "AlfaPOS Windows $ver" `
-            --notes "Windows x64 (Release). ZIP ichida alfapos_app.exe — papkani to'liq chiqarib, exe ni ishga tushiring." `
+            --notes $notes `
             --prerelease
