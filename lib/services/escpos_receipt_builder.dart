@@ -34,7 +34,8 @@ class EscPosReceiptBuilder {
     final wrapped = ThermalReceiptLineWrap.wrapAll(lines, maxWidth: maxWidth);
 
     bytes.addAll(g.reset());
-    bytes.addAll(g.setGlobalCodeTable('CP1251'));
+    final codeTable = _codeTableId(cfg.printerCodePage);
+    bytes.addAll(g.setGlobalCodeTable(codeTable));
 
     final cfg = design ?? ReceiptDesignConfig.defaults;
     if (cfg.showLogo && cfg.logoFilePath != null && cfg.logoFilePath!.isNotEmpty) {
@@ -59,13 +60,13 @@ class EscPosReceiptBuilder {
       }
       final centered = line.startsWith('^');
       final text = centered ? line.substring(1) : line;
-      final enc = await EscPosTextCodec.encode(text);
+      final enc = await EscPosTextCodec.encode(text, codePage: cfg.printerCodePage);
       if (centered) {
         bytes.addAll(
           g.textEncoded(
             enc,
-            styles: const PosStyles(
-              codeTable: 'CP1251',
+            styles: PosStyles(
+              codeTable: codeTable,
               fontType: PosFontType.fontA,
               align: PosAlign.center,
             ),
@@ -79,7 +80,7 @@ class EscPosReceiptBuilder {
           g.textEncoded(
             enc,
             styles: PosStyles(
-              codeTable: 'CP1251',
+              codeTable: codeTable,
               fontType: PosFontType.fontA,
               bold: isTotal,
               height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
@@ -94,6 +95,12 @@ class EscPosReceiptBuilder {
     bytes.addAll(g.feed(2));
     bytes.addAll(g.cut());
     return bytes;
+  }
+
+  static String _codeTableId(String page) {
+    final p = page.toUpperCase();
+    if (p.contains('1251')) return 'CP1251';
+    return 'CP866';
   }
 
   static Future<Uint8List?> _loadLogoBytes(String path) async {

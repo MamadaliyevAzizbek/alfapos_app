@@ -230,7 +230,10 @@ class ThermalReceiptFormatter {
     ReceiptDesignConfig config = ReceiptDesignConfig.defaults,
   }) {
     final lines = <String>[];
-    final sep = config.itemSeparator;
+    final sep = ThermalReceiptLineWrap.fullSeparator(
+      kThermalChars80mm,
+      from: config.itemSeparator,
+    );
     String som(String amount) => _withSom(amount, suffix: config.currencySuffix);
 
     void center(String s) => lines.add('^${s.trim()}');
@@ -529,13 +532,6 @@ class ThermalReceiptFormatter {
   }
 
   static String _normalizeQtyUnit(String qty) {
-    return qty
-        .replaceAll('шт', 'dona')
-        .replaceAll('Шт', 'dona')
-        .replaceAll('ШТ', 'dona')
-        .replaceAll('дона', 'dona')
-        .replaceAll('Дона', 'dona')
-        .replaceAll('пachka', 'pachka')
-        .replaceAll('×', 'x');
+    return qty.replaceAll('×', 'x').replaceAll('’', "'");
   }
 }

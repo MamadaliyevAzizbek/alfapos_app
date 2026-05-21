@@ -6,6 +6,7 @@ import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import '../utils/receipt_store_title.dart';
 import '../utils/thermal_receipt_formatter.dart';
+import '../utils/thermal_receipt_line_wrap.dart';
 
 /// Bir qator chek qatori: mahsulot, miqdor, narx, summa
 class ReceiptRow {
@@ -255,7 +256,10 @@ class ReceiptWidget extends StatelessWidget {
             ),
             if (design.showItemSeparator) ...[
               const SizedBox(height: 4),
-              Text(design.itemSeparator, style: textStyle.copyWith(fontSize: 11)),
+              Text(
+                ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+                style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+              ),
             ],
             const SizedBox(height: 6),
           ],
@@ -282,7 +286,10 @@ class ReceiptWidget extends StatelessWidget {
           ),
           if (design.showItemSeparator) ...[
             const SizedBox(height: 4),
-            Text(design.itemSeparator, style: textStyle.copyWith(fontSize: 11)),
+            Text(
+              ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+              style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+            ),
           ],
           Row(
             children: [

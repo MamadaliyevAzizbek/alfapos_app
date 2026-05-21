@@ -24,7 +24,7 @@ class ThermalReceiptLineWrap {
         continue;
       }
       if (_isSeparatorLine(line)) {
-        out.add(line.length <= maxWidth ? line : line.substring(0, maxWidth));
+        out.add(fullSeparator(maxWidth, from: line));
         continue;
       }
       out.addAll(wrapLine(line, maxWidth: maxWidth));
@@ -34,7 +34,15 @@ class ThermalReceiptLineWrap {
 
   static bool _isSeparatorLine(String line) {
     final t = line.trim();
-    return t.isNotEmpty && RegExp(r'^[-─—]+$').hasMatch(t);
+    return t.isNotEmpty && RegExp(r'^[-─—_=.]+$').hasMatch(t);
+  }
+
+  /// Mahsulotlar orasidagi chiziq — chek kengligiga to‘liq (48 belgi @ 80mm).
+  static String fullSeparator(int width, {String? from}) {
+    if (width <= 0) return '';
+    final sample = (from ?? '-').trim();
+    final char = sample.isNotEmpty ? sample[0] : '-';
+    return char * width;
   }
 
   static List<String> wrapLine(String line, {int maxWidth = kThermalChars80mm}) {

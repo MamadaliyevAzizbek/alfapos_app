@@ -27,6 +27,8 @@ class ReceiptDesignConfig {
   final String itemSeparator;
   final bool showItemSeparator;
   final bool numberedProducts;
+  /// Termal printer matn kodi: CP866 (rus) yoki CP1251.
+  final String printerCodePage;
 
   const ReceiptDesignConfig({
     this.showLogo = true,
@@ -46,14 +48,15 @@ class ReceiptDesignConfig {
     this.showClientAddress = false,
     this.discountLabel = 'Chegirma',
     this.totalLabel = 'Umumiy summa',
-    this.footerText = 'Rahmat, xaridingiz uchun!',
+    this.footerText = 'Спасибо за покупку!',
     this.showFooter = true,
     this.showBarcode = true,
     this.precheckBanner = 'OLDINDAN CHEK',
     this.currencySuffix = "so'm",
-    this.itemSeparator = '--------------------------------',
+    this.itemSeparator = '-',
     this.showItemSeparator = true,
     this.numberedProducts = true,
+    this.printerCodePage = 'CP866',
   });
 
   static const defaults = ReceiptDesignConfig();
@@ -85,6 +88,7 @@ class ReceiptDesignConfig {
     String? itemSeparator,
     bool? showItemSeparator,
     bool? numberedProducts,
+    String? printerCodePage,
   }) {
     return ReceiptDesignConfig(
       showLogo: showLogo ?? this.showLogo,
@@ -112,6 +116,7 @@ class ReceiptDesignConfig {
       itemSeparator: itemSeparator ?? this.itemSeparator,
       showItemSeparator: showItemSeparator ?? this.showItemSeparator,
       numberedProducts: numberedProducts ?? this.numberedProducts,
+      printerCodePage: printerCodePage ?? this.printerCodePage,
     );
   }
 
@@ -141,6 +146,7 @@ class ReceiptDesignConfig {
         'itemSeparator': itemSeparator,
         'showItemSeparator': showItemSeparator,
         'numberedProducts': numberedProducts,
+        'printerCodePage': printerCodePage,
       };
 
   factory ReceiptDesignConfig.fromJson(Map<String, dynamic> json) {
@@ -162,14 +168,15 @@ class ReceiptDesignConfig {
       showClientAddress: json['showClientAddress'] as bool? ?? false,
       discountLabel: json['discountLabel'] as String? ?? 'Chegirma',
       totalLabel: json['totalLabel'] as String? ?? 'Umumiy summa',
-      footerText: json['footerText'] as String? ?? 'Rahmat, xaridingiz uchun!',
+      footerText: json['footerText'] as String? ?? 'Спасибо за покупку!',
       showFooter: json['showFooter'] as bool? ?? true,
       showBarcode: json['showBarcode'] as bool? ?? true,
       precheckBanner: json['precheckBanner'] as String? ?? 'OLDINDAN CHEK',
       currencySuffix: json['currencySuffix'] as String? ?? "so'm",
-      itemSeparator: json['itemSeparator'] as String? ?? '--------------------------------',
+      itemSeparator: json['itemSeparator'] as String? ?? '-',
       showItemSeparator: json['showItemSeparator'] as bool? ?? true,
       numberedProducts: json['numberedProducts'] as bool? ?? true,
+      printerCodePage: json['printerCodePage'] as String? ?? 'CP866',
     );
   }
 

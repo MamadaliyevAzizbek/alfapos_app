@@ -275,6 +275,8 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
             _switchChip('Mahsulot ajratgichi', _config.showItemSeparator, (v) => _applyLocal(_config.copyWith(showItemSeparator: v))),
             _switchChip('Raqamlangan mahsulot', _config.numberedProducts, (v) => _applyLocal(_config.copyWith(numberedProducts: v))),
             _switchChip('Pastki matn', _config.showFooter, (v) => _applyLocal(_config.copyWith(showFooter: v))),
+            _codePageChip('CP866 (rus)', 'CP866'),
+            _codePageChip('CP1251', 'CP1251'),
           ],
         ),
         const SizedBox(height: 16),
@@ -299,7 +301,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
                 _field('Chegirma yozuvi', _discountLabel, onChanged: (_) => _refreshPreview()),
                 _field('Jami yozuvi', _totalLabel, onChanged: (_) => _refreshPreview()),
                 _field('Valyuta (so\'m)', _currencySuffix, onChanged: (_) => _refreshPreview()),
-                _field('Ajratgich chiziq', _itemSeparator, onChanged: (_) => _refreshPreview()),
+                _field('Ajratgich belgisi (-)', _itemSeparator, onChanged: (_) => _refreshPreview()),
                 _field('Oldindan chek banner', _precheckBanner, onChanged: (_) => _refreshPreview()),
                 _field('Pastki matn', _footerText, onChanged: (_) => _refreshPreview()),
               ],
@@ -415,6 +417,17 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
       label: Text(label),
       selected: value,
       onSelected: onChanged,
+      selectedColor: AppTheme.primary.withValues(alpha: 0.15),
+      checkmarkColor: AppTheme.primary,
+    );
+  }
+
+  Widget _codePageChip(String label, String value) {
+    final selected = _config.printerCodePage.toUpperCase() == value.toUpperCase();
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => _applyLocal(_config.copyWith(printerCodePage: value)),
       selectedColor: AppTheme.primary.withValues(alpha: 0.15),
       checkmarkColor: AppTheme.primary,
     );
