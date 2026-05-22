@@ -41,6 +41,24 @@ class HoldOrderCart {
     'products',
   ];
 
+  /// Chop etish uchun — tez: ichki cart yoki bitta continue-sale (invoice/catalog yo‘q).
+  static Future<HoldOrderResume?> fetchResumeForPrint(Map<String, dynamic> hold) async {
+    final embedded = parse(hold);
+    if (embedded != null && embedded.items.isNotEmpty) return embedded;
+
+    final orderId = _int(hold['orderID'] ?? hold['order_id'] ?? hold['id']);
+    if (orderId == null) return embedded;
+
+    try {
+      final cont = await SalesApi.continueSale(orderId);
+      final fromCont = _resumeFromApiPayload(cont, hold);
+      if (fromCont != null && fromCont.items.isNotEmpty) return fromCont;
+    } catch (e) {
+      _debug('print continue-sale failed: $e');
+    }
+    return embedded;
+  }
+
   /// Ro'yxatdagi qisqa yozuvdan (cart bo'lmasa ham) to'liq savatni yuklash.
   static Future<HoldOrderResume?> fetchResume(Map<String, dynamic> hold) async {
     final embedded = parse(hold);

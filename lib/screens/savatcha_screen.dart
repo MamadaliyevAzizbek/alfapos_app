@@ -38,6 +38,7 @@ import '../utils/customer_group_discount.dart';
 import '../utils/sales_filter_cart_price.dart';
 import '../utils/catalog_product_price_label.dart';
 import '../utils/hold_order_cart.dart';
+import '../services/thermal_receipt_printer.dart';
 import '../utils/hold_cart_action.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 import '../widgets/sales_customer_search.dart';
@@ -175,6 +176,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         _sales.applyCatalogStock();
         unawaited(_sales.reloadFilterLists());
         unawaited(_refreshSavedOrdersCount());
+        unawaited(ThermalReceiptPrinter.warmup());
       } else {
         final shift = CashRegisterShiftProvider.instance;
         await shift.loadRegisters();
@@ -309,7 +311,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   void _onSearchFieldChanged(String v) {
-    setState(() => _query = v);
+    if (_query != v) {
+      _query = v;
+      if (mounted) setState(() {});
+    }
     _barcodeSearchDebounce?.cancel();
     final q = v.trim();
 
@@ -415,9 +420,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
     if (product_search.looksLikeBarcodeInput(q)) {
       await _desktopBarcodeSearchAndAdd(q);
-      return;
     }
-    if (mounted) setState(() {});
   }
 
   int get _cartRawTotal => _cart.items.fold<int>(0, (s, e) => s + e.total);
@@ -573,6 +576,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                                 final sellType = _sales.activeSellPriceType;
                                 return ProductTile(
                                   product: p,
+                                  showSkuInTitle: true,
                                   primaryPriceLabel: CatalogProductPriceLabel.primary(
                                     p,
                                     sellType: sellType,
@@ -930,7 +934,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             onAddNew: () => _addCustomer(context),
           ),
         ),
-        onPointerDownAnywhere: _scheduleCatalogSearchRefocus,
         onOpenSavedOrders: () => _runWithSuspendedCatalogSearchRefocus(
           () => SalesHoldOrdersSheet.show(
             context,
@@ -939,7 +942,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           ),
         ),
         savedOrdersCount: _savedOrdersCount,
-        onLoadMoreProducts: _sales.hasMoreProducts && !_sales.productsLoading
+        onLoadMoreProducts: _query.trim().isEmpty &&
+                _sales.hasMoreProducts &&
+                !_sales.productsLoading
             ? () => _sales.loadMoreProducts()
             : null,
         onClearCart: _clearCart,

@@ -395,6 +395,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _loadPaymentTypes();
     _loadSellerDisplayName();
     unawaited(_loadReceiptDesign());
+    if (widget.useDesktopFullscreenLayout) {
+      unawaited(ThermalReceiptPrinter.warmup());
+    }
   }
 
   Future<void> _loadReceiptDesign() async {
@@ -1685,12 +1688,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (widget.useDesktopFullscreenLayout) {
       final autoPrint = await PrinterSettings.isAutoPrintEnabled();
       final ready = await PrinterSettings.isPrinterReady();
-      if (autoPrint && ready) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) unawaited(_printThermalReceipt(silent: true));
-        });
+      if (autoPrint && ready && mounted) {
+        await _printThermalReceipt(silent: true);
       }
     }
+    if (!mounted) return;
     _showSuccessDialog(sellerName: sellerName, clientName: clientName, receiptId: rid);
     unawaited(_postSaleSideEffects());
     final resumedHoldId = widget.initialOrderId;

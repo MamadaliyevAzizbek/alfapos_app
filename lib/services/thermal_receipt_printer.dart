@@ -94,6 +94,14 @@ class ThermalReceiptPrinter {
     }
   }
 
+  /// Chek chop etishdan oldin keshni tayyorlash.
+  static Future<void> warmup() async {
+    await Future.wait([
+      ReceiptDesignStorage.load(),
+      EscPosReceiptBuilder.warmup(),
+    ]);
+  }
+
   static Future<ThermalPrintResult> _printEscPosLines(
     List<String> lines, {
     bool directOnly = false,

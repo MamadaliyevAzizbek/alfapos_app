@@ -52,6 +52,7 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
   List<Map<String, dynamic>> _holds = [];
   bool _loading = true;
   int? _printingOrderId;
+  bool _printingAny = false;
 
   @override
   void initState() {
@@ -339,9 +340,41 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
   }
 
   Future<void> _printPrecheck(Map<String, dynamic> h) async {
+    if (_printingAny) return;
     final orderId = HoldOrdersResponse.resolveOrderId(h);
-    if (_printingOrderId != null) return;
-    setState(() => _printingOrderId = orderId);
+    setState(() {
+      _printingAny = true;
+      _printingOrderId = orderId;
+    });
+
+    if (mounted) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppTheme.primary),
+                    SizedBox(height: 16),
+                    Text(
+                      'Chek chop etilmoqda...',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     try {
       final result = await HoldOrderPrecheckPrint.printHoldOrder(h);
       if (!mounted) return;
@@ -353,13 +386,19 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Chop etish xatosi: $e');
     } finally {
-      if (mounted) setState(() => _printingOrderId = null);
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() {
+          _printingAny = false;
+          _printingOrderId = null;
+        });
+      }
     }
   }
 
   Widget _printButton(Map<String, dynamic> h, {bool compact = false}) {
     final orderId = HoldOrdersResponse.resolveOrderId(h);
-    final busy = _printingOrderId != null && _printingOrderId == orderId;
+    final busy = _printingAny && _printingOrderId == orderId;
     return IconButton(
       tooltip: 'Chop etish (oldindan chek)',
       onPressed: busy ? null : () => _printPrecheck(h),

@@ -12,6 +12,17 @@ import '../utils/thermal_receipt_line_wrap.dart';
 class EscPosReceiptBuilder {
   EscPosReceiptBuilder._();
 
+  static CapabilityProfile? _cachedProfile;
+
+  static Future<CapabilityProfile> _profile() async {
+    return _cachedProfile ??= await CapabilityProfile.load();
+  }
+
+  /// Birinchi chekdan oldin profilni yuklash (sotuv/to‘lovdan keyin tezroq chop).
+  static Future<void> warmup() async {
+    await _profile();
+  }
+
   static Future<List<int>> buildFromLines(
     List<String> lines, {
     PaperSize paperSize = PaperSize.mm80,
@@ -24,7 +35,7 @@ class EscPosReceiptBuilder {
     ReceiptDesignConfig? design,
     PaperSize paperSize = PaperSize.mm80,
   }) async {
-    final profile = await CapabilityProfile.load();
+    final profile = await _profile();
     final g = Generator(paperSize, profile);
     final bytes = <int>[];
 
@@ -33,12 +44,12 @@ class EscPosReceiptBuilder {
         : kThermalChars80mm;
     final wrapped = ThermalReceiptLineWrap.wrapAll(lines, maxWidth: maxWidth);
     final cfg = design ?? ReceiptDesignConfig.defaults;
+    final codeTable = _codeTableId(cfg.printerCodePage);
+    final codePage = cfg.printerCodePage;
 
     bytes.addAll(g.reset());
-    final codeTable = _codeTableId(cfg.printerCodePage);
     bytes.addAll(g.setGlobalCodeTable(codeTable));
-    // Har qator oldin kod jadvali (ba'zi Xprinterlar resetdan keyin CP437 ga qaytadi).
-    final tableByte = profile.getCodePageId(codeTable);
+
     if (cfg.showLogo && cfg.logoFilePath != null && cfg.logoFilePath!.isNotEmpty) {
       final logoBytes = await _loadLogoBytes(cfg.logoFilePath!);
       if (logoBytes != null) {
@@ -61,9 +72,7 @@ class EscPosReceiptBuilder {
       }
       final centered = line.startsWith('^');
       final text = centered ? line.substring(1) : line;
-      final enc = await EscPosTextCodec.encode(text, codePage: cfg.printerCodePage);
-      // ESC t n — rus/kirill jadvali (CP866=17, CP1251=46).
-      bytes.addAll([0x1B, 0x74, tableByte]);
+      final enc = EscPosTextCodec.encodeSync(text, codePage: codePage);
       if (centered) {
         bytes.addAll(
           g.textEncoded(
@@ -77,9 +86,10 @@ class EscPosReceiptBuilder {
           ),
         );
       } else {
-        final isTotal = text.toLowerCase().contains('umumiy summa') ||
-            text.toLowerCase().contains('jami') ||
-            text.toLowerCase().contains('итого');
+        final lower = text.toLowerCase();
+        final isTotal = lower.contains('umumiy summa') ||
+            lower.contains('jami') ||
+            lower.contains('итого');
         bytes.addAll(
           g.textEncoded(
             enc,

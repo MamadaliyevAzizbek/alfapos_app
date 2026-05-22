@@ -3,6 +3,7 @@ import 'dart:io';
 import '../core/seller_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../models/receipt_design_config.dart';
 import '../providers/sales_session_provider.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
@@ -22,29 +23,32 @@ class HoldOrderPrecheckPrint {
       );
     }
 
-    final resume = await HoldOrderCart.fetchResume(hold);
+    final resumeFuture = HoldOrderCart.fetchResumeForPrint(hold);
+    final designFuture = ReceiptDesignStorage.load();
+    final sellerFuture = Future.wait([getSellerName(), getSellerPhone()]);
+
+    final resume = await resumeFuture;
     if (resume == null || resume.items.isEmpty) {
       return ThermalPrintResult.fail('Savat bo\'sh yoki yuklanmadi');
     }
 
+    final results = await Future.wait([designFuture, sellerFuture]);
+    final design = results[0] as ReceiptDesignConfig;
+    final sellerPair = results[1] as List<String>;
+    final seller = sellerPair[0];
+    final sellerPhone = sellerPair[1].isNotEmpty ? sellerPair[1] : null;
+
     final raw = resume.items.fold<int>(0, (s, e) => s + e.total);
     final total = _resolveGrandTotal(raw, resume);
     final discount = (raw - total).clamp(0, raw);
-
-    final seller = await getSellerName();
-    final sellerPhone = await getSellerPhone();
-    final design = await ReceiptDesignStorage.load();
-    final branch = SalesSessionProvider.instance.branchName.trim();
-
-    final receiptNumber = _receiptLabel(hold, resume) ?? '—';
     final client = resume.customer;
 
     final widget = ReceiptWidget(
       dateTime: DateTime.now(),
-      receiptNumber: receiptNumber,
+      receiptNumber: _receiptLabel(hold, resume) ?? '—',
       sellerName: seller.isNotEmpty ? seller : 'Sotuvchi',
       sellerPhone: sellerPhone,
-      branchName: branch,
+      branchName: SalesSessionProvider.instance.branchName.trim(),
       clientName: client?.name,
       clientPhone: client?.phone,
       clientAddress: client?.address,
