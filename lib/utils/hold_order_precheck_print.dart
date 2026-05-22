@@ -25,18 +25,22 @@ class HoldOrderPrecheckPrint {
 
     final resumeFuture = HoldOrderCart.fetchResumeForPrint(hold);
     final designFuture = ReceiptDesignStorage.load();
-    final sellerFuture = Future.wait([getSellerName(), getSellerPhone()]);
+    final sellerNameFuture = getSellerName();
+    final sellerPhoneFuture = getSellerPhone();
 
     final resume = await resumeFuture;
     if (resume == null || resume.items.isEmpty) {
       return ThermalPrintResult.fail('Savat bo\'sh yoki yuklanmadi');
     }
 
-    final results = await Future.wait([designFuture, sellerFuture]);
+    final results = await Future.wait([
+      designFuture,
+      sellerNameFuture,
+      sellerPhoneFuture,
+    ]);
     final design = results[0] as ReceiptDesignConfig;
-    final sellerPair = results[1] as List<String>;
-    final seller = sellerPair[0];
-    final sellerPhone = sellerPair[1].isNotEmpty ? sellerPair[1] : null;
+    final seller = results[1] as String;
+    final sellerPhone = results[2] as String?;
 
     final raw = resume.items.fold<int>(0, (s, e) => s + e.total);
     final total = _resolveGrandTotal(raw, resume);
