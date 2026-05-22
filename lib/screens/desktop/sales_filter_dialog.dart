@@ -7,6 +7,7 @@ import '../../providers/sales_session_provider.dart';
 import '../../utils/platform_layout.dart';
 import '../../widgets/ios_style_modals.dart';
 import '../../widgets/pos_modal_actions.dart';
+import 'sales_nav_filters.dart';
 
 /// Sotuv filtri — kategoriya, brend, qoldiq, narx rejimi.
 class SalesFilterDialog extends StatefulWidget {
@@ -286,44 +287,54 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
                 ),
               ),
             )
-          else if (_sales.categories.isEmpty && _sales.brands.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: TextButton.icon(
-                onPressed: _reloadLists,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Kategoriya va brendlarni yuklash'),
+          else if (!isDesktopPosLayout) ...[
+            if (_sales.categories.isEmpty && _sales.brands.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TextButton.icon(
+                  onPressed: _reloadLists,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Kategoriya va brendlarni yuklash'),
+                ),
+              ),
+            _FilterSection(
+              desktop: !widget.compactActions,
+              child: Column(
+                children: [
+                  SalesFilterDropdownField(
+                    label: 'Kategoriya',
+                    value: _categoryId,
+                    options: _sales.categories,
+                    size: SalesFilterDropdownSize.normal,
+                    onChanged: (v) => setState(() {
+                      _categoryId = v;
+                      if (!widget.compactActions) _applyLive();
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  SalesFilterDropdownField(
+                    label: 'Brend',
+                    value: _brandId,
+                    options: _sales.brands,
+                    size: SalesFilterDropdownSize.normal,
+                    onChanged: (v) => setState(() {
+                      _brandId = v;
+                      if (!widget.compactActions) _applyLive();
+                    }),
+                  ),
+                ],
               ),
             ),
-          _FilterSection(
-            desktop: !widget.compactActions,
-            child: Column(
-              children: [
-                _FilterDropdown(
-                  label: 'Kategoriya',
-                  value: _categoryId,
-                  options: _sales.categories,
-                  onChanged: (v) => setState(() {
-                    _categoryId = v;
-                    if (!widget.compactActions) _applyLive();
-                  }),
-                  desktop: !widget.compactActions,
-                ),
-                const SizedBox(height: 14),
-                _FilterDropdown(
-                  label: 'Brend',
-                  value: _brandId,
-                  options: _sales.brands,
-                  onChanged: (v) => setState(() {
-                    _brandId = v;
-                    if (!widget.compactActions) _applyLive();
-                  }),
-                  desktop: !widget.compactActions,
-                ),
-              ],
+            const SizedBox(height: 14),
+          ] else ...[
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Kategoriya va brend — yuqori panelda (kassa nomi yonida).',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
+          ],
           _FilterSection(
             desktop: !widget.compactActions,
             child: Column(
@@ -409,108 +420,6 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
             child: const Text('Tozalash'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FilterDropdown extends StatelessWidget {
-  final String label;
-  final String? value;
-  final List<Map<String, dynamic>> options;
-  final ValueChanged<String?> onChanged;
-  final bool desktop;
-
-  const _FilterDropdown({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-    this.desktop = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final items = <DropdownMenuItem<String?>>[
-      DropdownMenuItem(
-        value: null,
-        child: _DropdownLabel('Hammasi', desktop: desktop),
-      ),
-      ...options.map(
-        (o) => DropdownMenuItem(
-          value: o['id']?.toString(),
-          child: _DropdownLabel((o['name'] ?? '').toString(), desktop: desktop),
-        ),
-      ),
-    ];
-
-    return DropdownButtonFormField<String?>(
-      value: _safeValue(value, options),
-      isExpanded: true,
-      menuMaxHeight: SalesFilterDialog.menuMaxHeight,
-      borderRadius: BorderRadius.circular(desktop ? 14 : 8),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(
-          color: desktop ? const Color(0xFF64748B) : AppTheme.textSecondary,
-          fontWeight: desktop ? FontWeight.w600 : FontWeight.normal,
-        ),
-        filled: true,
-        fillColor: desktop ? const Color(0xFFFBFDFF) : Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(desktop ? 14 : 8),
-          borderSide: BorderSide(color: desktop ? const Color(0xFFDDE5F0) : AppTheme.divider),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(desktop ? 14 : 8),
-          borderSide: BorderSide(color: desktop ? const Color(0xFFDDE5F0) : AppTheme.divider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(desktop ? 14 : 8),
-          borderSide: const BorderSide(color: AppTheme.primary, width: 1.4),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      ),
-      selectedItemBuilder: (context) => [
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: _DropdownLabel('Hammasi', dense: true, desktop: desktop),
-        ),
-        ...options.map(
-          (o) => Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: _DropdownLabel((o['name'] ?? '').toString(), dense: true, desktop: desktop),
-          ),
-        ),
-      ],
-      items: items,
-      onChanged: onChanged,
-    );
-  }
-
-  String? _safeValue(String? current, List<Map<String, dynamic>> opts) {
-    if (current == null) return null;
-    final ids = opts.map((e) => e['id']?.toString()).toSet();
-    return ids.contains(current) ? current : null;
-  }
-}
-
-class _DropdownLabel extends StatelessWidget {
-  final String text;
-  final bool dense;
-  final bool desktop;
-
-  const _DropdownLabel(this.text, {this.dense = false, this.desktop = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: desktop ? (dense ? 22 : 23) : (dense ? 14 : 15),
-        fontWeight: dense ? FontWeight.w600 : FontWeight.w500,
       ),
     );
   }

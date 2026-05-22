@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../providers/products_provider.dart';
 import '../../providers/sales_session_provider.dart';
 import '../../utils/hold_order_cart.dart';
+import '../../utils/hold_order_precheck_print.dart';
 import '../../utils/hold_orders_response.dart';
 import '../../utils/platform_layout.dart';
 
@@ -50,6 +51,7 @@ class SalesHoldOrdersSheet extends StatefulWidget {
 class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
   List<Map<String, dynamic>> _holds = [];
   bool _loading = true;
+  int? _printingOrderId;
 
   @override
   void initState() {
@@ -192,7 +194,9 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
                   color: Color(0xFF2E7D32),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
+              _printButton(h, compact: true),
+              const SizedBox(width: 4),
               Text(
                 _dateTimeCompact(h),
                 style: const TextStyle(fontSize: 10, color: Color(0xFF78909C)),
@@ -293,15 +297,7 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
                 ),
               ),
               const SizedBox(width: 10),
-              IconButton(
-                tooltip: 'Chop etish',
-                onPressed: () => AppNotify.info(context, 'Chop etish tez orada'),
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFFE3F2FD),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                ),
-                icon: const Icon(Icons.print_rounded, color: Color(0xFF1565C0), size: 22),
-              ),
+              _printButton(h),
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -339,6 +335,48 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _printPrecheck(Map<String, dynamic> h) async {
+    final orderId = HoldOrdersResponse.resolveOrderId(h);
+    if (_printingOrderId != null) return;
+    setState(() => _printingOrderId = orderId);
+    try {
+      final result = await HoldOrderPrecheckPrint.printHoldOrder(h);
+      if (!mounted) return;
+      if (result.ok) {
+        AppNotify.success(context, result.message);
+      } else {
+        AppNotify.warning(context, result.message);
+      }
+    } catch (e) {
+      if (mounted) AppNotify.error(context, 'Chop etish xatosi: $e');
+    } finally {
+      if (mounted) setState(() => _printingOrderId = null);
+    }
+  }
+
+  Widget _printButton(Map<String, dynamic> h, {bool compact = false}) {
+    final orderId = HoldOrdersResponse.resolveOrderId(h);
+    final busy = _printingOrderId != null && _printingOrderId == orderId;
+    return IconButton(
+      tooltip: 'Chop etish (oldindan chek)',
+      onPressed: busy ? null : () => _printPrecheck(h),
+      padding: compact ? EdgeInsets.zero : null,
+      visualDensity: compact ? VisualDensity.compact : null,
+      constraints: compact ? const BoxConstraints(minWidth: 30, minHeight: 30) : null,
+      style: IconButton.styleFrom(
+        backgroundColor: const Color(0xFFE3F2FD),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? 4 : 6)),
+      ),
+      icon: busy
+          ? SizedBox(
+              width: compact ? 14 : 18,
+              height: compact ? 14 : 18,
+              child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
+            )
+          : Icon(Icons.print_rounded, color: const Color(0xFF1565C0), size: compact ? 16 : 22),
     );
   }
 

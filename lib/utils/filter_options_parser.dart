@@ -2,12 +2,42 @@
 class FilterOptionsParser {
   FilterOptionsParser._();
 
-  static List<Map<String, dynamic>> parseIdNameList(dynamic source) {
+  /// `GET /products/filter-options` yoki `supporting-data` — faqat brend qismi.
+  static List<Map<String, dynamic>> parseBrandsFromResponse(dynamic source) {
+    if (source is Map) {
+      final m = Map<String, dynamic>.from(source);
+      for (final key in ['brand', 'brands', 'brand_list']) {
+        if (m[key] != null) return parseIdNameList(m[key]);
+      }
+    }
+    return parseIdNameList(source);
+  }
+
+  /// `GET /products/filter-options` yoki `supporting-data` — faqat kategoriya qismi.
+  static List<Map<String, dynamic>> parseCategoriesFromResponse(dynamic source) {
+    if (source is Map) {
+      final m = Map<String, dynamic>.from(source);
+      for (final key in ['category', 'categories', 'category_list']) {
+        if (m[key] != null) return parseIdNameList(m[key]);
+      }
+    }
+    return parseIdNameList(source);
+  }
+
+  static List<Map<String, dynamic>> parseIdNameList(
+    dynamic source, {
+    String? companyId,
+  }) {
+    final cid = companyId?.trim();
     final rows = _collectMaps(source);
     final seen = <String>{};
     final out = <Map<String, dynamic>>[];
 
     for (final m in rows) {
+      if (cid != null && cid.isNotEmpty) {
+        final rowCid = (m['company_id'] ?? m['companyId'] ?? m['companyID'])?.toString().trim();
+        if (rowCid != null && rowCid.isNotEmpty && rowCid != cid) continue;
+      }
       final id = (m['id'] ?? m['value'] ?? m['category_id'] ?? m['brand_id'] ?? m['key'] ?? '')
           .toString()
           .trim();
@@ -52,7 +82,9 @@ class FilterOptionsParser {
         'datarows',
         'data',
         'categories',
+        'category',
         'brands',
+        'brand',
         'items',
         'rows',
         'list',

@@ -29,6 +29,7 @@ import 'desktop/desktop_shell_scope.dart';
 import 'desktop/savatcha_desktop_layout.dart';
 import '../providers/cash_register_shift_provider.dart';
 import 'desktop/sales_filter_dialog.dart';
+import 'desktop/sales_nav_filters.dart';
 import 'desktop/desktop_payment_screen.dart';
 import 'desktop/sales_hold_orders_sheet.dart';
 import '../utils/cart_discount_percent.dart';
@@ -172,6 +173,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         await _products.loadFromStorage(refreshInBackground: true);
         await _sales.init(localFirst: true);
         _sales.applyCatalogStock();
+        unawaited(_sales.reloadFilterLists());
         unawaited(_refreshSavedOrdersCount());
       } else {
         final shift = CashRegisterShiftProvider.instance;
@@ -181,6 +183,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         await _products.loadFromStorage(refreshInBackground: false);
         try {
           await _sales.init(localFirst: true);
+          unawaited(_sales.reloadFilterLists());
         } catch (_) {}
         if (shift.isShiftOpen) {
           unawaited(shift.loadShiftDetail());
@@ -905,6 +908,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         usdExchangeRate: _sales.usdRate > 0 ? _sales.usdRate : 12600,
         onSearchChanged: _onSearchFieldChanged,
         onSearchSubmitted: _desktopSearchSubmit,
+        categoryFilterId: _sales.categoryId,
+        brandFilterId: _sales.brandId,
+        filterCategories: _sales.categories,
+        filterBrands: _sales.brands,
+        onCategoryFilterChanged: (v) {
+          _sales.setCategoryFilter(v);
+          setState(() {});
+        },
+        onBrandFilterChanged: (v) {
+          _sales.setBrandFilter(v);
+          setState(() {});
+        },
         onFilterTap: () => _runWithSuspendedCatalogSearchRefocus(
           () => _showDesktopFilterSheet(context),
         ),

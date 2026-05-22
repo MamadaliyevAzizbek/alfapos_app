@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_sync_throttle.dart';
+import '../core/auth_storage.dart';
 import '../services/api_service.dart';
 import '../core/api_client.dart';
 
@@ -21,8 +22,11 @@ class CategoriesProvider extends ChangeNotifier {
   bool _loaded = false;
   String? _loadError;
   final Set<String> _addingKeys = {};
-  static const _cacheKey = 'alfapos_categories_v1';
+  static const _cacheKeyBase = 'alfapos_categories_v1';
   static const _staleAfter = Duration(hours: 12);
+  String? _boundCompanyId;
+
+  Future<String> _cacheKey() => companyStorageKey(_cacheKeyBase);
 
   List<String> get items => List.unmodifiable(_items);
 
@@ -58,16 +62,35 @@ class CategoriesProvider extends ChangeNotifier {
     return null;
   }
 
+  /// Boshqa kompaniyaga kirganda xotira va keshni yangilash.
+  Future<void> resetForCompanyChange() async {
+    final cid = (await getCompanyId())?.trim();
+    if (cid != null && cid.isNotEmpty && cid == _boundCompanyId && _rawList.isNotEmpty) {
+      return;
+    }
+    _boundCompanyId = cid;
+    _items = [];
+    _rawList = [];
+    _loaded = false;
+    _loadError = null;
+    notifyListeners();
+    await _loadCache();
+  }
+
   Future<void> _persistCache() async {
     if (_rawList.isEmpty) return;
+    _boundCompanyId = (await getCompanyId())?.trim();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_cacheKey, jsonEncode(_rawList));
-    await prefs.setInt('${_cacheKey}_at', DateTime.now().millisecondsSinceEpoch);
+    final key = await _cacheKey();
+    await prefs.setString(key, jsonEncode(_rawList));
+    await prefs.setInt('${key}_at', DateTime.now().millisecondsSinceEpoch);
   }
 
   Future<void> _loadCache() async {
+    _boundCompanyId = (await getCompanyId())?.trim();
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_cacheKey);
+    final key = await _cacheKey();
+    final raw = prefs.getString(key);
     if (raw == null || raw.isEmpty) return;
     try {
       final list = jsonDecode(raw) as List<dynamic>;
@@ -94,16 +117,20 @@ class CategoriesProvider extends ChangeNotifier {
 
   /// Diskdan tez, API ixtiyoriy.
   Future<void> loadFromStorage({bool refreshInBackground = true}) async {
-    await _loadCache();
+    await resetForCompanyChange();
     if (refreshInBackground) {
       unawaited(loadFromApiIfStale());
     }
   }
 
   /// Kategoriyalar eskirgan bo‘lsa yoki kesh bo‘sh bo‘lsa API.
-  Future<void> loadFromApiIfStale() async {
+  Future<void> loadFromApiIfStale({bool force = false}) async {
+    if (force) {
+      _loaded = false;
+    }
     final prefs = await SharedPreferences.getInstance();
-    final ms = prefs.getInt('${_cacheKey}_at');
+    final key = await _cacheKey();
+    final ms = prefs.getInt('${key}_at');
     if (_loaded && _items.isNotEmpty && ms != null) {
       final last = DateTime.fromMillisecondsSinceEpoch(ms);
       if (DateTime.now().difference(last) < _staleAfter) return;
@@ -139,9 +166,16 @@ class CategoriesProvider extends ChangeNotifier {
           if (list.isEmpty && support['categories'] is List) list = support['categories'] as List<dynamic>;
         } catch (_) {}
       }
+      final cid = (await getCompanyId())?.trim();
       _rawList = list
           .where((e) => e is Map)
           .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((m) {
+            if (cid == null || cid.isEmpty) return true;
+            final rowCid = (m['company_id'] ?? m['companyId'])?.toString().trim();
+            if (rowCid == null || rowCid.isEmpty) return true;
+            return rowCid == cid;
+          })
           .toList();
       _items = _rawList
           .map((e) {

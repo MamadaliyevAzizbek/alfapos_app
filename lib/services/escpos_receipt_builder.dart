@@ -37,6 +37,8 @@ class EscPosReceiptBuilder {
     bytes.addAll(g.reset());
     final codeTable = _codeTableId(cfg.printerCodePage);
     bytes.addAll(g.setGlobalCodeTable(codeTable));
+    // Har qator oldin kod jadvali (ba'zi Xprinterlar resetdan keyin CP437 ga qaytadi).
+    final tableByte = profile.getCodePageId(codeTable);
     if (cfg.showLogo && cfg.logoFilePath != null && cfg.logoFilePath!.isNotEmpty) {
       final logoBytes = await _loadLogoBytes(cfg.logoFilePath!);
       if (logoBytes != null) {
@@ -60,6 +62,8 @@ class EscPosReceiptBuilder {
       final centered = line.startsWith('^');
       final text = centered ? line.substring(1) : line;
       final enc = await EscPosTextCodec.encode(text, codePage: cfg.printerCodePage);
+      // ESC t n — rus/kirill jadvali (CP866=17, CP1251=46).
+      bytes.addAll([0x1B, 0x74, tableByte]);
       if (centered) {
         bytes.addAll(
           g.textEncoded(
@@ -74,7 +78,8 @@ class EscPosReceiptBuilder {
         );
       } else {
         final isTotal = text.toLowerCase().contains('umumiy summa') ||
-            text.toLowerCase().contains('jami');
+            text.toLowerCase().contains('jami') ||
+            text.toLowerCase().contains('итого');
         bytes.addAll(
           g.textEncoded(
             enc,

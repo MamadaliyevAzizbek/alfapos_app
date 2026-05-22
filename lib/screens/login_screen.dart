@@ -12,6 +12,8 @@ import '../core/seller_preferences.dart';
 import '../core/api_client.dart';
 import '../core/api_http.dart';
 import '../core/desktop_runtime.dart';
+import '../providers/categories_provider.dart';
+import '../providers/sales_session_provider.dart';
 import '../services/api_service.dart';
 import '../utils/platform_layout.dart';
 import '../widgets/liquid_glass.dart';
@@ -136,6 +138,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       await saveAuth(token: token, companyId: companyId, email: login);
+      await CategoriesProvider.instance.resetForCompanyChange();
+      await SalesSessionProvider.instance.resetFilterListsForCompanyChange();
       await _saveLoginData(companyId, login, password);
       await syncSellerNameFromApi(force: true);
       if (!mounted) return;

@@ -8,6 +8,7 @@ import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
 import '../../widgets/product_tile.dart';
+import 'sales_nav_filters.dart';
 
 /// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
 class SavatchaDesktopLayout extends StatelessWidget {
@@ -27,6 +28,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final Future<void> Function(String) onSearchSubmitted;
   final VoidCallback onFilterTap;
+  final String? categoryFilterId;
+  final String? brandFilterId;
+  final List<Map<String, dynamic>> filterCategories;
+  final List<Map<String, dynamic>> filterBrands;
+  final ValueChanged<String?> onCategoryFilterChanged;
+  final ValueChanged<String?> onBrandFilterChanged;
   final Widget customerSearchSection;
   final VoidCallback onOpenSavedOrders;
   final int savedOrdersCount;
@@ -78,6 +85,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required this.onSearchChanged,
     required this.onSearchSubmitted,
     required this.onFilterTap,
+    this.categoryFilterId,
+    this.brandFilterId,
+    this.filterCategories = const [],
+    this.filterBrands = const [],
+    required this.onCategoryFilterChanged,
+    required this.onBrandFilterChanged,
     required this.customerSearchSection,
     required this.onOpenSavedOrders,
     this.savedOrdersCount = 0,
@@ -169,18 +182,29 @@ class SavatchaDesktopLayout extends StatelessWidget {
         color: Colors.white,
         border: Border(bottom: BorderSide(color: AppTheme.divider)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
           const Icon(Icons.point_of_sale_rounded, color: _navBlue, size: 22),
           const SizedBox(width: 10),
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
             child: Text(
               cashRegisterLabel,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 12),
+          SalesNavCategoryBrandFilters(
+            categoryId: categoryFilterId,
+            brandId: brandFilterId,
+            categories: filterCategories,
+            brands: filterBrands,
+            onCategoryChanged: onCategoryFilterChanged,
+            onBrandChanged: onBrandFilterChanged,
+          ),
+          const Spacer(),
           if (onOpenShiftDashboard != null)
             TextButton.icon(
               onPressed: onOpenShiftDashboard,
@@ -294,7 +318,6 @@ class SavatchaDesktopLayout extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Container(
-                      width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       height: 44,
                       decoration: BoxDecoration(

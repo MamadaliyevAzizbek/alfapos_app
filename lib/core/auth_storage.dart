@@ -39,6 +39,13 @@ Future<String?> getCompanyId() async {
   return prefs.getString(_keyCompanyId);
 }
 
+/// SharedPreferences kalitini joriy kompaniya uchun ajratish (kesh aralashmasin).
+Future<String> companyStorageKey(String baseKey) async {
+  final id = (await getCompanyId())?.trim();
+  if (id == null || id.isEmpty) return baseKey;
+  return '${baseKey}_c$id';
+}
+
 /// Token saqlangan va bo'sh emas bo'lsa — avtomatik kirish (dastur qayta ochilganda ham).
 Future<bool> isLoggedIn() async {
   final token = await getToken();

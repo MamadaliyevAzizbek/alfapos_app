@@ -16,10 +16,16 @@ void main() async {
       await ApiHttp.warmUp();
     }
   }
+  if (!kIsWeb && Platform.isAndroid) {
+    // Android 15+ edge-to-edge (SDK 35) — insetlar SafeArea / AppBar orqali
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
   runApp(const AlfaposApp());

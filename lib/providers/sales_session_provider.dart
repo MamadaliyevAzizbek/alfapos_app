@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/api_client.dart';
 import '../core/api_pacing.dart';
+import '../core/auth_storage.dart';
 import '../models/cart_item.dart';
 import '../services/product_catalog_storage.dart';
 import '../services/sales_session_storage.dart';
@@ -45,6 +46,7 @@ class SalesSessionProvider extends ChangeNotifier {
 
   String? categoryId;
   String? brandId;
+  String? _filterListsCompanyId;
   bool hideZeroStock = false;
   /// Ulgurji narxda sotish (kelish bilan bir vaqtda yoqilmaydi).
   bool sellAtWholesalePrice = false;
@@ -83,7 +85,16 @@ class SalesSessionProvider extends ChangeNotifier {
   /// Diskdan sessiyani tiklash (server kutmasdan katalog ko‘rsatish).
   Future<bool> bootstrapFromLocal() async {
     final meta = await SalesSessionStorage.loadMeta();
-    _applyMetaFromStorage(meta);
+    final cid = (await getCompanyId())?.trim() ?? '';
+    final metaCid = (meta['companyId'] ?? '').toString().trim();
+    if (cid.isNotEmpty && metaCid.isNotEmpty && cid != metaCid) {
+      categories = [];
+      brands = [];
+      _filterListsCompanyId = null;
+    } else {
+      _applyMetaFromStorage(meta);
+      if (cid.isNotEmpty) _filterListsCompanyId = cid;
+    }
 
     // Avval mahsulotlar katalogi (to‘g‘ri ombor), eski sotuv keshi faqat zaxira.
     var products = ProductsProvider.instance.items;
@@ -181,6 +192,8 @@ class SalesSessionProvider extends ChangeNotifier {
     await ApiPacing.staggerPause();
     await _loadCurrencies();
     await ApiPacing.staggerPause();
+    await _loadFilterLists(force: true);
+    await ApiPacing.staggerPause();
     await loadProducts(reset: true);
     await _persistSessionSnapshot();
   }
@@ -270,38 +283,101 @@ class SalesSessionProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> _loadFilterLists() async {
-    categories = await _fetchCategoryOptions();
-    brands = await _fetchBrandOptions();
+  Future<void> _ensureFilterListsCompany({bool force = false}) async {
+    final cid = (await getCompanyId())?.trim();
+    if (force || (_filterListsCompanyId != null && cid != null && cid != _filterListsCompanyId)) {
+      categories = [];
+      brands = [];
+      await CategoriesProvider.instance.resetForCompanyChange();
+    }
+    _filterListsCompanyId = cid;
   }
 
-  /// Filtr dialogi ochilganda qayta yuklash.
-  Future<void> reloadFilterLists() async {
-    await _loadFilterLists();
+  /// Boshqa kompaniyaga kirganda filtrlarni tozalash (login dan keyin).
+  Future<void> resetFilterListsForCompanyChange() async {
+    categoryId = null;
+    brandId = null;
+    _filterListsCompanyId = null;
+    categories = [];
+    brands = [];
+    await CategoriesProvider.instance.resetForCompanyChange();
     notifyListeners();
   }
 
-  Future<List<Map<String, dynamic>>> _fetchCategoryOptions() async {
-    if (categories.isNotEmpty) return categories;
-    var list = CategoriesProvider.instance.idNameOptions;
-    if (list.isNotEmpty) return list;
+  Future<void> _loadFilterLists({bool force = false}) async {
+    await _ensureFilterListsCompany(force: force);
+    categories = await _fetchCategoryOptions(force: force);
+    brands = await _fetchBrandOptions(force: force);
+    notifyListeners();
+  }
+
+  /// Filtr dialogi / navbar — serverdan joriy kompaniya bo‘yicha.
+  Future<void> reloadFilterLists() async {
+    await _loadFilterLists(force: true);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchCategoryOptions({bool force = false}) async {
+    if (!force && categories.isNotEmpty) return categories;
+
+    final cid = (await getCompanyId())?.trim();
+    var list = <Map<String, dynamic>>[];
     try {
       list = FilterOptionsParser.parseIdNameList(await ProductsApi.postCategoriesList());
     } catch (_) {}
+
     if (list.isEmpty) {
-      await CategoriesProvider.instance.loadFromApiIfStale();
-      list = CategoriesProvider.instance.idNameOptions;
+      await CategoriesProvider.instance.resetForCompanyChange();
+      await CategoriesProvider.instance.loadFromApiIfStale(force: force);
+      list = _filterIdNameByCompany(CategoriesProvider.instance.idNameOptions, cid);
+    }
+    if (list.isEmpty) {
+      try {
+        await CategoriesProvider.instance.loadFromApi();
+        list = _filterIdNameByCompany(CategoriesProvider.instance.idNameOptions, cid);
+      } catch (_) {}
     }
     return list;
   }
 
-  Future<List<Map<String, dynamic>>> _fetchBrandOptions() async {
-    if (brands.isNotEmpty) return brands;
-    try {
-      return FilterOptionsParser.parseIdNameList(await ProductsApi.postBrandsList());
-    } catch (_) {
-      return [];
+  List<Map<String, dynamic>> _filterIdNameByCompany(
+    List<Map<String, dynamic>> list,
+    String? companyId,
+  ) {
+    final cid = companyId?.trim();
+    if (cid == null || cid.isEmpty) return list;
+    return list.where((e) {
+      final rowCid = (e['company_id'] ?? e['companyId'])?.toString().trim();
+      if (rowCid == null || rowCid.isEmpty) return true;
+      return rowCid == cid;
+    }).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchBrandOptions({bool force = false}) async {
+    if (!force && brands.isNotEmpty) return brands;
+
+    Future<List<Map<String, dynamic>>> trySource(
+      Future<Map<String, dynamic>> req, {
+      bool brandsOnly = false,
+    }) async {
+      try {
+        final res = await req;
+        return brandsOnly
+            ? FilterOptionsParser.parseBrandsFromResponse(res)
+            : FilterOptionsParser.parseIdNameList(res);
+      } catch (_) {
+        return [];
+      }
     }
+
+    for (final list in [
+      await trySource(ProductsApi.postBrandsList()),
+      await trySource(ProductsApi.getBrands()),
+      await trySource(ProductsApi.getFilterOptions(), brandsOnly: true),
+      await trySource(ProductsApi.getSupportingData(), brandsOnly: true),
+    ]) {
+      if (list.isNotEmpty) return list;
+    }
+    return [];
   }
 
   /// 0 qoldiq filtri qo'llangan katalog.

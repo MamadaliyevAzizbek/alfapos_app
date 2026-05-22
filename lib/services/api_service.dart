@@ -548,12 +548,27 @@ class ProductsApi {
     return ApiClient.get('/products/supporting-data');
   }
 
+  static Map<String, dynamic> get _referenceListBody => {
+        'rowLimit': 500,
+        'rowOffset': 0,
+        'columnKey': 'name',
+        'columnSortedBy': 'asc',
+      };
+
   static Future<Map<String, dynamic>> postCategoriesList() async {
-    return ApiClient.post('/products/categories/list', body: {});
+    return ApiClient.post('/products/categories/list', body: _referenceListBody);
   }
 
   static Future<Map<String, dynamic>> postBrandsList() async {
-    return ApiClient.post('/products/brands/list', body: {});
+    return ApiClient.post('/products/brands/list', body: _referenceListBody);
+  }
+
+  static Future<Map<String, dynamic>> getBrands() async {
+    return ApiClient.get('/products/brands');
+  }
+
+  static Future<Map<String, dynamic>> getFilterOptions() async {
+    return ApiClient.get('/products/filter-options');
   }
 }
 
