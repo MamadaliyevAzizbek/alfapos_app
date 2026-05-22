@@ -143,10 +143,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => onPointerDownAnywhere?.call(),
-      child: ColoredBox(
+    return ColoredBox(
       color: _panelBg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -164,7 +161,6 @@ class SavatchaDesktopLayout extends StatelessWidget {
           ),
         ],
       ),
-    ),
     );
   }
 
@@ -270,10 +266,10 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 
   Widget _buildCatalogPanel(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: onCatalogSearchRefocus,
-      child: Column(
+    final initialLoading = productsLoading && catalogProducts.isEmpty;
+    final loadingMore = productsLoading && catalogProducts.isNotEmpty;
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -369,7 +365,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: productsLoading
+          child: initialLoading
               ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
               : catalogProducts.isEmpty
                   ? const Center(
@@ -378,37 +374,60 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
                       ),
                     )
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: (n) {
-                        if (n is ScrollEndNotification &&
-                            n.metrics.pixels >= n.metrics.maxScrollExtent - 120 &&
-                            onLoadMoreProducts != null) {
-                          onLoadMoreProducts!();
-                        }
-                        return false;
-                      },
-                      child: GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.82,
+                  : Stack(
+                      children: [
+                        NotificationListener<ScrollNotification>(
+                          onNotification: (n) {
+                            if (loadingMore || onLoadMoreProducts == null) return false;
+                            if (n is ScrollEndNotification &&
+                                n.metrics.pixels >= n.metrics.maxScrollExtent - 120) {
+                              onLoadMoreProducts!();
+                            }
+                            return false;
+                          },
+                          child: GridView.builder(
+                            key: ValueKey(
+                              'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}',
+                            ),
+                            padding: EdgeInsets.fromLTRB(12, 0, 12, loadingMore ? 40 : 12),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 0.82,
+                            ),
+                            itemCount: catalogProducts.length,
+                            itemBuilder: (context, i) => _DesktopProductCard(
+                              key: ValueKey(catalogProducts[i].id),
+                              product: catalogProducts[i],
+                              usdRate: usdExchangeRate,
+                              catalogSellPriceType: catalogSellPriceType,
+                              showPurchasePrice: showPurchasePriceOnCards,
+                              showUsdEquivalent: showUsdEquivalentOnCards,
+                              onTap: () => onProductTap(catalogProducts[i]),
+                            ),
+                          ),
                         ),
-                        itemCount: catalogProducts.length,
-                        itemBuilder: (context, i) => _DesktopProductCard(
-                          product: catalogProducts[i],
-                          usdRate: usdExchangeRate,
-                          catalogSellPriceType: catalogSellPriceType,
-                          showPurchasePrice: showPurchasePriceOnCards,
-                          showUsdEquivalent: showUsdEquivalentOnCards,
-                          onTap: () => onProductTap(catalogProducts[i]),
-                        ),
-                      ),
+                        if (loadingMore)
+                          const Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 8,
+                            child: Center(
+                              child: SizedBox(
+                                width: 28,
+                                height: 28,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
         ),
       ],
-    ),
     );
   }
 
@@ -732,6 +751,7 @@ class _DesktopProductCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _DesktopProductCard({
+    super.key,
     required this.product,
     required this.usdRate,
     this.catalogSellPriceType,
@@ -783,7 +803,7 @@ class _DesktopProductCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    product.name,
+                    product.nameWithSku,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),

@@ -15,6 +15,8 @@ class ProductTile extends StatelessWidget {
   /// Agar berilsa, `product.priceFormatted` o‘rnida ko‘rsatiladi (sotuv filtri).
   final String? primaryPriceLabel;
   final String? secondaryPriceLabel;
+  /// Sotuv katalogi: nomdan keyin « - SKU».
+  final bool showSkuInTitle;
 
   const ProductTile({
     super.key,
@@ -25,6 +27,7 @@ class ProductTile extends StatelessWidget {
     this.showMenu = true,
     this.primaryPriceLabel,
     this.secondaryPriceLabel,
+    this.showSkuInTitle = false,
   });
 
   static Widget _placeholder(double boxSize) {
@@ -143,7 +146,9 @@ class ProductTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product.name,
+                      showSkuInTitle ? product.nameWithSku : product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,

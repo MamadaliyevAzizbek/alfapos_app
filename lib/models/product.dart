@@ -77,6 +77,13 @@ class Product {
 
   bool get hasStock => availableStockQuantity > 0;
 
+  /// Sotuv katalog kartochkasi: «Nomi - SKU» (SKU bo‘lmasa faqat nom).
+  String get nameWithSku {
+    final s = (sku ?? '').trim();
+    if (s.isEmpty) return name;
+    return '$name - $s';
+  }
+
   /// UI uchun tozalangan birlik (API Map yoki saqlangan xom matn emas).
   String get unitDisplayLabel => Product.sanitizeUnitLabel(unit) ?? 'dona';
 
