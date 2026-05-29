@@ -67,6 +67,11 @@ jobs:
           if (-not (Test-Path $setup)) { throw "Setup topilmadi: $setup" }
           Write-Host "SETUP: $setup ($((Get-Item $setup).Length) bytes)"
 
+          $fullVer = ($line -replace 'version:\s*','').Trim()
+          Copy-Item $zip "release/alfapos_app-$fullVer-windows-x64.zip" -Force
+          Copy-Item $setup "release/alfapos_app-$fullVer-windows-x64-setup.exe" -Force
+          Write-Host "Versiyali nusxa: release/alfapos_app-$fullVer-windows-x64-setup.exe"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
