@@ -85,12 +85,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   String? _activeHoldInvoiceId;
   int _savedOrdersCount = 0;
   CartItem? _expandedCartLine;
+  bool _isReturnMode = false;
 
   Future<void> _onRefresh() async {
     if (isDesktopPosLayout) {
       await _products.loadFromApi();
     } else if (_sales.initError == null) {
-      await _sales.loadProducts(reset: true, searchValue: _query.trim());
+      await _sales.loadProducts(reset: true, searchValue: '');
+      _sales.setSearchQuery('');
     } else {
       await ProductsProvider.instance.loadFromStorage();
     }
@@ -119,22 +121,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       list = product_search.filterCatalogProducts(list, q);
     }
     return list;
-  }
-
-  /// Mobil: server + lokal katalog bo'yicha qidiruv (nomdagi har qanday belgi/raqam).
-  Future<void> _mobileSearchProducts(String query) async {
-    final q = query.trim();
-    if (q.isEmpty) return;
-    if (_sales.initError == null) {
-      _sales.setSearchQuery(q);
-      await _sales.loadProducts(reset: true, searchValue: q);
-    }
-    if (_products.items.isEmpty) {
-      try {
-        await _products.loadFromStorage();
-      } catch (_) {}
-    }
-    if (mounted) setState(() {});
   }
 
   @override
@@ -179,6 +165,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         unawaited(ThermalReceiptPrinter.warmup());
       } else {
         final shift = CashRegisterShiftProvider.instance;
+        await shift.ensureCurrentUserId();
         await shift.loadRegisters();
         _sales.syncFromShift();
         await _refreshSavedOrdersCount();
@@ -318,21 +305,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _barcodeSearchDebounce?.cancel();
     final q = v.trim();
 
-    // Mobil: API qidiruv (nom, raqam, shtrix) + faqat uzun shtrixda avtomatik qo'shish.
+    // Mobil: Mahsulotlar (Katalog) kabi — mahalliy filtr; API har harfda emas.
     if (!isDesktopPosLayout) {
-      if (q.isEmpty) {
-        if (_sales.lastSearch.isNotEmpty) {
-          _sales.setSearchQuery('');
-          unawaited(_sales.loadProducts(reset: true, searchValue: ''));
-        }
-        return;
+      if (q.isEmpty && _sales.lastSearch.isNotEmpty) {
+        _sales.setSearchQuery('');
       }
-      _catalogSearchDebounce?.cancel();
-      _catalogSearchDebounce = Timer(const Duration(milliseconds: 350), () {
-        if (!mounted) return;
-        if (_searchController.text.trim() != q) return;
-        unawaited(_mobileSearchProducts(q));
-      });
       if (product_search.looksLikeBarcodeInput(q)) {
         _barcodeSearchDebounce = Timer(const Duration(milliseconds: 500), () {
           if (!mounted) return;
@@ -438,9 +415,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     final items = _cart.items;
     final showSearchResults = _query.trim().isNotEmpty;
     final products = showSearchResults ? _mobileCatalogProducts : _filteredProducts;
+    final hasLocalCatalog = _useSalesCatalog
+        ? _sales.salesProducts.isNotEmpty
+        : (_products.isLoaded && _products.items.isNotEmpty);
     final catalogLoading = showSearchResults &&
+        !hasLocalCatalog &&
         ((_useSalesCatalog && _sales.productsLoading) ||
-            (!_useSalesCatalog && _products.isLoaded == false));
+            (!_useSalesCatalog && _products.isLoaded != true));
     final shift = CashRegisterShiftProvider.instance;
     final showShiftDashboard = shift.requiresCashRegister && shift.isShiftOpen;
 
@@ -514,9 +495,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                       if (trimmed.isEmpty) return;
                       if (product_search.looksLikeBarcodeInput(trimmed)) {
                         await _searchAndAdd(trimmed);
-                        return;
                       }
-                      await _mobileSearchProducts(trimmed);
                     },
                   ),
                 ),
@@ -1003,6 +982,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 await AuthApi.logout();
                 widget.onLogout?.call();
               },
+        isReturnMode: _isReturnMode,
+        onReturnModeChanged: _setReturnMode,
         ),
       ),
     );
@@ -1025,6 +1006,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _setCartDiscountPercent(0);
   }
 
+  void _setReturnMode(bool returnMode) {
+    if (_isReturnMode == returnMode) return;
+    if (_cart.items.isNotEmpty) _clearCart();
+    setState(() => _isReturnMode = returnMode);
+  }
+
   Future<void> _onCustomerSelected(Client? client) async {
     if (client == null) {
       setState(() {
@@ -1036,15 +1023,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
 
     Client? effective = client;
-    final idNum = int.tryParse(client.id);
-    if (idNum != null) {
-      try {
-        final res = await ContactsApi.getCustomer(idNum);
-        final raw = res['customer'] ?? res['data'] ?? res;
-        if (raw is Map) {
-          effective = Client.fromApiJson(Map<String, dynamic>.from(raw));
-        }
-      } catch (_) {}
+    try {
+      effective = await ClientsProvider.instance.resolveClientForSales(client);
+    } on ApiException catch (e) {
+      if (mounted) AppNotify.warning(context, e.message);
+      effective = client;
     }
 
     if (!mounted) return;
@@ -1429,6 +1412,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _activeHoldInvoiceId = null;
       _selectedClient = null;
       _setCartDiscountPercent(0);
+      _isReturnMode = false;
       setState(() {});
       unawaited(_refreshSavedOrdersCount(force: true));
       _refocusCatalogSearch();
@@ -1442,13 +1426,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         initialClient: client,
         initialOrderId: orderId,
         initialInvoiceId: invoiceId,
+        isReturnCheckout: _isReturnMode,
       ).then((result) {
         _catalogSearchRefocusSuspend--;
         if (result is String && result.isNotEmpty) {
+          final wasReturn = _isReturnMode;
           afterPayment();
           if (mounted) {
             final label = result.startsWith('POS') ? result : 'POS$result';
-            AppNotify.success(context, 'Tranzaksiya #$label muvaffaqiyatli!');
+            final msg = wasReturn
+                ? 'Qaytarish #$label muvaffaqiyatli!'
+                : 'Tranzaksiya #$label muvaffaqiyatli!';
+            AppNotify.success(context, msg);
           }
         } else if (mounted) {
           _refocusCatalogSearch();

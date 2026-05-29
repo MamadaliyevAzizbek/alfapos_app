@@ -40,11 +40,38 @@ class CashRegisterShiftProvider extends ChangeNotifier {
     return cashRegisterUserIsEnrolled(r, currentUserId);
   }
 
-  bool get isCurrentUserOpener =>
-      activeRegister != null && cashRegisterUserIsOpener(activeRegister!, currentUserId);
+  bool get isCurrentUserOpener {
+    if (currentUserId == null) return false;
+    if (cashRegisterUserIsOpenerFromShiftInfo(shiftInfo, currentUserId)) return true;
+    if (activeRegister != null &&
+        cashRegisterUserIsOpener(activeRegister!, currentUserId)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool get isCurrentUserEnrolledInShift {
+    if (currentUserId == null) return false;
+    if (cashRegisterShiftStaffContainsUser(shiftInfo, currentUserId)) return true;
+    if (activeRegister != null &&
+        cashRegisterUserIsEnrolled(activeRegister!, currentUserId)) {
+      return true;
+    }
+    return false;
+  }
 
   bool get canLeaveCurrentShift =>
-      isShiftOpen && activeRegister != null && !isCurrentUserOpener;
+      isShiftOpen && isCurrentUserEnrolledInShift && !isCurrentUserOpener;
+
+  void resetForAccountChange() {
+    registers = [];
+    _clearActive();
+    currentUserId = null;
+    loading = false;
+    detailLoading = false;
+    error = null;
+    notifyListeners();
+  }
 
   Future<void> ensureCurrentUserId({bool refreshFromApi = false}) async {
     if (!refreshFromApi) {
@@ -351,6 +378,7 @@ class CashRegisterShiftProvider extends ChangeNotifier {
   }
 
   bool get canCloseFromInfo {
+    if (!isCurrentUserOpener) return false;
     final info = shiftInfo;
     if (info == null) return true;
     if (info['can_close'] == true) return true;

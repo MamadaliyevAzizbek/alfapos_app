@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Xcode → Archive dan oldin ishga tushiring: pubspec.yaml versiyasi Generated.xcconfig ga yoziladi.
+# Archive dan OLDIN: pubspec.yaml → ios/Flutter/Generated.xcconfig (versiya/build).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 echo "pubspec: $(grep '^version:' pubspec.yaml)"
 flutter pub get
-flutter build ios --release --no-codesign
+flutter build ios --config-only
+echo ""
 echo "Generated.xcconfig:"
 grep -E 'FLUTTER_BUILD_NAME|FLUTTER_BUILD_NUMBER' ios/Flutter/Generated.xcconfig
-echo "Endi Xcode: Product → Archive"
+echo ""
+echo "Keyin Xcode: Runner.xcworkspace → Product → Clean Build Folder → Archive"

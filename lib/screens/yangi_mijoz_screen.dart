@@ -232,13 +232,13 @@ class _YangiMijozFormBodyState extends State<YangiMijozFormBody> {
           customerGroupId: _selectedGroupId,
           customerGroupDiscountPriceType: _selectedPriceType,
         );
-        await ClientsProvider.instance.add(
+        final saved = await ClientsProvider.instance.add(
           client,
           groupDiscountPriceType: _selectedPriceType,
         );
         if (!mounted) return;
         AppNotify.success(context, "Mijoz qo'shildi");
-        Navigator.pop(context, client);
+        Navigator.pop(context, saved);
       }
     } catch (e) {
       if (mounted) {

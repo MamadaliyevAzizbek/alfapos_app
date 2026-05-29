@@ -8,6 +8,7 @@ import '../core/api_sync_throttle.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
 import '../services/product_catalog_storage.dart';
+import '../services/product_catalog_sales_bridge.dart';
 import '../utils/barcode_validation.dart';
 import '../utils/product_image_upload.dart';
 import '../utils/product_web_store_body.dart';
@@ -42,6 +43,20 @@ class ProductsProvider extends ChangeNotifier {
   bool get isLoaded => _loaded;
   String? get loadError => _loadError;
   Map<String, dynamic>? get lastRawProducts => _lastRawProducts;
+
+  void resetForAccountChange() {
+    _items = [];
+    _loaded = false;
+    _loadError = null;
+    _lastRawProducts = null;
+    _unitIdToName = null;
+    _unitIdToShortName = null;
+    _supportingDataRaw = null;
+    _defaultBranchResolved = false;
+    _cachedDefaultBranchId = null;
+    _controller.add(items);
+    notifyListeners();
+  }
 
   /// Avval diskdan (tez), keyin ixtiyoriy API dan yangilash (fon).
   Future<void> loadFromStorage({bool refreshInBackground = true}) async {
@@ -121,6 +136,57 @@ class ProductsProvider extends ChangeNotifier {
     await _persistCatalog();
     await _enqueueSync(toSave, isCreate: isCreate, deleteImage: deleteImage);
     unawaited(_drainSyncQueue());
+  }
+
+  /// UI: avval serverga saqlash; muvaffaqiyatdan keyin lokal katalog yangilanadi.
+  Future<Product> saveProductToServer(
+    Product product, {
+    required bool isCreate,
+    bool deleteImage = false,
+  }) async {
+    if (!_loaded || _items.isEmpty) {
+      final cached = await ProductCatalogStorage.loadCatalog();
+      if (cached.isNotEmpty) {
+        _items = cached;
+        _loaded = true;
+      }
+    }
+    _assertBarcodesUnique(product);
+    var toSave = product;
+    final persistedImage = await ProductImageUpload.prepareUploadPath(product.imageUrl);
+    if (persistedImage != null) {
+      toSave = _withImageUrl(product, persistedImage);
+    }
+
+    final oldId = toSave.id;
+    final Product result;
+    if (isCreate || _isLocalOnlyProductId(toSave.id)) {
+      result = await _syncCreateToServer(toSave);
+    } else {
+      final idNum = int.tryParse(toSave.id);
+      if (idNum == null || _isLocalOnlyProductId(toSave.id)) {
+        throw ApiException(
+          'Mahsulot serverda ro\'yxatdan o\'tmagan. Avval qayta saqlang yoki sinxronlang.',
+          400,
+        );
+      }
+      await _syncUpdateToServer(toSave, deleteImage: deleteImage);
+      result = getProductById(toSave.id) ?? toSave;
+    }
+
+    await _removeSyncJobsForProduct(oldId);
+    await _removeSyncJobsForProduct(result.id);
+    await _persistCatalog();
+    unawaited(ProductCatalogSalesBridge.afterProductSaved(result));
+    return result;
+  }
+
+  Future<void> _removeSyncJobsForProduct(String productId) async {
+    final queue = await ProductCatalogStorage.loadSyncQueue();
+    final next = queue.where((j) => j.productId != productId).toList();
+    if (next.length != queue.length) {
+      await ProductCatalogStorage.saveSyncQueue(next);
+    }
   }
 
   Future<void> _drainSyncQueue() async {
@@ -402,7 +468,9 @@ class ProductsProvider extends ChangeNotifier {
 
   /// MOBILE_API_DOCS.md: `branch_id` — bir marta aniqlab keshlanadi.
   Future<int?> _getDefaultBranchId() async {
-    if (_defaultBranchResolved) return _cachedDefaultBranchId;
+    if (_defaultBranchResolved && _cachedDefaultBranchId != null) {
+      return _cachedDefaultBranchId;
+    }
     try {
       await _ensureUnitsLoaded();
       final res = _supportingDataRaw;
@@ -418,19 +486,142 @@ class ProductsProvider extends ChangeNotifier {
     try {
       final res = await SalesApi.getBranches();
       final b = _parseBranchIdFromSalesResponse(res);
-      _cachedDefaultBranchId = b;
-      _defaultBranchResolved = true;
-      return b;
-    } catch (_) {
-      _defaultBranchResolved = true;
+      if (b != null) {
+        _cachedDefaultBranchId = b;
+        _defaultBranchResolved = true;
+        return b;
+      }
+    } catch (_) {}
+    return _cachedDefaultBranchId;
+  }
+
+  static int? _productIdFromStoreResponse(Map<String, dynamic> res) {
+    final data = res['data'] ?? res['product'];
+    if (data is Map) {
+      final id = data['id'] ?? data['productID'] ?? data['product_id'];
+      if (id is int && id > 0) return id;
+      final n = int.tryParse(id?.toString() ?? '');
+      if (n != null && n > 0) return n;
+    }
+    final top = res['id'] ?? res['productID'] ?? res['product_id'];
+    if (top is int && top > 0) return top;
+    return int.tryParse(top?.toString() ?? '');
+  }
+
+  static String? _apiMessageFromResponse(Map<String, dynamic> res) {
+    final m = res['message'] ?? res['error'];
+    if (m != null && m.toString().trim().isNotEmpty) return m.toString().trim();
+    return null;
+  }
+
+  static bool _apiResponseIndicatesSuccess(Map<String, dynamic> res) {
+    final success = res['success'];
+    if (success == true || success == 1 || success == 'true') return true;
+    final msg = _apiMessageFromResponse(res);
+    if (msg != null && ApiClient.isSuccessLikeMessage(msg)) return true;
+    return _productIdFromStoreResponse(res) != null;
+  }
+
+  Future<Product?> _findProductOnServerByBarcode(String? barcode, {String? name}) async {
+    final code = barcode?.trim();
+    final title = name?.trim().toLowerCase();
+    if ((code == null || code.isEmpty) && (title == null || title.isEmpty)) {
       return null;
     }
+    try {
+      await _ensureUnitsLoaded();
+      final res = await ProductsApi.getProductsList(body: {
+        'rowLimit': 100,
+        'rowOffset': 0,
+        if (code != null && code.isNotEmpty) 'searchValue': code,
+      });
+      for (final row in _extractList(res)) {
+        if (row is! Map) continue;
+        try {
+          var p = Product.fromApiJson(
+            Map<String, dynamic>.from(row),
+            unitIdToName: _unitIdToName,
+            unitIdToShortName: _unitIdToShortName,
+          );
+          if (code != null && code.isNotEmpty && p.barcode?.trim() == code) return p;
+          if (title != null && title.isNotEmpty && p.name.trim().toLowerCase() == title) {
+            return p;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Product?> _hydrateProductAfterSave(
+    Map<String, dynamic> res, {
+    required Product draft,
+  }) async {
+    var merged = _mergeProductFromApiResponse(res, quantityHint: draft);
+    final serverId = _productIdFromStoreResponse(res);
+    if (merged == null && serverId != null) {
+      try {
+        final fresh = await ProductsApi.getProduct(serverId);
+        merged = _mergeProductFromApiResponse(fresh, quantityHint: draft);
+      } catch (_) {}
+    }
+    if (merged == null) {
+      merged = await _findProductOnServerByBarcode(draft.barcode, name: draft.name);
+    }
+    if (merged != null) {
+      final fromRes = _imagePathFromApiResponse(res);
+      if (fromRes != null) {
+        merged = _withImageUrl(merged, fromRes);
+      } else if (draft.imageUrl != null && ProductImageUpload.resolveLocalPath(draft.imageUrl) != null) {
+        merged = _withImageUrl(merged, draft.imageUrl!);
+      }
+    }
+    return merged;
+  }
+
+  Product _productWithServerId(Product draft, int serverId) {
+    return Product(
+      id: serverId.toString(),
+      name: draft.name,
+      imageUrl: draft.imageUrl,
+      sku: draft.sku,
+      variantId: draft.variantId,
+      barcode: draft.barcode,
+      additionalBarcodes: draft.additionalBarcodes,
+      priceUzs: draft.priceUzs,
+      costPriceUzs: draft.costPriceUzs,
+      sellingPriceCurrency: draft.sellingPriceCurrency,
+      purchasePriceCurrency: draft.purchasePriceCurrency,
+      sellingPriceApi: draft.sellingPriceApi,
+      purchasePriceApi: draft.purchasePriceApi,
+      quantityInfo: draft.quantityInfo,
+      unit: draft.unit,
+      category: draft.category,
+      description: draft.description,
+      quantityInPack: draft.quantityInPack,
+      quantityPerPack: draft.quantityPerPack,
+      costPricePerPack: draft.costPricePerPack,
+      sellPricePerPack: draft.sellPricePerPack,
+      wholesalePriceUzs: draft.wholesalePriceUzs,
+      wholesalePriceCurrency: draft.wholesalePriceCurrency,
+      wholesalePriceApi: draft.wholesalePriceApi,
+      reorderLevel: draft.reorderLevel,
+      initialQuantity: draft.initialQuantity,
+    );
   }
 
   /// POST create / edit javobidan bitta qatorni ro'yxatga qo'shish — to'liq 5000 qatorni qayta yuklamaslik.
   Product? _mergeProductFromApiResponse(Map<String, dynamic> response, {Product? quantityHint}) {
-    final raw = response['data'] ?? response['product'];
-    if (raw is! Map) return null;
+    var raw = response['data'] ?? response['product'];
+    if (raw is! Map) {
+      final success = response['success'];
+      if (success is Map) raw = success;
+    }
+    if (raw is! Map) {
+      final id = _productIdFromStoreResponse(response);
+      if (id == null) return null;
+      raw = <String, dynamic>{'id': id, 'productID': id};
+    }
     final map = Map<String, dynamic>.from(raw as Map);
     if (quantityHint != null && quantityHint.initialQuantity > 0) {
       if (map['product_quantity'] == null && map['quantity'] == null) {
@@ -606,7 +797,7 @@ class ProductsProvider extends ChangeNotifier {
     await saveProductLocalFirst(product, isCreate: true);
   }
 
-  Future<void> _syncCreateToServer(Product product) async {
+  Future<Product> _syncCreateToServer(Product product) async {
     final oldId = product.id;
     try {
       // category_id — API da son (id)
@@ -622,6 +813,12 @@ class ProductsProvider extends ChangeNotifier {
       final productName = product.name.trim();
       if (productName.isEmpty) throw ApiException('Mahsulot nomi kiritilishi shart', 400);
       final branchId = await _getDefaultBranchId();
+      if (branchId == null && product.initialQuantity > 0) {
+        throw ApiException(
+          'Boshlang\'ich miqdor uchun filial kerak. Kassa smenasini oching yoki filialni tanlang.',
+          400,
+        );
+      }
       final body = ProductWebStoreBody.build(
         product,
         unitId: unitId,
@@ -665,30 +862,48 @@ class ProductsProvider extends ChangeNotifier {
           rethrow;
         }
       }
-      var merged = _mergeProductFromApiResponse(res, quantityHint: product);
+      var merged = await _hydrateProductAfterSave(res, draft: product);
+      final serverId = _productIdFromStoreResponse(res);
       _items.removeWhere((e) => e.id == oldId);
       if (merged == null) {
-        _upsertCachedProduct(product);
-        await _persistCatalog();
-      } else {
-        Product result = merged;
-        final idNum = int.tryParse(result.id);
-        final fromRes = _imagePathFromApiResponse(res);
-        if (fromRes != null) {
-          result = _withImageUrl(result, fromRes);
-        }
-        if (idNum != null && (result.imageUrl == null || result.imageUrl!.trim().isEmpty || useMultipart)) {
-          try {
-            final fresh = await ProductsApi.getProduct(idNum);
-            final hydrated = _mergeProductFromApiResponse(fresh, quantityHint: product);
-            if (hydrated != null) result = hydrated;
-          } catch (_) {}
-        }
-        _upsertCachedProduct(result);
-        if (result.id != oldId) {
-          await _repointSyncJobs(oldId, result.id);
+        if (_apiResponseIndicatesSuccess(res) && serverId != null) {
+          merged = _productWithServerId(product, serverId);
+        } else if (_apiResponseIndicatesSuccess(res)) {
+          merged = await _findProductOnServerByBarcode(product.barcode, name: product.name);
         }
       }
+      if (merged == null) {
+        final msg = _apiMessageFromResponse(res);
+        throw ApiException(
+          msg ?? 'Server mahsulotni saqlamadi yoki javob noto\'g\'ri formatda.',
+          500,
+        );
+      }
+      Product result = merged;
+      final idNum = int.tryParse(result.id);
+      if (idNum == null || idNum <= 0 || _isLocalOnlyProductId(result.id)) {
+        throw ApiException(
+          'Mahsulot serverda saqlanmadi (ID topilmadi).',
+          500,
+        );
+      }
+      final fromRes = _imagePathFromApiResponse(res);
+      if (fromRes != null) {
+        result = _withImageUrl(result, fromRes);
+      }
+      if (result.imageUrl == null || result.imageUrl!.trim().isEmpty || useMultipart) {
+        try {
+          final fresh = await ProductsApi.getProduct(idNum);
+          final hydrated = _mergeProductFromApiResponse(fresh, quantityHint: product);
+          if (hydrated != null) result = hydrated;
+        } catch (_) {}
+      }
+      _upsertCachedProduct(result);
+      if (result.id != oldId) {
+        await _repointSyncJobs(oldId, result.id);
+      }
+      await _persistCatalog();
+      return result;
     } catch (_) {
       rethrow;
     }
@@ -761,17 +976,9 @@ class ProductsProvider extends ChangeNotifier {
         print('Response: $response');
         return true;
       }());
-      var merged = _mergeProductFromApiResponse(response, quantityHint: product);
-      final fromRes = _imagePathFromApiResponse(response);
-      if (merged != null && fromRes != null) {
-        merged = _withImageUrl(merged, fromRes);
-      }
-      if (merged == null || useMultipart || deleteImage) {
-        try {
-          final fresh = await ProductsApi.getProduct(idNum);
-          final hydrated = _mergeProductFromApiResponse(fresh, quantityHint: product);
-          if (hydrated != null) merged = hydrated;
-        } catch (_) {}
+      var merged = await _hydrateProductAfterSave(response, draft: product);
+      if (merged == null && _apiResponseIndicatesSuccess(response)) {
+        merged = _productWithServerId(product, idNum);
       }
       if (merged == null) {
         _upsertCachedProduct(product);

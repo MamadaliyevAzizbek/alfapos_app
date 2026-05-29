@@ -14,6 +14,7 @@ class DesktopPaymentScreen extends StatelessWidget {
   final Client? initialClient;
   final int? initialOrderId;
   final String? initialInvoiceId;
+  final bool isReturnCheckout;
 
   const DesktopPaymentScreen({
     super.key,
@@ -22,6 +23,7 @@ class DesktopPaymentScreen extends StatelessWidget {
     this.initialClient,
     this.initialOrderId,
     this.initialInvoiceId,
+    this.isReturnCheckout = false,
   });
 
   static Future<String?> show(
@@ -31,6 +33,7 @@ class DesktopPaymentScreen extends StatelessWidget {
     Client? initialClient,
     int? initialOrderId,
     String? initialInvoiceId,
+    bool isReturnCheckout = false,
   }) {
     return Navigator.of(context).push<String>(
       PageRouteBuilder(
@@ -42,6 +45,7 @@ class DesktopPaymentScreen extends StatelessWidget {
           initialClient: initialClient,
           initialOrderId: initialOrderId,
           initialInvoiceId: initialInvoiceId,
+          isReturnCheckout: isReturnCheckout,
         ),
         transitionsBuilder: (_, animation, __, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -59,6 +63,7 @@ class DesktopPaymentScreen extends StatelessWidget {
       initialOrderId: initialOrderId,
       initialInvoiceId: initialInvoiceId,
       useDesktopFullscreenLayout: true,
+      isReturnCheckout: isReturnCheckout,
     );
   }
 }
@@ -99,6 +104,9 @@ class DesktopPaymentLayout extends StatefulWidget {
   final VoidCallback onPrintPrecheck;
   final int debtAmount;
   final List<MapEntry<String, int>> allocatedPayments;
+  final bool isReturnCheckout;
+  final int returnRefundDue;
+  final bool returnCreditUsesGeneralDebt;
 
   const DesktopPaymentLayout({
     super.key,
@@ -136,6 +144,9 @@ class DesktopPaymentLayout extends StatefulWidget {
     required this.onPrintPrecheck,
     this.debtAmount = 0,
     this.allocatedPayments = const [],
+    this.isReturnCheckout = false,
+    this.returnRefundDue = 0,
+    this.returnCreditUsesGeneralDebt = false,
   });
 
   @override
@@ -339,10 +350,14 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
       }
     }
 
+    final headerTitle = widget.isReturnCheckout
+        ? 'Qaytarish ${formatThousands(widget.returnRefundDue)}'
+        : 'Umumiy ${formatThousands(widget.totalAfterDiscount)}';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildPaymentHeader(title: 'Umumiy ${formatThousands(widget.totalAfterDiscount)}'),
+        _buildPaymentHeader(title: headerTitle),
         Expanded(
           child: widget.paymentTypesLoading
               ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
@@ -351,6 +366,37 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (widget.isReturnCheckout) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFFB74D)),
+                          ),
+                          child: const Text(
+                            'Ichki qaytarish: to\'lov summalari mijozga qaytariladi. Mijoz balansi bu rejimda ishlatilmaydi.',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        if (widget.returnCreditUsesGeneralDebt) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFF81C784)),
+                            ),
+                            child: const Text(
+                              'Qarz to\'lovi: mijozning umumiy qarzidan avtomatik ayiriladi (chek tanlash shart emas). '
+                              'Qancha kamaygani mijoz sotuvlari ro\'yxatida due_amount yangilanadi.',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
@@ -648,6 +694,12 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
 
   /// Bitta to'lov: summa avtomatik — pastdagi tugmadan tur tanlanadi (input yo'q).
   Widget _buildSinglePaymentMethodBanner(String selectedName) {
+    final key = widget.selectedPaymentKey;
+    final amount = key != null
+        ? (widget.paymentAmounts[key] ?? widget.totalAfterDiscount)
+        : widget.totalAfterDiscount;
+    final isBalance = _isBalanceName(selectedName);
+    final insufficient = isBalance && amount < widget.totalAfterDiscount;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
@@ -669,8 +721,14 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "To'liq summa: ${formatThousands(widget.totalAfterDiscount)} UZS",
-                  style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                  insufficient
+                      ? "Mijoz balansidan: ${formatThousands(amount)} UZS — qolgan ${formatThousands(widget.totalAfterDiscount - amount)} UZS to'lanmadi"
+                      : "To'liq summa: ${formatThousands(amount)} UZS",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: insufficient ? const Color(0xFFE53935) : AppTheme.textSecondary,
+                    fontWeight: insufficient ? FontWeight.w600 : FontWeight.normal,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 const Text(

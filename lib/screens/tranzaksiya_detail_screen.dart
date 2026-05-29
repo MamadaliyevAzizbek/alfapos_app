@@ -44,6 +44,7 @@ import '../utils/sale_store_response.dart';
 import '../utils/sale_store_validation.dart';
 import '../utils/customer_group_discount.dart';
 import '../utils/cart_discount_percent.dart';
+import '../utils/sales_return_checkout.dart';
 import '../widgets/mixed_payment_inline_card.dart';
 
 class TranzaksiyaDetailScreen extends StatefulWidget {
@@ -54,6 +55,7 @@ class TranzaksiyaDetailScreen extends StatefulWidget {
   final int? initialOrderId;
   final String? initialInvoiceId;
   final bool useDesktopFullscreenLayout;
+  final bool isReturnCheckout;
   /// Mobil savatchadan: mijoz tanlanganda savat narxlarini yangilash.
   final Future<void> Function(Client? client)? onCustomerChanged;
 
@@ -65,6 +67,7 @@ class TranzaksiyaDetailScreen extends StatefulWidget {
     this.initialOrderId,
     this.initialInvoiceId,
     this.useDesktopFullscreenLayout = false,
+    this.isReturnCheckout = false,
     this.onCustomerChanged,
   });
 
@@ -157,8 +160,30 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   int get _paidTotal =>
       _paymentAmounts.values.fold<int>(0, (s, e) => s + e);
 
-  int get _remainingToPay => (_totalAfterDiscount - _paidTotal).clamp(0, 0x7FFFFFFF);
-  int get _change => (_paidTotal - _totalAfterDiscount).clamp(0, 0x7FFFFFFF);
+  int get _allocatedPaidTotal =>
+      _getAllocatedPaymentAmounts().values.fold<int>(0, (s, e) => s + e);
+
+  int get _remainingToPay {
+    if (!_mixedPayment) {
+      return (_totalAfterDiscount - _paidTotal).clamp(0, 0x7FFFFFFF);
+    }
+    return (_totalAfterDiscount - _allocatedPaidTotal).clamp(0, 0x7FFFFFFF);
+  }
+
+  int get _change {
+    if (!_mixedPayment) {
+      return (_paidTotal - _totalAfterDiscount).clamp(0, 0x7FFFFFFF);
+    }
+    final cashKey = _cashPaymentKey();
+    if (cashKey == null) return 0;
+    final allocated = _getAllocatedPaymentAmounts();
+    final nonCashAllocated = allocated.entries
+        .where((e) => e.key != cashKey)
+        .fold<int>(0, (s, e) => s + e.value);
+    final cashNeeded = (_totalAfterDiscount - nonCashAllocated).clamp(0, 0x7FFFFFFF);
+    final cashEntered = _paymentAmounts[cashKey] ?? 0;
+    return (cashEntered - cashNeeded).clamp(0, 0x7FFFFFFF);
+  }
   int get _clientBalanceUzs {
     if (_client == null) return 0;
     final b = (_client!.balance ?? 0).toDouble();
@@ -203,6 +228,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   bool _shouldShowPaymentType(Map<String, dynamic> e) {
     if (_isSupplierBalancePayment(e)) return false;
+    if (widget.isReturnCheckout && _isClientBalancePaymentType(e)) return false;
     if (_isQarzPayment(e)) return _client != null;
     if (_isClientBalancePaymentType(e)) return _client != null && _clientBalanceUzs > 0;
     return true;
@@ -214,6 +240,143 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       if (id == paymentId) return _isClientBalancePaymentType(e);
     }
     return false;
+  }
+
+  bool _isQarzPaymentById(String paymentId) {
+    for (final e in _apiPaymentTypes) {
+      final id = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0).toString();
+      if (id == paymentId) return _isQarzPayment(e);
+    }
+    return false;
+  }
+
+  bool _isCashPaymentById(String paymentId) {
+    for (final e in _paymentList) {
+      if (e.key != paymentId) continue;
+      final n = e.value.toLowerCase();
+      return n.contains('naqd') || n.contains('cash');
+    }
+    return false;
+  }
+
+  String? _cashPaymentKey() {
+    for (final e in _paymentList) {
+      if (_isCashPaymentById(e.key)) return e.key;
+    }
+    return null;
+  }
+
+  /// Chek/API: avval mijoz balansi, keyin boshqa turlar, naqd, oxirida qarz.
+  int _paymentAllocationPriority(String key) {
+    if (_isClientBalancePaymentById(key)) return 0;
+    if (_isQarzPaymentById(key)) return 3;
+    for (final e in _paymentList) {
+      if (e.key != key) continue;
+      final n = e.value.toLowerCase();
+      if (n.contains('naqd') || n.contains('cash')) return 2;
+      return 1;
+    }
+    return 1;
+  }
+
+  List<String> _paymentKeysInAllocationOrder() {
+    final keys = _paymentList.map((e) => e.key).toList();
+    keys.sort((a, b) {
+      final cmp = _paymentAllocationPriority(a).compareTo(_paymentAllocationPriority(b));
+      if (cmp != 0) return cmp;
+      final ai = _paymentList.indexWhere((e) => e.key == a);
+      final bi = _paymentList.indexWhere((e) => e.key == b);
+      return ai.compareTo(bi);
+    });
+    return keys;
+  }
+
+  int _maxMixedPaymentForKey(String key) {
+    if (_isCashPaymentById(key)) return 0x7FFFFFFF;
+
+    var remaining = _totalAfterDiscount;
+    for (final k in _paymentKeysInAllocationOrder()) {
+      if (k == key) break;
+      final entered = _paymentAmounts[k] ?? 0;
+      if (entered <= 0 || remaining <= 0) continue;
+      var take = entered > remaining ? remaining : entered;
+      if (_isClientBalancePaymentById(k) && take > _clientBalanceUzs) {
+        take = _clientBalanceUzs;
+      }
+      if (take <= 0) continue;
+      remaining -= take;
+    }
+    var max = remaining.clamp(0, 0x7FFFFFFF);
+    if (_isClientBalancePaymentById(key) && max > _clientBalanceUzs) {
+      max = _clientBalanceUzs;
+    }
+    return max;
+  }
+
+  /// Jami yoki balans chegarasidan oshib ketgan aralash to'lov summalarini qisqartiradi.
+  void _clampMixedPaymentAmounts() {
+    if (!_mixedPayment || _paymentAmounts.isEmpty) return;
+    setState(() {
+      for (final key in _paymentAmounts.keys.toList()) {
+        if (_isCashPaymentById(key)) continue;
+        final max = _maxMixedPaymentForKey(key);
+        final value = _paymentAmounts[key] ?? 0;
+        if (value > max) {
+          _paymentAmounts[key] = max;
+        }
+        if ((_paymentAmounts[key] ?? 0) <= 0) {
+          _paymentAmounts.remove(key);
+        }
+      }
+    });
+  }
+
+  void _syncMixedPaymentAfterTotalChange() {
+    if (!_mixedPayment) {
+      _syncSinglePaymentSelection();
+      return;
+    }
+    _clampMixedPaymentAmounts();
+  }
+
+  /// Aralash to'lov o'chiq: bitta tur uchun kiritiladigan summa (balans chegarasi bilan).
+  int _singlePaymentAmountForKey(String key) {
+    if (_isClientBalancePaymentById(key)) {
+      if (_client == null || _clientBalanceUzs <= 0) return 0;
+      return _clientBalanceUzs < _totalAfterDiscount ? _clientBalanceUzs : _totalAfterDiscount;
+    }
+    return _totalAfterDiscount;
+  }
+
+  bool get _canCompletePayment =>
+      _paymentList.isNotEmpty &&
+      _remainingToPay == 0 &&
+      (_mixedPayment ? _allocatedPaidTotal > 0 : _paidTotal > 0);
+
+  String? get _activeSinglePaymentKey {
+    if (_mixedPayment) return null;
+    if (widget.useDesktopFullscreenLayout) return _desktopSelectedPaymentKey;
+    for (final e in _paymentAmounts.entries) {
+      if (e.value > 0) return e.key;
+    }
+    return null;
+  }
+
+  String? _defaultSinglePaymentKey() {
+    for (final e in _paymentList) {
+      final n = e.value.toLowerCase();
+      if (n.contains('naqd') || n.contains('cash')) return e.key;
+    }
+    return _paymentList.isEmpty ? null : _paymentList.first.key;
+  }
+
+  void _notifyInsufficientClientBalance(int paidFromBalance) {
+    if (!mounted || paidFromBalance >= _totalAfterDiscount) return;
+    AppNotify.warning(
+      context,
+      "Mijoz balansida yetarli mablag' yo'q. Maksimum: ${_fmt(paidFromBalance)} UZS. "
+      "Qolgan ${_fmt(_totalAfterDiscount - paidFromBalance)} UZS to'lanmadi — aralash to'lov yoki boshqa tur tanlang.",
+    );
   }
 
   void _pruneHiddenPaymentAmounts() {
@@ -346,7 +509,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       _apiPaymentTypes = list;
       _paymentTypesLoading = false;
     });
-    _syncDesktopPaymentSelection();
+    if (!_mixedPayment) {
+      _syncSinglePaymentSelection();
+    }
   }
 
   Future<void> _loadPaymentTypes() async {
@@ -411,38 +576,63 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     super.dispose();
   }
 
-  void _syncDesktopPaymentSelection() {
-    if (!widget.useDesktopFullscreenLayout || _paymentList.isEmpty || _mixedPayment) return;
+  void _syncSinglePaymentSelection() {
+    if (_mixedPayment || _paymentList.isEmpty) return;
     _pruneHiddenPaymentAmounts();
-    if (_desktopSelectedPaymentKey == null) {
-      for (final e in _paymentList) {
-        final n = e.value.toLowerCase();
-        if (n.contains('naqd') || n.contains('cash')) {
-          _desktopSelectedPaymentKey = e.key;
-          break;
-        }
+
+    String? key;
+    if (widget.useDesktopFullscreenLayout) {
+      _desktopSelectedPaymentKey ??= _defaultSinglePaymentKey();
+      key = _desktopSelectedPaymentKey;
+    } else if (_paymentAmounts.length == 1) {
+      key = _paymentAmounts.keys.first;
+    } else if (_paymentAmounts.isEmpty) {
+      key = _defaultSinglePaymentKey();
+    } else {
+      return;
+    }
+    if (key == null) return;
+
+    final amount = _singlePaymentAmountForKey(key);
+    final needsUpdate = (_paymentAmounts[key] ?? 0) != amount;
+    if (widget.useDesktopFullscreenLayout) {
+      _desktopSelectedPaymentKey = key;
+      if (needsUpdate) _paymentAmounts[key] = amount;
+      final text = _fmt(amount);
+      if (_desktopPayAmountController.text != text) {
+        _desktopPayAmountController.text = text;
       }
-      _desktopSelectedPaymentKey ??= _paymentList.first.key;
+      return;
     }
-    final key = _desktopSelectedPaymentKey!;
-    if ((_paymentAmounts[key] ?? 0) == 0) {
-      _paymentAmounts[key] = _totalAfterDiscount;
-    }
-    final text = _fmt(_paymentAmounts[key] ?? _totalAfterDiscount);
-    if (_desktopPayAmountController.text != text) {
-      _desktopPayAmountController.text = text;
+
+    if (needsUpdate || _paymentAmounts.isEmpty) {
+      setState(() {
+        _paymentAmounts
+          ..clear()
+          ..[key!] = amount;
+      });
     }
   }
 
-  void _selectDesktopPayment(String key) {
+  void _syncDesktopPaymentSelection() => _syncSinglePaymentSelection();
+
+  void _selectSinglePayment(String key) {
+    final amount = _singlePaymentAmountForKey(key);
     setState(() {
-      _desktopSelectedPaymentKey = key;
+      if (widget.useDesktopFullscreenLayout) {
+        _desktopSelectedPaymentKey = key;
+        _desktopPayAmountController.text = _fmt(amount);
+      }
       _paymentAmounts
         ..clear()
-        ..[key] = _totalAfterDiscount;
-      _desktopPayAmountController.text = _fmt(_totalAfterDiscount);
+        ..[key] = amount;
     });
+    if (!_mixedPayment && _isClientBalancePaymentById(key)) {
+      _notifyInsufficientClientBalance(amount);
+    }
   }
+
+  void _selectDesktopPayment(String key) => _selectSinglePayment(key);
 
   void _onDesktopAmountChanged(String raw) {
     final key = _desktopSelectedPaymentKey;
@@ -457,7 +647,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   void _applyPaymentAmountInput(String key, String raw) {
     final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
     var amount = int.tryParse(digits) ?? 0;
-    if (_isClientBalancePaymentById(key) && amount > _clientBalanceUzs) {
+    if (_mixedPayment) {
+      if (amount > _maxMixedPaymentForKey(key)) {
+        amount = _maxMixedPaymentForKey(key);
+      }
+    } else if (_isClientBalancePaymentById(key) && amount > _clientBalanceUzs) {
       amount = _clientBalanceUzs;
     }
     setState(() {
@@ -497,12 +691,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   /// Chekda ko'rsatiladigan summalar: faqat yetishmayotgan summa (ortiqcha qaytim bo'lmaydi)
   Map<String, int> _getAllocatedPaymentAmounts() {
     final out = <String, int>{};
-    int remaining = _totalAfterDiscount;
-    for (final e in _paymentList) {
-      final key = e.key;
+    var remaining = _totalAfterDiscount;
+    for (final key in _paymentKeysInAllocationOrder()) {
       final entered = _paymentAmounts[key] ?? 0;
       if (entered <= 0 || remaining <= 0) continue;
-      final take = entered > remaining ? remaining : entered;
+      var take = entered > remaining ? remaining : entered;
+      if (_isClientBalancePaymentById(key) && take > _clientBalanceUzs) {
+        take = _clientBalanceUzs;
+      }
+      if (take <= 0) continue;
       out[key] = take;
       remaining -= take;
     }
@@ -562,7 +759,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           remainingToPay: _remainingToPay,
           changeAmount: _change,
           clientBalanceUzs: _clientBalanceUzs,
-          canComplete: _remainingToPay == 0 && _paymentList.isNotEmpty,
+          canComplete: _canCompletePayment,
           submitting: _submittingPay,
           paymentComplete: _desktopPaymentComplete,
           printing: _printingReceipt,
@@ -579,6 +776,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           onPrintPrecheck: _printPrecheckReceipt,
           debtAmount: _desktopDebtAmount(),
           allocatedPayments: allocatedPayments,
+          isReturnCheckout: widget.isReturnCheckout,
+          returnRefundDue: widget.isReturnCheckout ? _totalAfterDiscount : 0,
+          returnCreditUsesGeneralDebt: widget.isReturnCheckout &&
+              SalesReturnCheckout.usesGeneralDebtCredit(
+                hasCreditPayment: _desktopDebtAmount() > 0,
+              ),
         ),
       );
     }
@@ -696,7 +899,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                                   ? null
                                   : (_tabDetails
                                       ? () => setState(() => _tabDetails = false)
-                                      : (_remainingToPay == 0 ? () => _doPay() : null)),
+                                      : (_canCompletePayment ? () => _doPay() : null)),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primary,
                                 foregroundColor: Colors.white,
@@ -776,10 +979,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }
     if (mounted) {
       setState(() {});
-      if (!_mixedPayment && _paymentAmounts.length == 1) {
-        final key = _paymentAmounts.keys.first;
-        _paymentAmounts[key] = _totalAfterDiscount;
-      }
+      _syncMixedPaymentAfterTotalChange();
     }
     return Future.value();
   }
@@ -805,11 +1005,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       setState(() {
         _discountPercent = map['percent'];
         _discountUzs = map['uzs'];
-        if (!_mixedPayment && _paymentAmounts.length == 1) {
-          final key = _paymentAmounts.keys.first;
-          _paymentAmounts[key] = _totalAfterDiscount;
-        }
       });
+      _syncMixedPaymentAfterTotalChange();
       return;
     }
 
@@ -850,11 +1047,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     setState(() {
       _discountPercent = null;
       _discountUzs = null;
-      if (!_mixedPayment && _paymentAmounts.length == 1) {
-        final key = _paymentAmounts.keys.first;
-        _paymentAmounts[key] = _totalAfterDiscount;
-      }
     });
+    _syncMixedPaymentAfterTotalChange();
   }
 
   Future<void> _applyPaymentCustomer(Client client) async {
@@ -886,10 +1080,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       _pruneHiddenPaymentAmounts();
     });
     await widget.onCustomerChanged?.call(effective);
-    _syncDesktopPaymentSelection();
-    if (!_mixedPayment && _paymentAmounts.length == 1) {
-      final key = _paymentAmounts.keys.first;
-      _paymentAmounts[key] = _totalAfterDiscount;
+    if (_mixedPayment) {
+      _clampMixedPaymentAmounts();
+    } else {
+      _syncSinglePaymentSelection();
     }
   }
 
@@ -918,7 +1112,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                       _pruneHiddenPaymentAmounts();
                     });
                     await widget.onCustomerChanged?.call(null);
-                    _syncDesktopPaymentSelection();
+                    if (_mixedPayment) {
+                      _clampMixedPaymentAmounts();
+                    } else {
+                      _syncSinglePaymentSelection();
+                    }
                   },
                   tooltip: "Mijozni olib tashlash",
                 ),
@@ -1006,6 +1204,36 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     );
   }
 
+  Widget _buildMobileSinglePaymentHint() {
+    final key = _activeSinglePaymentKey;
+    if (key == null || !_isClientBalancePaymentById(key)) {
+      return const SizedBox.shrink();
+    }
+    final amount = _paymentAmounts[key] ?? 0;
+    if (amount <= 0 || amount >= _totalAfterDiscount) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE53935).withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        "Mijoz balansidan: ${_fmt(amount)} UZS — qolgan ${_fmt(_totalAfterDiscount - amount)} UZS to'lanmadi. "
+        "Aralash to'lov yoki boshqa tur tanlang.",
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFFE53935),
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
   Widget _buildPayment() {
     if (_paymentTypesLoading) {
       return const Center(
@@ -1087,12 +1315,17 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                     _mixedPayment = v;
                     _paymentAmounts.clear();
                   });
+                  if (!v) _syncSinglePaymentSelection();
                 },
               ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
+        if (!_mixedPayment) ...[
+          _buildMobileSinglePaymentHint(),
+          const SizedBox(height: 12),
+        ],
+        const SizedBox(height: 8),
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1120,21 +1353,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
               selected: selected,
               amount: amount,
               balanceAmountUzs: (isBalancePayment && _client != null) ? _clientBalanceUzs : null,
-              onTap: () {
-                final cap = isBalancePayment ? _clientBalanceUzs : _totalAfterDiscount;
-                final chosen = _totalAfterDiscount > cap ? cap : _totalAfterDiscount;
-                setState(() {
-                  _paymentAmounts
-                    ..clear()
-                    ..[key] = chosen;
-                });
-                if (isBalancePayment && _totalAfterDiscount > cap && mounted) {
-                  AppNotify.warning(
-                    context,
-                    "Mijoz balansidan ko'p to'lab bo'lmaydi. Maksimum: ${_fmt(cap)} UZS",
-                  );
-                }
-              },
+              onTap: () => _selectSinglePayment(key),
               onRemove: null,
             );
           }          ).toList(),
@@ -1553,14 +1772,59 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   /// Sotuvdan keyin: katalog yangilash. Balans va qarz /sales/store + payments orqali serverda.
   Future<void> _postSaleSideEffects() async {
     ApiSyncThrottle.invalidate('transactions_sales_list');
+    ApiSyncThrottle.invalidate('products_full_catalog');
+    final saleClient = _client;
     try {
-      await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
+      await SalesSessionProvider.instance.loadProducts(reset: true, searchValue: '');
+      await ProductsProvider.instance.loadFromApi();
+      if (saleClient != null) {
+        try {
+          final resolved = await ClientsProvider.instance.resolveClientForSales(saleClient);
+          await ClientsProvider.instance.refreshCustomer(resolved.id);
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 
   Future<void> _doPay() async {
+    if (_remainingToPay > 0) {
+      if (mounted) {
+        AppNotify.error(
+          context,
+          "To'lov to'liq emas. Qolgan: ${_fmt(_remainingToPay)} UZS",
+        );
+      }
+      return;
+    }
+    for (final e in _paymentAmounts.entries) {
+      if (_isClientBalancePaymentById(e.key) && e.value > _clientBalanceUzs) {
+        if (mounted) {
+          AppNotify.error(
+            context,
+            "Mijoz balansidan ko'p to'lab bo'lmaydi. Maksimum: ${_fmt(_clientBalanceUzs)} UZS",
+          );
+        }
+        return;
+      }
+    }
     final allocated = _getAllocatedPaymentAmounts();
     if (allocated.isEmpty) return;
+    if (widget.isReturnCheckout) {
+      for (final e in allocated.entries) {
+        if (_isClientBalancePaymentById(e.key) && e.value > 0) {
+          if (mounted) {
+            AppNotify.error(context, "Qaytarishda mijoz balansi ishlatilmaydi");
+          }
+          return;
+        }
+      }
+      if (_getQarzAmountFromAllocated(allocated) > 0 && _client == null) {
+        if (mounted) {
+          AppNotify.error(context, "Qarzdan qaytarish uchun mijoz tanlang");
+        }
+        return;
+      }
+    }
     try {
       SaleStoreValidation.validateCart(widget.items);
       SaleStoreValidation.validateCashShift();
@@ -1570,7 +1834,20 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       return;
     }
     setState(() => _submittingPay = true);
-    final qarzAmount = _computeStoreDueAmount(allocated);
+    Client? saleCustomer;
+    if (_client != null) {
+      try {
+        saleCustomer = await ClientsProvider.instance.resolveClientForSales(_client!);
+        if (mounted) setState(() => _client = saleCustomer);
+      } on ApiException catch (e) {
+        if (mounted) {
+          setState(() => _submittingPay = false);
+          AppNotify.error(context, e.message);
+        }
+        return;
+      }
+    }
+    final qarzAmount = widget.isReturnCheckout ? 0 : _computeStoreDueAmount(allocated);
     int totalCostUzs = 0;
     for (final item in widget.items) {
       final p = item.product;
@@ -1605,7 +1882,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         if (isPack) 'unitsPerPackage': p.quantityPerPack,
       };
     }).toList();
-    final body = {
+    var body = {
       'orderType': 'sales',
       'salesOrReceivingType': 'customer',
       'status': 'done',
@@ -1617,7 +1894,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       'profit': _totalAfterDiscount - totalCostUzs,
       'cart': cart,
       'payments': paymentsApi,
-      'customer': _client != null ? {'id': int.tryParse(_client!.id) ?? 0} : null,
+      'customer': saleCustomer != null
+          ? {'id': int.parse(saleCustomer.id)}
+          : null,
     };
     final sess = SalesSessionProvider.instance;
     sess.syncFromShift();
@@ -1633,6 +1912,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (widget.initialInvoiceId != null && widget.initialInvoiceId!.isNotEmpty) {
       body['invoice_id'] = widget.initialInvoiceId;
     }
+    if (widget.isReturnCheckout) {
+      body = SalesReturnCheckout.applyInlineReturnToStoreBody(
+        body,
+        creditPaymentUsed: _getQarzAmountFromAllocated(allocated) > 0,
+      );
+    }
     Map<String, dynamic>? storeRes;
     try {
       storeRes = await SalesApi.storeSale(body);
@@ -1644,7 +1929,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       return;
     } catch (e) {
       if (mounted) {
-        AppNotify.error(context, 'Sotuv yuborilmadi: $e');
+        AppNotify.error(
+          context,
+          widget.isReturnCheckout ? 'Qaytarish yuborilmadi: $e' : 'Sotuv yuborilmadi: $e',
+        );
       }
       if (mounted) setState(() => _submittingPay = false);
       return;
@@ -1662,7 +1950,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       if (mounted) {
         AppNotify.error(
           context,
-          "API chek ID qaytarmadi. Sotuv serverda saqlanmagan bo'lishi mumkin.",
+          widget.isReturnCheckout
+              ? "API chek ID qaytarmadi. Qaytarish serverda saqlanmagan bo'lishi mumkin."
+              : "API chek ID qaytarmadi. Sotuv serverda saqlanmagan bo'lishi mumkin.",
         );
       }
       if (mounted) setState(() => _submittingPay = false);

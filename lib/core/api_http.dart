@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import 'api_config.dart';
+import 'app_version.dart';
+import 'connectivity_service.dart';
 
 /// Barcha `dart:io` HTTP so‘rovlari uchun (cache manager, va h.k.).
 class AlfaposHttpOverrides extends HttpOverrides {
@@ -50,7 +52,7 @@ class ApiHttp {
     client.idleTimeout = timeout;
     client.autoUncompress = true;
     client.findProxy = HttpClient.findProxyFromEnvironment;
-    client.userAgent = 'AlfaposPOS/1.0.8 (${Platform.operatingSystem})';
+    client.userAgent = 'AlfaposPOS/${AppVersion.name} (${Platform.operatingSystem})';
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       client.badCertificateCallback = (cert, host, port) =>
           host == 'app.alfapos.uz' || host.endsWith('.alfapos.uz');
@@ -69,23 +71,60 @@ class ApiHttp {
   /// Windows/macOS: birinchi SSL/proksi urinishi muvaffaqiyatsiz bo‘lsa qayta urinish.
   static Future<T> withTransientRetry<T>(Future<T> Function() action) async {
     try {
-      return await action();
+      final result = await action();
+      ConnectivityService.instance.reportNetworkSuccess();
+      return result;
     } on SocketException {
+      ConnectivityService.instance.reportNetworkFailure();
       if (!_retryTransientNetwork) rethrow;
       resetClient();
-      return await action();
+      try {
+        final result = await action();
+        ConnectivityService.instance.reportNetworkSuccess();
+        return result;
+      } catch (_) {
+        ConnectivityService.instance.reportNetworkFailure();
+        rethrow;
+      }
     } on HandshakeException {
+      ConnectivityService.instance.reportNetworkFailure();
       if (!_retryTransientNetwork) rethrow;
       resetClient();
-      return await action();
+      try {
+        final result = await action();
+        ConnectivityService.instance.reportNetworkSuccess();
+        return result;
+      } catch (_) {
+        ConnectivityService.instance.reportNetworkFailure();
+        rethrow;
+      }
     } on TlsException {
+      ConnectivityService.instance.reportNetworkFailure();
       if (!_retryTransientNetwork) rethrow;
       resetClient();
-      return await action();
+      try {
+        final result = await action();
+        ConnectivityService.instance.reportNetworkSuccess();
+        return result;
+      } catch (_) {
+        ConnectivityService.instance.reportNetworkFailure();
+        rethrow;
+      }
     } on http.ClientException {
+      ConnectivityService.instance.reportNetworkFailure();
       if (!_retryTransientNetwork) rethrow;
       resetClient();
-      return await action();
+      try {
+        final result = await action();
+        ConnectivityService.instance.reportNetworkSuccess();
+        return result;
+      } catch (_) {
+        ConnectivityService.instance.reportNetworkFailure();
+        rethrow;
+      }
+    } on TimeoutException {
+      ConnectivityService.instance.reportNetworkFailure();
+      rethrow;
     }
   }
 

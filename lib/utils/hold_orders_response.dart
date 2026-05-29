@@ -96,6 +96,100 @@ class HoldOrdersResponse {
     return 'Kassa $id';
   }
 
+  static int? resolveCreatorUserId(Map<String, dynamic> h) {
+    for (final key in [
+      'user_id',
+      'userId',
+      'userID',
+      'created_by_id',
+      'createdById',
+      'seller_id',
+      'sellerId',
+      'employee_id',
+      'employeeId',
+      'opened_by',
+      'openedBy',
+    ]) {
+      final id = cashRegisterParseId(h[key]);
+      if (id != null && id > 0) return id;
+    }
+    for (final key in ['created_by', 'createdBy', 'user', 'seller', 'employee']) {
+      final v = h[key];
+      if (v is Map) {
+        final id = cashRegisterParseId(
+          v['id'] ?? v['user_id'] ?? v['userId'] ?? v['userID'],
+        );
+        if (id != null && id > 0) return id;
+      }
+    }
+    for (final nestKey in ['order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final id = resolveCreatorUserId(Map<String, dynamic>.from(nested));
+        if (id != null) return id;
+      }
+    }
+    return null;
+  }
+
+  /// Joriy kassa smenasiga tegishli hold buyurtma (boshqa kassalar aralashmasin).
+  static bool belongsToCashRegister(
+    Map<String, dynamic> h, {
+    int? cashRegisterId,
+    int? registerLogId,
+    Map<String, dynamic>? activeRegister,
+    List<Map<String, dynamic>> otherOpenRegisters = const [],
+    Map<int, ({int? cashRegisterId, int? registerLogId})>? localTags,
+    bool filterByCashRegister = false,
+  }) {
+    if (!filterByCashRegister || cashRegisterId == null) return true;
+
+    final orderId = resolveOrderId(h);
+
+    // 1. Lokal teg — xodim boshqa kassaga o'tsa ham hold o'sha kassada qoladi.
+    if (orderId != null && localTags != null) {
+      final tag = localTags[orderId];
+      if (tag != null) {
+        if (tag.cashRegisterId != null && tag.cashRegisterId! > 0) {
+          return tag.cashRegisterId == cashRegisterId;
+        }
+        if (tag.registerLogId != null && tag.registerLogId! > 0 && registerLogId != null) {
+          return tag.registerLogId == registerLogId;
+        }
+        return false;
+      }
+    }
+
+    // 2. API kassa id
+    final orderRegId = resolveCashRegisterId(h);
+    if (orderRegId != null && orderRegId > 0) {
+      return orderRegId == cashRegisterId;
+    }
+
+    // 3. API smena log — boshqa smenadagi hold ko'rinmasin.
+    final orderLogId = resolveRegisterLogId(h);
+    if (orderLogId != null && orderLogId > 0) {
+      if (registerLogId == null) return false;
+      return orderLogId == registerLogId;
+    }
+
+    // 4. API maydoni yo'q — shu kassa smena xodimlari (hamkorlar uchun).
+    final creatorId = resolveCreatorUserId(h);
+    if (creatorId != null && activeRegister != null) {
+      final inCurrent = cashRegisterShiftUserIds(activeRegister).contains(creatorId) ||
+          cashRegisterUserIsOpener(activeRegister, creatorId);
+      if (!inCurrent) return false;
+
+      // Yaratuvchi faqat boshqa ochiq kassada bo'lsa — joriy kassada ko'rsatilmaydi.
+      for (final r in otherOpenRegisters) {
+        if (cashRegisterUserIsEnrolled(r, creatorId)) return false;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
   static int? resolveRegisterLogId(Map<String, dynamic> h) {
     for (final key in ['register_log_id', 'registerLogId', 'cash_register_log_id', 'log_id']) {
       final id = cashRegisterParseId(h[key]);

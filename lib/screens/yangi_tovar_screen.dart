@@ -594,23 +594,38 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     setState(() => _isSaving = true);
     try {
       if (existing != null) {
-        await ProductsProvider.instance.saveProductLocalFirst(
+        await ProductsProvider.instance.saveProductToServer(
           product,
           isCreate: false,
           deleteImage: _imageDeleted && _localImagePath == null,
         );
       } else {
-        await ProductsProvider.instance.saveProductLocalFirst(product, isCreate: true);
+        await ProductsProvider.instance.saveProductToServer(product, isCreate: true);
       }
       if (!mounted) return;
-      AppNotify.success(context, 'Saqlandi. Serverga yuborilmoqda…');
+      setState(() => _isSaving = false);
+      AppNotify.success(
+        context,
+        existing != null ? 'Mahsulot muvaffaqiyatli yangilandi' : 'Mahsulot muvaffaqiyatli saqlandi',
+      );
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
-      if (mounted) AppNotify.error(context, e.message);
+      if (mounted) {
+        if (ApiClient.isSuccessLikeMessage(e.message)) {
+          setState(() => _isSaving = false);
+          AppNotify.success(
+            context,
+            existing != null ? 'Mahsulot muvaffaqiyatli yangilandi' : 'Mahsulot muvaffaqiyatli saqlandi',
+          );
+          Navigator.of(context).pop(true);
+        } else {
+          AppNotify.error(context, e.message);
+        }
+      }
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Xatolik: $e');
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted && _isSaving) setState(() => _isSaving = false);
     }
   }
 

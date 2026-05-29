@@ -99,6 +99,10 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
   void initState() {
     super.initState();
     _shift.addListener(_onShift);
+    unawaited(_shift.ensureCurrentUserId());
+    if (_shift.shiftInfo == null && !_shift.detailLoading) {
+      unawaited(_shift.loadShiftDetail());
+    }
   }
 
   @override
@@ -538,18 +542,12 @@ class _ActionPanel extends StatelessWidget {
       );
     }
 
-    final tail = buttons.length > 4 ? buttons.sublist(4) : <Widget>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < 4 && i < buttons.length; i++) ...[
+        for (var i = 0; i < buttons.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
           buttons[i],
-        ],
-        if (tail.isNotEmpty) const Spacer(),
-        for (var i = 0; i < tail.length; i++) ...[
-          const SizedBox(height: 10),
-          tail[i],
         ],
       ],
     );

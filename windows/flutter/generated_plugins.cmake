@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   charset_converter
+  connectivity_plus
   file_selector_windows
   gal
   printing

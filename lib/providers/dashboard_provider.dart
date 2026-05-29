@@ -416,6 +416,20 @@ class DashboardProvider extends ChangeNotifier {
     }
   }
 
+  void resetForAccountChange() {
+    _todaySales = null;
+    _topProducts = [];
+    _sellers = [];
+    _loadError = null;
+    _loading = false;
+    _currencySymbol = null;
+    _todayDaromadUzs = null;
+    _lastRawDashboard = null;
+    _lastRawTopProducts = null;
+    _clearExtended();
+    notifyListeners();
+  }
+
   void _clearExtended() {
     _todayDebt = 0;
     _totalPaymentToday = 0;

@@ -58,6 +58,105 @@ void main() {
     );
   });
 
+  test('belongsToCashRegister filters by register id and log id', () {
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'cashRagisterId': 1, 'orderID': 1, 'status': 'hold'},
+        cashRegisterId: 1,
+        filterByCashRegister: true,
+      ),
+      isTrue,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'cashRagisterId': 2, 'orderID': 2, 'status': 'hold'},
+        cashRegisterId: 1,
+        filterByCashRegister: true,
+      ),
+      isFalse,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'register_log_id': 55, 'orderID': 3, 'status': 'hold'},
+        cashRegisterId: 1,
+        registerLogId: 55,
+        filterByCashRegister: true,
+      ),
+      isTrue,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'orderID': 4, 'status': 'hold'},
+        cashRegisterId: 1,
+        localTags: {4: (cashRegisterId: 1, registerLogId: 55)},
+        filterByCashRegister: true,
+      ),
+      isTrue,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'orderID': 4, 'status': 'hold'},
+        cashRegisterId: 2,
+        localTags: {4: (cashRegisterId: 1, registerLogId: 55)},
+        filterByCashRegister: true,
+      ),
+      isFalse,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'orderID': 5, 'status': 'hold', 'user_id': 10, 'register_log_id': 55},
+        cashRegisterId: 2,
+        registerLogId: 66,
+        filterByCashRegister: true,
+      ),
+      isFalse,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'orderID': 8, 'status': 'hold', 'user_id': 10},
+        cashRegisterId: 1,
+        activeRegister: {
+          'id': 1,
+          'status': 'open',
+          'register_log_id': 55,
+          'shift_staff': [
+            {'id': 10, 'name': 'Ali'},
+            {'id': 11, 'name': 'Vali'},
+          ],
+        },
+        filterByCashRegister: true,
+      ),
+      isTrue,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'orderID': 8, 'status': 'hold', 'user_id': 10},
+        cashRegisterId: 2,
+        registerLogId: 66,
+        localTags: {8: (cashRegisterId: 1, registerLogId: 55)},
+        filterByCashRegister: true,
+      ),
+      isFalse,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'orderID': 6, 'status': 'hold', 'user_id': 20},
+        cashRegisterId: 1,
+        registerLogId: 55,
+        filterByCashRegister: true,
+      ),
+      isFalse,
+    );
+    expect(
+      HoldOrdersResponse.belongsToCashRegister(
+        {'cashRagisterId': 2, 'orderID': 7, 'status': 'hold'},
+        cashRegisterId: 1,
+        filterByCashRegister: false,
+      ),
+      isTrue,
+    );
+  });
+
   test('falls back to datarows when hold_orders key missing', () {
     final list = HoldOrdersResponse.parseList({
       'datarows': [

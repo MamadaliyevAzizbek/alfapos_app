@@ -26,6 +26,17 @@ class ExpensesProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get paymentTypes => List.unmodifiable(_paymentTypes);
   List<Map<String, dynamic>> get expenseCategories => List.unmodifiable(_expenseCategories);
 
+  void resetForAccountChange() {
+    _list = [];
+    _loaded = false;
+    _loading = false;
+    _loadError = null;
+    _paymentTypes = [];
+    _expenseCategories = [];
+    _lastRawExpenses = null;
+    notifyListeners();
+  }
+
   int? get _firstPaymentTypeId {
     if (_paymentTypes.isEmpty) return null;
     final v = _paymentTypes.first['id'] ?? _paymentTypes.first['payment_type_id'];

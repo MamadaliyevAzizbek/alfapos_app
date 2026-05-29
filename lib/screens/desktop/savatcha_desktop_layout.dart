@@ -70,6 +70,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final int cartCatalogTotal;
   final int cartDiscountPercent;
   final double usdExchangeRate;
+  final bool isReturnMode;
+  final ValueChanged<bool>? onReturnModeChanged;
 
   const SavatchaDesktopLayout({
     super.key,
@@ -126,6 +128,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.cartCatalogTotal = 0,
     this.cartDiscountPercent = 0,
     this.usdExchangeRate = 12600,
+    this.isReturnMode = false,
+    this.onReturnModeChanged,
   });
 
   int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
@@ -165,10 +169,11 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 
   static const Color _navBlue = AppTheme.primary;
+  static const Color _navInactive = Color(0xFF64748B);
 
-  ButtonStyle get _navButtonStyle => TextButton.styleFrom(
-        foregroundColor: _navBlue,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  ButtonStyle get _navLinkStyle => TextButton.styleFrom(
+        foregroundColor: _navInactive,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
       );
 
@@ -201,18 +206,22 @@ class SavatchaDesktopLayout extends StatelessWidget {
             onBrandChanged: onBrandFilterChanged,
           ),
           const Spacer(),
+          if (onReturnModeChanged != null) ...[
+            _buildPosModeNavCards(),
+            const SizedBox(width: 20),
+          ],
           if (onOpenShiftDashboard != null)
             TextButton.icon(
               onPressed: onOpenShiftDashboard,
-              style: _navButtonStyle,
-              icon: const Icon(Icons.account_balance_wallet_outlined, size: 20, color: _navBlue),
+              style: _navLinkStyle,
+              icon: const Icon(Icons.account_balance_wallet_outlined, size: 20, color: _navInactive),
               label: const Text('Kassa smenasi'),
             ),
           if (onSalesList != null)
             TextButton.icon(
               onPressed: onSalesList,
-              style: _navButtonStyle,
-              icon: const Icon(Icons.list_alt_rounded, size: 20, color: _navBlue),
+              style: _navLinkStyle,
+              icon: const Icon(Icons.list_alt_rounded, size: 20, color: _navInactive),
               label: const Text("Sotish ro'yxati"),
             ),
           if (cashRegisters.length > 1 && onCashRegisterSelected != null)
@@ -262,6 +271,72 @@ class SavatchaDesktopLayout extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPosModeNavCards() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _navModeCard(
+          label: "Sotuv bo'limi",
+          icon: Icons.shopping_cart_outlined,
+          selected: !isReturnMode,
+          onTap: () => onReturnModeChanged?.call(false),
+        ),
+        const SizedBox(width: 16),
+        _navModeCard(
+          label: 'Qaytarishlar',
+          icon: Icons.replay_rounded,
+          selected: isReturnMode,
+          onTap: () => onReturnModeChanged?.call(true),
+        ),
+      ],
+    );
+  }
+
+  Widget _navModeCard({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    if (selected) {
+      return Material(
+        elevation: 3,
+        shadowColor: _navBlue.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(10),
+        color: _navBlue,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return TextButton.icon(
+      onPressed: onTap,
+      style: _navLinkStyle,
+      icon: Icon(icon, size: 20, color: _navInactive),
+      label: Text(label),
     );
   }
 
@@ -443,6 +518,21 @@ class SavatchaDesktopLayout extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 customerSearchSection,
+                if (isReturnMode) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFFCC80)),
+                    ),
+                    child: const Text(
+                      'Mahsulot tanlang va qaytarish qiling. Mijoz tanlab «Qarz» to\'lovi bilan qaytarilsa, qarzi kamayadi.',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF6D4C41)),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -488,7 +578,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: Row(
+            child: isReturnMode
+                ? const SizedBox.shrink()
+                : Row(
               children: [
                 const Text(
                   "Foiz qo'shish",
@@ -556,9 +648,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Text(
-                  'Umumiy',
-                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                Text(
+                  isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
                 Column(
@@ -589,22 +681,23 @@ class SavatchaDesktopLayout extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _footerSavedOrdersAction(),
-                  _footerAction(
-                    Icons.pause_circle_outline_rounded,
-                    "To'xtatish",
-                    cartItems.isEmpty || holdCartInFlight ? null : onHoldCart,
-                    tooltip: holdCartInFlight ? 'Saqlanmoqda...' : 'Buyurtmani saqlash',
-                    loading: holdCartInFlight,
-                  ),
-                  _footerAction(Icons.percent_rounded, 'Chegirma', onDiscount),
+                  if (!isReturnMode) _footerSavedOrdersAction(),
+                  if (!isReturnMode)
+                    _footerAction(
+                      Icons.pause_circle_outline_rounded,
+                      "To'xtatish",
+                      cartItems.isEmpty || holdCartInFlight ? null : onHoldCart,
+                      tooltip: holdCartInFlight ? 'Saqlanmoqda...' : 'Buyurtmani saqlash',
+                      loading: holdCartInFlight,
+                    ),
+                  if (!isReturnMode) _footerAction(Icons.percent_rounded, 'Chegirma', onDiscount),
                   _footerAction(Icons.send_rounded, 'Kunlik hisobot', onDailyReport),
                   Expanded(
                     flex: 2,
                     child: Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: Material(
-                        color: AppTheme.primary,
+                        color: isReturnMode ? const Color(0xFFE65100) : AppTheme.primary,
                         borderRadius: BorderRadius.circular(10),
                         child: InkWell(
                           onTap: cartItems.isEmpty ? null : onPayment,
@@ -614,7 +707,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  "To'lov qilish",
+                                  isReturnMode ? 'Qaytarish qilish' : "To'lov qilish",
                                   style: TextStyle(
                                     color: cartItems.isEmpty ? Colors.white54 : Colors.white,
                                     fontWeight: FontWeight.w700,
@@ -623,7 +716,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
                                 ),
                                 const SizedBox(width: 8),
                                 Icon(
-                                  Icons.keyboard_double_arrow_right_rounded,
+                                  isReturnMode
+                                      ? Icons.assignment_return_rounded
+                                      : Icons.keyboard_double_arrow_right_rounded,
                                   size: 26,
                                   color: cartItems.isEmpty ? Colors.white54 : Colors.white,
                                 ),

@@ -33,11 +33,17 @@ if (Test-Path $readme) {
 $OutDir = Join-Path $ProjectRoot 'release\alfapos-windows-release'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
+$fullVer = ((Get-Content (Join-Path $ProjectRoot 'pubspec.yaml') | Select-String '^version:').Line -replace 'version:\s*','').Trim()
+$verSlug = $fullVer -replace '\+','+'
+
 # ZIP (portativ)
 $ZipPath = Join-Path $OutDir 'alfapos_app-windows-x64.zip'
+$ZipVersioned = Join-Path $ProjectRoot "release\alfapos_app-$verSlug-windows-x64.zip"
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
 Compress-Archive -Path (Join-Path $ReleaseDir '*') -DestinationPath $ZipPath -Force
+Copy-Item $ZipPath $ZipVersioned -Force
 Write-Host "ZIP: $ZipPath" -ForegroundColor Green
+Write-Host "ZIP (versiya): $ZipVersioned" -ForegroundColor Green
 
 # Inno Setup
 $Iscc = @(
@@ -60,9 +66,13 @@ Write-Host ">> Inno Setup (versiya $ver)..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { throw "ISCC xato kodi: $LASTEXITCODE" }
 
 $SetupPath = Join-Path $OutDir 'alfapos_app-windows-x64-setup.exe'
+$SetupVersioned = Join-Path $ProjectRoot "release\alfapos_app-$verSlug-windows-x64-setup.exe"
+Copy-Item $SetupPath $SetupVersioned -Force
 Write-Host ''
 Write-Host 'Tayyor!' -ForegroundColor Green
 Write-Host "  Setup: $SetupPath"
+Write-Host "  Setup (versiya): $SetupVersioned"
 Write-Host "  ZIP:   $ZipPath"
+Write-Host "  ZIP (versiya):   $ZipVersioned"
 Write-Host ''
 Write-Host 'Windowsda setup.exe ni ishga tushiring — barcha fayllar Program Files\AlfaPOS ga o''rnatiladi.' -ForegroundColor Cyan

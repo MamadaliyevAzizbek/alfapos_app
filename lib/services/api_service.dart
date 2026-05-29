@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 
 import '../core/api_client.dart';
 import '../core/auth_storage.dart';
+import '../core/session_reset.dart';
 import '../models/product.dart';
 import '../utils/product_web_store_body.dart';
 import '../utils/sale_store_response.dart';
@@ -32,6 +33,7 @@ class AuthApi {
     try {
       await ApiClient.post('/logout');
     } catch (_) {}
+    await resetAppSessionForAccountChange();
     await clearAuth();
   }
 }
@@ -700,7 +702,7 @@ class SalesApi {
     return ApiClient.post('/sales/cash-register-shifts/close', body: body);
   }
 
-  /// Barcha pauza (hold) buyurtmalar — kassa bo‘yicha filtrlash yo‘q.
+  /// Barcha pauza (hold) buyurtmalar — filtrlash klientda (API kassa id qaytarmasligi mumkin).
   static Future<Map<String, dynamic>> getHoldOrders() async {
     return ApiClient.get('/sales/hold-orders');
   }

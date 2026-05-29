@@ -60,6 +60,24 @@ class ReceiveSessionProvider extends ChangeNotifier {
   int get cartCount => _cart.length;
   int get cartTotalUzs => _cart.fold<int>(0, (s, e) => s + e.lineTotalUzs);
 
+  void resetForAccountChange() {
+    _cart.clear();
+    suppliers = [];
+    paymentTypes = [];
+    branchId = null;
+    usdExchangeRate = 1;
+    selectedSupplier = null;
+    selectedPaymentType = null;
+    selectedDate = DateTime.now();
+    comment = '';
+    deliveryCostUzs = 0;
+    editOrderId = null;
+    editReason = null;
+    initLoading = false;
+    initError = null;
+    notifyListeners();
+  }
+
   void clearCart() {
     _cart.clear();
     notifyListeners();

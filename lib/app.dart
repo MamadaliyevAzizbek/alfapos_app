@@ -4,6 +4,7 @@ import 'core/theme.dart';
 import 'core/auth_storage.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'widgets/connectivity_blocker.dart';
 
 class AlfaposApp extends StatefulWidget {
   const AlfaposApp({super.key});
@@ -49,6 +50,9 @@ class _AlfaposAppState extends State<AlfaposApp> {
       title: 'ALFAPOS',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      builder: (context, child) => ConnectivityBlocker(
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: !_checked
           ? Scaffold(
               backgroundColor: AppTheme.surface,

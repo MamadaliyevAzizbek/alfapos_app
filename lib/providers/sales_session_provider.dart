@@ -6,6 +6,7 @@ import '../core/api_client.dart';
 import '../core/api_pacing.dart';
 import '../core/auth_storage.dart';
 import '../models/cart_item.dart';
+import '../services/hold_order_register_tags_storage.dart';
 import '../services/product_catalog_storage.dart';
 import '../services/sales_session_storage.dart';
 import '../models/product.dart';
@@ -438,6 +439,7 @@ class SalesSessionProvider extends ChangeNotifier {
     CashRegisterShiftProvider.instance.selectRegister(cr);
     _applyCashRegister(cr);
     isCashRegisterBranch = true;
+    _invalidateHoldOrdersCache();
     notifyListeners();
   }
 
@@ -564,6 +566,36 @@ class SalesSessionProvider extends ChangeNotifier {
       salesProducts.insert(0, product);
     }
     notifyListeners();
+  }
+
+  /// Katalogda yangi/tahrirlangan mahsulot — darhol sotuv ro'yxatiga qo'shiladi.
+  Future<void> onCatalogProductSaved(Product product) async {
+    final id = product.id.trim();
+    if (id.isEmpty) return;
+
+    _upsertSalesProduct(ProductsProvider.instance.withCatalogStock(product));
+    unawaited(_persistSessionSnapshot());
+
+    // Server sales API yangilanishi (indeks kechikishi mumkin).
+    unawaited(_refreshSalesListPreservingProduct(id));
+  }
+
+  Future<void> _refreshSalesListPreservingProduct(String productId) async {
+    final catalog = ProductsProvider.instance.getProductById(productId);
+    if (catalog == null) return;
+
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (productsLoading) return;
+
+    try {
+      await loadProducts(reset: true, searchValue: _lastSearch);
+    } catch (_) {}
+
+    if (!salesProducts.any((p) => p.id == productId)) {
+      final fresh = ProductsProvider.instance.getProductById(productId) ?? catalog;
+      _upsertSalesProduct(ProductsProvider.instance.withCatalogStock(fresh));
+      unawaited(_persistSessionSnapshot());
+    }
   }
 
   void setCategoryFilter(String? id) {
@@ -711,6 +743,9 @@ class SalesSessionProvider extends ChangeNotifier {
     if (shift.requiresCashRegister && !isShiftOpenForSales) {
       throw ApiException('Kassa smenasi ochiq emas. Avval smenani oching.');
     }
+    await _ensureHoldRegisterTagsLoaded();
+    final effectiveRegisterId = cashRegisterId ?? shift.cashRegisterId;
+    final effectiveLogId = registerLogId ?? shift.registerLogId;
     for (final item in cartItems) {
       final pid = int.tryParse(item.product.id) ?? 0;
       if (pid <= 0) {
@@ -726,8 +761,8 @@ class SalesSessionProvider extends ChangeNotifier {
       status: 'hold',
       discountPercent: cartDiscountPercent,
       customerId: customerId,
-      cashRegisterId: cashRegisterId,
-      registerLogId: registerLogId ?? shift.registerLogId,
+      cashRegisterId: effectiveRegisterId,
+      registerLogId: effectiveLogId,
       isCashRegisterBranch: isCashRegisterBranch,
       branchId: branchId,
       orderId: orderId,
@@ -740,18 +775,101 @@ class SalesSessionProvider extends ChangeNotifier {
           'cart=${(body['cart'] as List?)?.length} grandTotal=${body['grandTotal']}');
       return true;
     }());
-    return SalesApi.storeSale(body);
+    final res = await SalesApi.storeSale(body);
+    _tagHoldOrderRegister(
+      res,
+      orderId: orderId,
+      cashRegisterId: effectiveRegisterId,
+      registerLogId: effectiveLogId,
+    );
+    _invalidateHoldOrdersCache();
+    return res;
   }
 
   /// Pauzadan ochib sotilgan buyurtmalar — hold ro'yxatida qayta ko'rinmasin.
   final Set<int> _completedHoldOrderIds = {};
+  final Map<int, ({int? cashRegisterId, int? registerLogId})> _holdOrderRegisterTags = {};
+  bool _holdTagsLoaded = false;
+
+  Future<void> _ensureHoldRegisterTagsLoaded() async {
+    if (_holdTagsLoaded) return;
+    final stored = await HoldOrderRegisterTagsStorage.load();
+    _holdOrderRegisterTags.addAll(stored);
+    _holdTagsLoaded = true;
+  }
+
+  Future<void> _persistHoldRegisterTags() async {
+    await HoldOrderRegisterTagsStorage.save(_holdOrderRegisterTags);
+  }
+
+  void _tagHoldOrderRegister(
+    Map<String, dynamic>? res, {
+    int? orderId,
+    required int? cashRegisterId,
+    required int? registerLogId,
+  }) {
+    final id = orderId ?? (res != null ? HoldOrdersResponse.resolveOrderId(res) : null);
+    if (id == null || id <= 0 || cashRegisterId == null) return;
+    _holdOrderRegisterTags[id] = (
+      cashRegisterId: cashRegisterId,
+      registerLogId: registerLogId,
+    );
+    unawaited(_persistHoldRegisterTags());
+  }
+
+  void _backfillHoldRegisterTagFromRow(Map<String, dynamic> h) {
+    final orderId = HoldOrdersResponse.resolveOrderId(h);
+    if (orderId == null || orderId <= 0) return;
+    final existing = _holdOrderRegisterTags[orderId];
+    if (existing != null &&
+        existing.cashRegisterId != null &&
+        existing.cashRegisterId! > 0) {
+      return;
+    }
+    final regId = HoldOrdersResponse.resolveCashRegisterId(h);
+    final logId = HoldOrdersResponse.resolveRegisterLogId(h);
+    if ((regId == null || regId <= 0) && (logId == null || logId <= 0)) return;
+
+    final nextCashRegisterId = regId ?? existing?.cashRegisterId;
+    final nextLogId = logId ?? existing?.registerLogId;
+    if ((nextCashRegisterId == null || nextCashRegisterId <= 0) &&
+        (nextLogId == null || nextLogId <= 0)) {
+      return;
+    }
+
+    _holdOrderRegisterTags[orderId] = (
+      cashRegisterId: nextCashRegisterId,
+      registerLogId: nextLogId,
+    );
+    unawaited(_persistHoldRegisterTags());
+  }
+
+  void _dropHoldOrderRegisterTag(int? orderId) {
+    if (orderId == null || orderId <= 0) return;
+    if (_holdOrderRegisterTags.remove(orderId) != null) {
+      unawaited(_persistHoldRegisterTags());
+    }
+  }
 
   Future<List<Map<String, dynamic>>>? _holdOrdersFetchInFlight;
   DateTime? _holdOrdersFetchedAt;
   List<Map<String, dynamic>> _holdOrdersCache = [];
+  int? _holdOrdersCacheRegisterId;
+  int? _holdOrdersCacheLogId;
   static const _holdOrdersMinInterval = Duration(seconds: 12);
 
+  void _invalidateHoldOrdersCache() {
+    _holdOrdersFetchedAt = null;
+    _holdOrdersCacheRegisterId = null;
+    _holdOrdersCacheLogId = null;
+  }
+
   Future<List<Map<String, dynamic>>> fetchHoldOrders({bool force = false}) async {
+    syncFromShift();
+    if (_holdOrdersCacheRegisterId != cashRegisterId ||
+        _holdOrdersCacheLogId != registerLogId) {
+      force = true;
+    }
     if (!force &&
         _holdOrdersFetchedAt != null &&
         DateTime.now().difference(_holdOrdersFetchedAt!) < _holdOrdersMinInterval) {
@@ -772,18 +890,43 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> _fetchHoldOrdersImpl() async {
     try {
+      syncFromShift();
+      await _ensureHoldRegisterTagsLoaded();
       final res = await SalesApi.getHoldOrders();
       final list = HoldOrdersResponse.parseList(res);
+      for (final h in list) {
+        _backfillHoldRegisterTagFromRow(h);
+      }
+      final filterByCashRegister = cashRegisters.isNotEmpty && cashRegisterId != null;
+      final shift = CashRegisterShiftProvider.instance;
+      final activeRegister = shift.activeRegister;
+      final otherOpenRegisters = cashRegisters.where((r) {
+        final id = cashRegisterParseId(r['id'] ?? r['cash_register_id']);
+        if (id == null || id == cashRegisterId) return false;
+        return cashRegisterIsOpen(r);
+      }).toList();
       final filtered = list.where((h) {
         final id = HoldOrdersResponse.resolveOrderId(h);
-        return id == null || !_completedHoldOrderIds.contains(id);
+        if (id != null && _completedHoldOrderIds.contains(id)) return false;
+        return HoldOrdersResponse.belongsToCashRegister(
+          h,
+          cashRegisterId: cashRegisterId,
+          registerLogId: registerLogId,
+          activeRegister: activeRegister,
+          otherOpenRegisters: otherOpenRegisters,
+          localTags: _holdOrderRegisterTags,
+          filterByCashRegister: filterByCashRegister,
+        );
       }).toList();
       _holdOrdersCache = filtered;
       _holdOrdersFetchedAt = DateTime.now();
+      _holdOrdersCacheRegisterId = cashRegisterId;
+      _holdOrdersCacheLogId = registerLogId;
       assert(() {
         if (kDebugMode) {
           debugPrint('[fetchHoldOrders] parsed=${filtered.length} '
-              '(raw=${list.length}, hidden=${_completedHoldOrderIds.length})');
+              '(raw=${list.length}, hidden=${_completedHoldOrderIds.length}, '
+              'kassa=$cashRegisterId log=$registerLogId filter=$filterByCashRegister)');
         }
         return true;
       }());
@@ -804,7 +947,8 @@ class SalesSessionProvider extends ChangeNotifier {
     String? invoiceId,
   }) async {
     _completedHoldOrderIds.add(orderId);
-    _holdOrdersFetchedAt = null;
+    _dropHoldOrderRegisterTag(orderId);
+    _invalidateHoldOrdersCache();
     final inv = (invoiceId ?? '').trim();
     try {
       await SalesApi.updateHoldStatus({
@@ -824,6 +968,8 @@ class SalesSessionProvider extends ChangeNotifier {
     final orderId = HoldOrdersResponse.resolveOrderId(hold);
     final invoiceId = (hold['invoice_id'] ?? hold['invoiceId'] ?? '').toString();
     if (orderId == null) return;
+    _dropHoldOrderRegisterTag(orderId);
+    _invalidateHoldOrdersCache();
     try {
       await SalesApi.updateHoldStatus({
         'orderID': orderId,
@@ -833,5 +979,46 @@ class SalesSessionProvider extends ChangeNotifier {
     } catch (_) {
       await SalesApi.cancelSale(orderId);
     }
+  }
+
+  /// Boshqa xodim yoki kompaniya bilan kirganda eski sessiya qolmasin.
+  void resetForAccountChange() {
+    initLoading = false;
+    initError = null;
+    branchId = null;
+    branchName = '';
+    cashRegisterId = null;
+    registerLogId = null;
+    cashRegisterName = 'Main Cash Register';
+    isCashRegisterBranch = false;
+    cashRegisters = [];
+    categories = [];
+    brands = [];
+    paymentTypes = [];
+    usdRate = 1;
+    categoryId = null;
+    brandId = null;
+    _filterListsCompanyId = null;
+    hideZeroStock = false;
+    sellAtWholesalePrice = false;
+    sellAtPurchasePrice = false;
+    showPurchasePrice = false;
+    showUsdEquivalent = false;
+    salesProducts = [];
+    productsLoading = false;
+    productsError = null;
+    _offset = 0;
+    hasMoreProducts = true;
+    _lastSearch = '';
+    cartDiscountPercent = 0;
+    _holdCartInFlight = false;
+    _backgroundSyncInFlight = false;
+    _completedHoldOrderIds.clear();
+    _holdOrderRegisterTags.clear();
+    _holdTagsLoaded = false;
+    unawaited(HoldOrderRegisterTagsStorage.clear());
+    _holdOrdersFetchInFlight = null;
+    _invalidateHoldOrdersCache();
+    notifyListeners();
   }
 }

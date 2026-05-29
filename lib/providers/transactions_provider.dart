@@ -25,6 +25,12 @@ class TransactionsProvider extends ChangeNotifier {
 
   List<TransactionRecord> get records => List.unmodifiable(_records);
 
+  void resetForAccountChange() {
+    _records = [];
+    _loaded = false;
+    notifyListeners();
+  }
+
   /// Lokal saqlash yo'q — faqat xotirada bo'sh ro'yxat (API dan tranzaksiyalar boshqa ekranlarda).
   Future<void> loadFromStorage() async {
     if (_loaded) return;

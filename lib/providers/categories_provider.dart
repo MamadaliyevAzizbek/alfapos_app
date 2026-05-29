@@ -68,13 +68,19 @@ class CategoriesProvider extends ChangeNotifier {
     if (cid != null && cid.isNotEmpty && cid == _boundCompanyId && _rawList.isNotEmpty) {
       return;
     }
-    _boundCompanyId = cid;
+    await resetForAccountChange();
+    await _loadCache();
+  }
+
+  /// Boshqa xodim yoki kompaniya — kategoriya keshi qayta yuklanadi.
+  Future<void> resetForAccountChange() async {
+    _boundCompanyId = null;
     _items = [];
     _rawList = [];
     _loaded = false;
     _loadError = null;
+    _controller.add(items);
     notifyListeners();
-    await _loadCache();
   }
 
   Future<void> _persistCache() async {

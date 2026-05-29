@@ -237,6 +237,24 @@ class ClientsProvider extends ChangeNotifier {
   String? get loadError => _loadError;
   Map<String, dynamic>? get lastRawCustomers => _lastRawCustomers;
 
+  void resetForAccountChange() {
+    _items = [];
+    _loaded = false;
+    _loading = false;
+    _hasMore = true;
+    _rowOffset = 0;
+    _lastSearch = '';
+    _lastFilters = const CustomersListFilters();
+    _listTotalDebt = 0;
+    _listTotalBalance = 0;
+    _listCount = 0;
+    _loadError = null;
+    _lastRawCustomers = null;
+    _lastLoadedAt = null;
+    _inFlightLoad = null;
+    notifyListeners();
+  }
+
   Future<void> loadFromStorage({bool force = false}) async => loadFromApi(force: force);
 
   /// API javobidan ro'yxatni chiqarish (customers/data/datarows — to'g'ri yoki data ichida)
@@ -573,7 +591,87 @@ class ClientsProvider extends ChangeNotifier {
     await refreshCustomer(clientId);
   }
 
-  Future<void> add(
+  /// Vaqtinchalik lokal ID (ms timestamp) — server mijoz ID emas.
+  static bool isPlausibleServerCustomerId(String id) {
+    final n = int.tryParse(id.trim());
+    if (n == null || n <= 0) return false;
+    return n < 100000000;
+  }
+
+  static Client? clientFromStoreResponse(
+    Map<String, dynamic> res, {
+    required Client draft,
+  }) {
+    dynamic raw = res['customer'] ?? res['data'];
+    if (raw is Map) {
+      try {
+        return Client.fromApiJson(Map<String, dynamic>.from(raw as Map));
+      } catch (_) {}
+    }
+    final idRaw = res['id'] ?? res['customer_id'] ?? res['customerId'];
+    if (idRaw != null) {
+      final idStr = idRaw is int ? idRaw.toString() : idRaw.toString().trim();
+      if (isPlausibleServerCustomerId(idStr)) {
+        return Client(
+          id: idStr,
+          name: draft.name,
+          email: draft.email,
+          phone: draft.phone,
+          address: draft.address,
+          customerGroupId: draft.customerGroupId,
+          customerGroupName: draft.customerGroupName,
+          customerGroupDiscount: draft.customerGroupDiscount,
+          customerGroupDiscountPriceType: draft.customerGroupDiscountPriceType,
+        );
+      }
+    }
+    return null;
+  }
+
+  Client? _findClientByPhoneOrName(String? phone, String name) {
+    final phoneNorm = _normalizePhone(phone);
+    if (phoneNorm.isNotEmpty) {
+      for (final c in _items) {
+        if (_normalizePhone(c.phone) == phoneNorm) return c;
+      }
+    }
+    final nameNorm = name.trim().toLowerCase();
+    if (nameNorm.isNotEmpty) {
+      for (final c in _items) {
+        if (c.name.trim().toLowerCase() == nameNorm) return c;
+      }
+    }
+    return null;
+  }
+
+  static String _normalizePhone(String? phone) {
+    if (phone == null) return '';
+    return phone.replaceAll(RegExp(r'\D'), '');
+  }
+
+  /// Sotuvdan oldin: haqiqiy server `customer.id` (yangi mijoz vaqtinchalik ID bilan qolmasin).
+  Future<Client> resolveClientForSales(Client client) async {
+    if (isPlausibleServerCustomerId(client.id)) {
+      try {
+        final res = await ContactsApi.getCustomer(int.parse(client.id));
+        final raw = res['customer'] ?? res['data'] ?? res;
+        if (raw is Map) {
+          return Client.fromApiJson(Map<String, dynamic>.from(raw as Map));
+        }
+      } catch (_) {}
+    }
+    await loadFromApi(force: true);
+    final found = _findClientByPhoneOrName(client.phone, client.name);
+    if (found != null && isPlausibleServerCustomerId(found.id)) {
+      return found;
+    }
+    throw ApiException(
+      'Mijoz serverda topilmadi. Ro\'yxatdan qayta tanlang yoki mijozni qayta saqlang.',
+      400,
+    );
+  }
+
+  Future<Client> add(
     Client client, {
     String? groupDiscountPriceType,
   }) async {
@@ -581,7 +679,7 @@ class ClientsProvider extends ChangeNotifier {
       final nameParts = client.name.trim().split(RegExp(r'\s+'));
       final firstName = nameParts.isNotEmpty ? nameParts.first : client.name;
       final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
-      await ContactsApi.storeCustomer(
+      final res = await ContactsApi.storeCustomer(
         CustomerStoreBody.build(
           firstName: firstName,
           lastName: lastName,
@@ -592,7 +690,26 @@ class ClientsProvider extends ChangeNotifier {
           email: client.email ?? '',
         ),
       );
-      await loadFromApi(force: true);
+      var saved = clientFromStoreResponse(res, draft: client);
+      if (saved == null || !isPlausibleServerCustomerId(saved.id)) {
+        await loadFromApi(force: true);
+        saved = _findClientByPhoneOrName(client.phone, client.name);
+      }
+      final savedClient = saved;
+      if (savedClient == null || !isPlausibleServerCustomerId(savedClient.id)) {
+        throw ApiException(
+          'Mijoz serverda saqlandi, lekin ID qaytmadi. Ro\'yxatni yangilab qayta tanlang.',
+          500,
+        );
+      }
+      final idx = _items.indexWhere((e) => e.id == savedClient.id);
+      if (idx >= 0) {
+        _items[idx] = savedClient;
+      } else {
+        _items.insert(0, savedClient);
+      }
+      notifyListeners();
+      return savedClient;
     } catch (_) {
       rethrow;
     }

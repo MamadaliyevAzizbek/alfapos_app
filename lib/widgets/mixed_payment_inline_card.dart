@@ -42,9 +42,11 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
   @override
   void didUpdateWidget(covariant MixedPaymentInlineCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.amount != widget.amount && !_focus.hasFocus) {
+    if (oldWidget.amount != widget.amount) {
       final next = _textForAmount(widget.amount);
-      if (_controller.text != next) {
+      final currentDigits = _controller.text.replaceAll(RegExp(r'[^\d]'), '');
+      final nextDigits = next.replaceAll(RegExp(r'[^\d]'), '');
+      if (currentDigits != nextDigits) {
         _controller.value = TextEditingValue(
           text: next,
           selection: TextSelection.collapsed(offset: next.length),

@@ -69,6 +69,14 @@ Future<void> setCurrentUserId(int? id) async {
   }
 }
 
+Future<void> clearUserProfileCache() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove(_keySellerName);
+  await prefs.remove(_keySellerPhone);
+  await prefs.remove(_keyUserId);
+  await prefs.remove(_keyUserSyncedAt);
+}
+
 /// GET /user javobidan ko'rinadigan ism (first_name + last_name, name yoki email).
 String sellerDisplayNameFromUserResponse(Map<String, dynamic> res) {
   final data = res['success'] is Map

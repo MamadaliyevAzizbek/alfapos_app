@@ -14,6 +14,8 @@ class ApiSyncThrottle {
 
   static void invalidate(String key) => _lastRun.remove(key);
 
+  static void clearAll() => _lastRun.clear();
+
   /// [minInterval] ichida chaqirilmasa `null` qaytaradi.
   static Future<T?> runIfDue<T>(
     String key,

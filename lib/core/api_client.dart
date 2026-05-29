@@ -152,6 +152,10 @@ class ApiClient {
           success == 0 ||
           (success is String && success.toString().toLowerCase().trim() == 'false')) {
         final msg = map['message'] as String? ?? 'So\'rov bajarilmadi';
+        // Ba'zi backendlar `success:false` bilan ham muvaffaqiyat xabarini qaytaradi (rasm upload).
+        if (_isSuccessLikeMessage(msg)) {
+          return map;
+        }
         throw ApiException(msg, response.statusCode);
       }
       return map;
@@ -180,5 +184,28 @@ class ApiClient {
     }
 
     throw ApiException(message, response.statusCode);
+  }
+
+  /// Backend ba'zan `success:false` + muvaffaqiyat matni yuboradi — saqlash muvaffaqiyatli deb qabul qilinadi.
+  static bool isSuccessLikeMessage(String message) => _isSuccessLikeMessage(message);
+
+  static bool _isSuccessLikeMessage(String message) {
+    final m = message.toLowerCase().trim();
+    if (m.isEmpty) return false;
+    const keys = [
+      'muvaffaqiyat',
+      'saqlandi',
+      'yangilandi',
+      "qo'shildi",
+      'successfully',
+      'success',
+      'updated',
+      'created',
+      'saved',
+    ];
+    for (final k in keys) {
+      if (m.contains(k)) return true;
+    }
+    return false;
   }
 }

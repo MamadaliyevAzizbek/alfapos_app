@@ -46,7 +46,7 @@ class CartProvider {
   }
 
   void updateQuantity(CartItem item, num quantity) {
-    if (quantity <= 0) {
+    if (quantity == 0) {
       _items.remove(item);
     } else {
       item.quantity = quantity;

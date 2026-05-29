@@ -102,7 +102,43 @@ bool cashRegisterUserIsOpener(Map<String, dynamic> r, int? userId) {
     for (final s in staff) {
       if (s is Map &&
           cashRegisterParseId(s['id']) == userId &&
-          (s['is_opener'] == true || s['is_opener'] == 1)) {
+          cashRegisterTruthy(s['is_opener'])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool cashRegisterTruthy(dynamic v) =>
+    v == true || v == 1 || v == '1' || v == 'true';
+
+bool cashRegisterShiftStaffContainsUser(Map<String, dynamic>? info, int? userId) {
+  if (info == null || userId == null) return false;
+  final staff = info['shift_staff'];
+  if (staff is! List) return false;
+  for (final s in staff) {
+    if (s is Map && cashRegisterParseId(s['id']) == userId) return true;
+  }
+  return false;
+}
+
+/// GET .../cash-register-shifts/{logId}/info — ochuvchi aniqlash (aniqroq).
+bool cashRegisterUserIsOpenerFromShiftInfo(Map<String, dynamic>? info, int? userId) {
+  if (userId == null || info == null) return false;
+  final log = info['log'];
+  if (log is Map) {
+    final openedBy = cashRegisterParseId(log['opened_by']);
+    if (openedBy == userId) return true;
+  }
+  final openedByTop = cashRegisterParseId(info['opened_by']);
+  if (openedByTop == userId) return true;
+  final staff = info['shift_staff'];
+  if (staff is List) {
+    for (final s in staff) {
+      if (s is Map &&
+          cashRegisterParseId(s['id']) == userId &&
+          cashRegisterTruthy(s['is_opener'])) {
         return true;
       }
     }

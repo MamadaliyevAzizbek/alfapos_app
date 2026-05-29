@@ -30,10 +30,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Mahsulot shtrix-kodini skanerlash va rasm olish uchun kameradan foydalaniladi</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Sotuv chekini Fotolar jamlanmasiga saqlash uchun ruxsat kerak</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Mahsulot rasmini galereyadan tanlash uchun ruxsat kerak</string>
+	<string>Mahsulot rasmini galereyadan tanlash uchun Fotolar ilovasiga kirish kerak</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Sotuv chekini Fotolar ilovasiga saqlash uchun ruxsat kerak</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
