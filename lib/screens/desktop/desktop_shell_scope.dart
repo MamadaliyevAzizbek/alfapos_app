@@ -1,15 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/api_pacing.dart';
-import '../../core/api_sync_throttle.dart';
-import '../../core/seller_preferences.dart';
-import '../../providers/cash_register_shift_provider.dart';
-import '../../providers/clients_provider.dart';
-import '../../providers/dashboard_provider.dart';
-import '../../providers/products_provider.dart';
-import '../../providers/receive_session_provider.dart';
-import '../../providers/sales_session_provider.dart';
-import '../../providers/categories_provider.dart';
+import '../../services/app_data_sync.dart';
 
 /// Desktop shell: global «Sinxronlash» — bo‘lim bo‘yicha ma’lumotlarni yangilash.
 class DesktopShellScope extends InheritedWidget {
@@ -36,43 +27,9 @@ class DesktopShellScope extends InheritedWidget {
 class DesktopShellSync {
   DesktopShellSync._();
 
-  static Future<void> run(int tabIndex) async {
-    if (!ApiSyncThrottle.shouldRun('desktop_shell_sync_$tabIndex', const Duration(seconds: 45))) {
-      return;
-    }
-    ApiSyncThrottle.markRan('desktop_shell_sync_$tabIndex');
-
-    await CashRegisterShiftProvider.instance.syncWithServer();
-    await syncSellerNameFromApi();
-    await ApiPacing.staggerPause();
-
-    switch (tabIndex) {
-      case 0:
-        await DashboardProvider.instance.loadFromApi();
-        break;
-      case 1:
-        await ClientsProvider.instance.loadFromApi(force: false);
-        break;
-      case 2:
-        await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
-        await ApiPacing.staggerPause();
-        await CategoriesProvider.instance.loadFromApiIfStale();
-        break;
-      case 3:
-        await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
-        SalesSessionProvider.instance.applyCatalogStock();
-        await SalesSessionProvider.instance.syncFromServerInBackground();
-        break;
-      case 4:
-        await ReceiveSessionProvider.instance.loadInit();
-        break;
-      case 5:
-      case 6:
-      case 7:
-        break;
-    }
-
-    SalesSessionProvider.instance.syncFromShift();
+  /// Eski API — endi to‘liq sinxronlash [AppDataSync.syncAll] orqali.
+  static Future<void> run(int tabIndex, {bool force = true}) async {
+    await AppDataSync.syncAll(force: force);
   }
 }
 

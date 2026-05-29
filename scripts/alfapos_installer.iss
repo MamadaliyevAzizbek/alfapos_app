@@ -2,7 +2,7 @@
 ; Build: scripts\build_windows_installer.ps1 yoki GitHub Actions
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.12"
+  #define MyAppVersion "1.0.13"
 #endif
 
 #define MyAppName "AlfaPOS"

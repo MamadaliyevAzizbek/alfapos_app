@@ -126,7 +126,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   @override
   Future<void> onDesktopShellSync() async {
     if (!isDesktopPosLayout) return;
-    _sales.syncFromShift();
+    await _products.refreshFromServer(force: true);
+    _sales.applyCatalogStock();
     await _refreshSavedOrdersCount();
     if (mounted) setState(() {});
   }

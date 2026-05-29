@@ -18,41 +18,57 @@ class AppDataSync {
   static bool _running = false;
   static bool get isRunning => _running;
 
-  /// Navbatdagi mahsulotlarni serverga yuboradi, keyin asta-sekin yangilaydi.
+  static void _invalidateSyncThrottles() {
+    ApiSyncThrottle.invalidate(_syncAllKey);
+    ApiSyncThrottle.invalidate('products_full_catalog');
+    ApiSyncThrottle.invalidate('categories_api');
+    ApiSyncThrottle.invalidate('cash_register_sync');
+    for (var i = 0; i < 9; i++) {
+      ApiSyncThrottle.invalidate('desktop_shell_sync_$i');
+    }
+  }
+
+  /// Navbatdagi mahsulotlarni serverga yuboradi, keyin serverdan yangilaydi.
+  /// [force]: foydalanuvchi «Sinxronlash» bosganda — throttle o‘tkazib yuboriladi.
   static Future<void> syncAll({bool force = false}) async {
     if (_running) return;
     if (!force && !ApiSyncThrottle.shouldRun(_syncAllKey, _syncAllMinInterval)) return;
 
     _running = true;
+    if (force) _invalidateSyncThrottles();
     ApiSyncThrottle.markRan(_syncAllKey);
     try {
       await ProductsProvider.instance.flushPendingSyncToServer();
       await ApiPacing.staggerPause();
 
-      await ApiSyncThrottle.runIfDue(
-        'cash_shift_sync',
-        const Duration(minutes: 2),
-        () => CashRegisterShiftProvider.instance.syncWithServer(),
-      );
+      await CashRegisterShiftProvider.instance.syncWithServer(force: force);
       await ApiPacing.staggerPause();
 
       await syncSellerNameFromApi();
       await ApiPacing.staggerPause();
 
-      await ProductsProvider.instance.loadFromStorage(refreshInBackground: true);
+      await ProductsProvider.instance.refreshFromServer(force: force);
       await ApiPacing.staggerPause();
 
-      await CategoriesProvider.instance.loadFromApiIfStale();
+      if (force) {
+        await CategoriesProvider.instance.loadFromApi();
+      } else {
+        await CategoriesProvider.instance.loadFromApiIfStale();
+      }
       await ApiPacing.staggerPause();
 
-      await ClientsProvider.instance.loadFromApi(force: false);
+      await ClientsProvider.instance.loadFromApi(force: force);
       await ApiPacing.staggerPause();
 
       await DashboardProvider.instance.loadFromApi();
       await ApiPacing.staggerPause();
 
       try {
-        await SalesSessionProvider.instance.init(localFirst: true);
+        if (force) {
+          await SalesSessionProvider.instance.init(localFirst: false);
+        } else {
+          await SalesSessionProvider.instance.init(localFirst: true);
+        }
       } catch (_) {}
     } finally {
       _running = false;

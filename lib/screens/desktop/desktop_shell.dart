@@ -3,6 +3,7 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 import '../../core/app_notify.dart';
 import '../../core/seller_preferences.dart';
 import '../../core/theme.dart';
+import '../../services/app_data_sync.dart';
 import 'desktop_shell_scope.dart';
 import 'asosiy_desktop_screen.dart';
 import '../hisobotlar_screen.dart';
@@ -54,13 +55,13 @@ class _DesktopShellState extends State<DesktopShell> {
       });
 
   Future<void> _onGlobalSync() async {
-    if (_syncing) return;
+    if (_syncing || AppDataSync.isRunning) return;
     setState(() => _syncing = true);
     try {
-      await DesktopShellSync.run(_index);
+      await AppDataSync.syncAll(force: true);
       if (!mounted) return;
       setState(() => _syncGeneration++);
-      AppNotify.success(context, 'Ma\'lumotlar yangilandi');
+      AppNotify.success(context, 'Ma\'lumotlar sinxronlandi');
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Sinxronlash xatosi: $e');
     } finally {

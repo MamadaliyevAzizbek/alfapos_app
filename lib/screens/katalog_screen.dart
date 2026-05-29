@@ -50,7 +50,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     if (_syncing || AppDataSync.isRunning) return;
     setState(() => _syncing = true);
     try {
-      await AppDataSync.syncAll();
+      await AppDataSync.syncAll(force: true);
       if (!mounted) return;
       AppNotify.success(context, 'Ma\'lumotlar sinxronlandi');
       setState(() {});
@@ -79,8 +79,8 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
 
   @override
   Future<void> onDesktopShellSync() async {
-    await _products.loadFromStorage(refreshInBackground: true);
-    await _categories.loadFromStorage(refreshInBackground: true);
+    await _products.refreshFromServer(force: true);
+    await _categories.loadFromApi();
     if (mounted) setState(() {});
   }
 

@@ -132,7 +132,10 @@ class CategoriesProvider extends ChangeNotifier {
   /// Kategoriyalar eskirgan bo‘lsa yoki kesh bo‘sh bo‘lsa API.
   Future<void> loadFromApiIfStale({bool force = false}) async {
     if (force) {
+      ApiSyncThrottle.invalidate('categories_api');
       _loaded = false;
+      await loadFromApi();
+      return;
     }
     final prefs = await SharedPreferences.getInstance();
     final key = await _cacheKey();

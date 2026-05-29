@@ -73,6 +73,19 @@ class ProductsProvider extends ChangeNotifier {
     unawaited(_drainSyncQueue());
   }
 
+  /// Navbatdagi mahsulotlarni serverga yuboradi, keyin serverdan to‘liq katalog.
+  Future<void> refreshFromServer({bool force = false}) async {
+    if (force) {
+      ApiSyncThrottle.invalidate('products_full_catalog');
+    }
+    await flushPendingSyncToServer();
+    if (force) {
+      await loadFromApi();
+      return;
+    }
+    await _refreshCatalogFromApi();
+  }
+
   Future<void> _refreshCatalogFromApi() async {
     await ApiSyncThrottle.runIfDue(
       'products_full_catalog',
