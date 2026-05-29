@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/product_image_utils.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
+import '../utils/product_image_upload.dart';
 import 'auth_network_image.dart';
 
 /// Mahsulot kartasi: rasm, nom, narx, miqdor (ixtiyoriy: barkod, menyu)
@@ -56,17 +57,20 @@ class ProductTile extends StatelessWidget {
       return imageBox(ColoredBox(color: const Color(0xFFF0F2F5), child: ph));
     }
 
-    final localFile = File(raw);
-    if (localFile.existsSync()) {
-      return imageBox(
-        Image.file(
-          localFile,
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => ColoredBox(color: const Color(0xFFF0F2F5), child: ph),
-        ),
-      );
+    final localPath = ProductImageUpload.resolveLocalPath(raw);
+    if (localPath != null) {
+      final localFile = File(localPath);
+      if (localFile.existsSync()) {
+        return imageBox(
+          Image.file(
+            localFile,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => ColoredBox(color: const Color(0xFFF0F2F5), child: ph),
+          ),
+        );
+      }
     }
 
     final url = ProductImageUtils.resolveToUrl(raw);
@@ -90,18 +94,21 @@ class ProductTile extends StatelessWidget {
     final ph = _placeholder(boxSize);
     if (raw.isEmpty) return ph;
 
-    final localFile = File(raw);
-    if (localFile.existsSync()) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.file(
-          localFile,
-          fit: BoxFit.cover,
-          width: boxSize,
-          height: boxSize,
-          errorBuilder: (_, __, ___) => ph,
-        ),
-      );
+    final localPath = ProductImageUpload.resolveLocalPath(raw);
+    if (localPath != null) {
+      final localFile = File(localPath);
+      if (localFile.existsSync()) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.file(
+            localFile,
+            fit: BoxFit.cover,
+            width: boxSize,
+            height: boxSize,
+            errorBuilder: (_, __, ___) => ph,
+          ),
+        );
+      }
     }
 
     final url = ProductImageUtils.resolveToUrl(raw);

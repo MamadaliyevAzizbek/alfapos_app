@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+import '../core/api_http.dart';
 import '../core/auth_storage.dart';
 
 /// Token talab qiladigan server rasmlari uchun (Image.network Authorization yubormaydi).
@@ -31,7 +32,7 @@ class _AuthNetworkImageState extends State<AuthNetworkImage> {
     Config(
       'auth_image_cache_v1',
       stalePeriod: const Duration(days: 14),
-      maxNrOfCacheObjects: 300,
+      maxNrOfCacheObjects: 1500,
     ),
   );
 
@@ -74,7 +75,9 @@ class _AuthNetworkImageState extends State<AuthNetworkImage> {
       };
 
       // Disk+memory cache: bir marta yuklanadi, keyin hamma joyda cache'dan ochiladi.
-      final f = await _cache.getSingleFile(u, headers: headers);
+      final f = await ApiHttp.withTransientRetry(
+        () => _cache.getSingleFile(u, headers: headers),
+      );
       if (!mounted) return;
       setState(() {
         _file = f;

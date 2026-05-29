@@ -1,3 +1,5 @@
+import '../core/product_image_utils.dart';
+
 class Product {
   final String id;
   final String name;
@@ -150,6 +152,18 @@ class Product {
 
   static bool _hasNonEmptyText(String? s) => s != null && s.trim().isNotEmpty;
 
+  /// Serverdagi rasm yo'lini mahalliy disk yo'lidan ustun qo'yadi (boshqa POS cache).
+  static String? _mergeImageUrl(String? server, String? local) {
+    final s = server?.trim() ?? '';
+    final l = local?.trim() ?? '';
+    if (s.isNotEmpty && !ProductImageUtils.isLocalFilePath(s)) return s;
+    if (l.isNotEmpty && ProductImageUtils.isLocalFilePath(l)) {
+      return s.isNotEmpty ? s : l;
+    }
+    if (s.isNotEmpty) return s;
+    return l.isEmpty ? null : l;
+  }
+
   static bool _isCategoryIdOnly(String? s) {
     if (s == null || s.trim().isEmpty) return true;
     return int.tryParse(s.trim()) != null;
@@ -169,7 +183,7 @@ class Product {
     final mergedQty = preferServerStock
         ? initialQuantity
         : (initialQuantity != 0 ? initialQuantity : local.initialQuantity);
-    final mergedImage = _hasNonEmptyText(imageUrl) ? imageUrl : local.imageUrl;
+    final mergedImage = _mergeImageUrl(imageUrl, local.imageUrl);
     final mergedUnitRaw = _hasNonEmptyText(unit) ? unit : local.unit;
     final mergedUnit = sanitizeUnitLabel(mergedUnitRaw) ?? mergedUnitRaw ?? 'dona';
     final mergedQtyInfoRaw = preferServerStock
