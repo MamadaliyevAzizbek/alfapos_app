@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 
 import '../models/receipt_design_config.dart';
 import '../utils/escpos_text_codec.dart';
+import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 
 /// API dan parse qilingan matn qatorlarini ESC/POS ga aylantirish.
@@ -90,24 +91,64 @@ class EscPosReceiptBuilder {
         final isTotal = lower.contains('umumiy summa') ||
             lower.contains('jami') ||
             lower.contains('итого');
-        bytes.addAll(
-          g.textEncoded(
-            enc,
-            styles: PosStyles(
+        if (ReceiptStrikethroughText.containsMarker(text)) {
+          bytes.addAll(
+            _printMarkedLine(
+              g,
+              text,
               codeTable: codeTable,
-              fontType: PosFontType.fontA,
+              codePage: codePage,
+              maxWidth: maxWidth,
               bold: isTotal,
-              height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
-              width: isTotal ? PosTextSize.size1 : PosTextSize.size1,
             ),
-            maxCharsPerLine: maxWidth,
-          ),
-        );
+          );
+        } else {
+          bytes.addAll(
+            g.textEncoded(
+              enc,
+              styles: PosStyles(
+                codeTable: codeTable,
+                fontType: PosFontType.fontA,
+                bold: isTotal,
+                height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
+                width: isTotal ? PosTextSize.size1 : PosTextSize.size1,
+              ),
+              maxCharsPerLine: maxWidth,
+            ),
+          );
+        }
       }
     }
 
     bytes.addAll(g.feed(2));
     bytes.addAll(g.cut());
+    return bytes;
+  }
+
+  static List<int> _printMarkedLine(
+    Generator g,
+    String text, {
+    required String codeTable,
+    required String codePage,
+    required int maxWidth,
+    bool bold = false,
+  }) {
+    final bytes = <int>[];
+    for (final seg in ReceiptStrikethroughText.parseSegments(text)) {
+      final enc = EscPosTextCodec.encodeSync(seg.text, codePage: codePage);
+      bytes.addAll(
+        g.textEncoded(
+          enc,
+          styles: PosStyles(
+            codeTable: codeTable,
+            fontType: PosFontType.fontA,
+            bold: bold,
+            underline: seg.strike,
+          ),
+          maxCharsPerLine: maxWidth,
+        ),
+      );
+    }
     return bytes;
   }
 

@@ -1,6 +1,7 @@
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_store_title.dart';
+import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_line_wrap.dart';
 
 /// Termal chek mahsulot qatori (Alfapos.pdf ko‘rinishi).
@@ -9,12 +10,16 @@ class ThermalReceiptProductLine {
   final String quantity;
   final String unitPrice;
   final String lineTotal;
+  final String? catalogUnitPrice;
+  final String? catalogLineTotal;
 
   const ThermalReceiptProductLine({
     required this.name,
     required this.quantity,
     required this.unitPrice,
     required this.lineTotal,
+    this.catalogUnitPrice,
+    this.catalogLineTotal,
   });
 }
 
@@ -317,14 +322,19 @@ class ThermalReceiptFormatter {
       }
     }
 
-    lines.add(
-      ThermalReceiptLineWrap.formatTwoColumns(
-        config.discountLabel,
-        som(formatAmountForReceipt(d.discountAmount)),
-        rightWidth: kReceiptAmountColumnWidth,
-      ),
-    );
-    if (config.showItemSeparator) {
+    final discountValue = formatAmountForReceipt(d.discountAmount);
+    if (discountValue != '0' && discountValue.isNotEmpty) {
+      lines.add(
+        ThermalReceiptLineWrap.formatTwoColumns(
+          config.discountLabel,
+          som(discountValue),
+          rightWidth: kReceiptAmountColumnWidth,
+        ),
+      );
+      if (config.showItemSeparator) {
+        lines.add(sep);
+      }
+    } else if (config.showItemSeparator) {
       lines.add(sep);
     }
     lines.add(
@@ -521,12 +531,20 @@ class ThermalReceiptFormatter {
     final price = formatAmountForReceipt(
       p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
     );
+    final catalog = p.catalogUnitPrice == null
+        ? null
+        : formatAmountForReceipt(
+            p.catalogUnitPrice!.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+          );
     final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
     if (qty.contains('x') || qty.contains('×')) {
       return '${qty.replaceAll('×', 'x')} $suf.';
     }
+    if (catalog != null && catalog.isNotEmpty && catalog != price && _looksNumeric(catalog.replaceAll(',', ''))) {
+      return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price $suf';
+    }
     if (price.isNotEmpty && _looksNumeric(price.replaceAll(',', ''))) {
-      return '$qty x $price $suf.';
+      return '$qty x $price $suf';
     }
     return '$qty $suf.';
   }

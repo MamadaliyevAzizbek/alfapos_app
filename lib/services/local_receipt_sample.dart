@@ -28,17 +28,19 @@ class LocalReceiptSample {
       clientPhone: '+998 90 123 45 67',
       productRows: const [
         ReceiptRow(
-          productName: 'sprite',
-          quantityStr: '4 dona',
-          price: 2000,
-          sum: 8000,
+          productName: 'Non',
+          quantityStr: '1 dona',
+          price: 4000,
+          sum: 4000,
+          catalogPrice: 5000,
+          catalogSum: 5000,
         ),
       ],
       paymentRows: const [
-        ReceiptPaymentRow(methodName: 'Naqd pul', sum: 8000),
+        ReceiptPaymentRow(methodName: 'Naqd pul', sum: 4000),
       ],
-      discount: 0,
-      totalSum: 8000,
+      discount: 1000,
+      totalSum: 4000,
       barcodeData: 'POS12345',
       design: cfg,
     );

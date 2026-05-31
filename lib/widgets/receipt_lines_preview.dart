@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/receipt_strikethrough_text.dart';
+
 /// Mahalliy chek qatorlari — printer ko‘rinishi (sozlamalar).
 class ReceiptLinesPreview extends StatelessWidget {
   final List<String> lines;
@@ -60,15 +62,16 @@ class ReceiptLinesPreview extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Text(
+      child: ReceiptStrikethroughText.richLine(
         text,
-        textAlign: centered ? TextAlign.center : TextAlign.start,
         style: TextStyle(
           fontSize: isTotal ? 14 : 13,
           fontWeight: isTotal || centered ? FontWeight.w700 : FontWeight.w500,
           color: Colors.black,
           height: 1.35,
         ),
+        textAlign: centered ? TextAlign.center : TextAlign.start,
+        bold: isTotal || centered,
       ),
     );
   }

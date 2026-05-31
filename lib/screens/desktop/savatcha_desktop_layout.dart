@@ -49,6 +49,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final void Function(Product product) onProductTap;
   final CartItem? expandedCartItem;
   final void Function(CartItem item) onToggleCartExpand;
+  final VoidCallback onCollapseCartExpand;
   final void Function(CartItem item, num quantity) onCartQuantityChanged;
   final void Function(CartItem item, double? unitPriceOverride) onCartUnitPriceChanged;
   final void Function(CartItem item) onRemoveCartItem;
@@ -107,6 +108,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required this.onProductTap,
     this.expandedCartItem,
     required this.onToggleCartExpand,
+    required this.onCollapseCartExpand,
     required this.onCartQuantityChanged,
     required this.onCartUnitPriceChanged,
     required this.onRemoveCartItem,
@@ -567,6 +569,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         item: line,
                         expanded: identical(expandedCartItem, line),
                         onToggleExpand: () => onToggleCartExpand(line),
+                        onCollapse: onCollapseCartExpand,
                         onIncrement: () => onIncrement(line),
                         onDecrement: () => onDecrement(line),
                         onRemove: () => onRemoveCartItem(line),
@@ -953,6 +956,7 @@ class _DesktopCartLine extends StatefulWidget {
   final CartItem item;
   final bool expanded;
   final VoidCallback onToggleExpand;
+  final VoidCallback onCollapse;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final VoidCallback onRemove;
@@ -963,6 +967,7 @@ class _DesktopCartLine extends StatefulWidget {
     required this.item,
     required this.expanded,
     required this.onToggleExpand,
+    required this.onCollapse,
     required this.onIncrement,
     required this.onDecrement,
     required this.onRemove,
@@ -977,27 +982,63 @@ class _DesktopCartLine extends StatefulWidget {
 class _DesktopCartLineState extends State<_DesktopCartLine> {
   late final TextEditingController _qtyController;
   late final TextEditingController _priceController;
+  late final FocusNode _qtyFocusNode;
+  late final FocusNode _priceFocusNode;
 
   @override
   void initState() {
     super.initState();
     _qtyController = TextEditingController(text: _qtyText(widget.item.quantity));
     _priceController = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
+    _qtyFocusNode = FocusNode();
+    _priceFocusNode = FocusNode();
+    _qtyFocusNode.addListener(_onEditFocusChange);
+    _priceFocusNode.addListener(_onEditFocusChange);
+  }
+
+  void _onEditFocusChange() {
+    if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
+      if (!widget.expanded) return;
+      _commitQuantity();
+      _commitPrice();
+      widget.onCollapse();
+    });
+  }
+
+  void _submitQuantityAndCollapse() {
+    _commitQuantity();
+    if (widget.expanded) widget.onCollapse();
+  }
+
+  void _submitPriceAndCollapse() {
+    _commitPrice();
+    if (widget.expanded) widget.onCollapse();
   }
 
   @override
   void didUpdateWidget(covariant _DesktopCartLine oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final q = _qtyText(widget.item.quantity);
-    if (_qtyController.text != q) _qtyController.text = q;
-    final p = formatThousands(widget.item.unitPriceDisplay);
-    if (_priceController.text != p) _priceController.text = p;
+    if (!_qtyFocusNode.hasFocus) {
+      final q = _qtyText(widget.item.quantity);
+      if (_qtyController.text != q) _qtyController.text = q;
+    }
+    if (!_priceFocusNode.hasFocus) {
+      final p = formatThousands(widget.item.unitPriceDisplay);
+      if (_priceController.text != p) _priceController.text = p;
+    }
   }
 
   @override
   void dispose() {
+    _qtyFocusNode.removeListener(_onEditFocusChange);
+    _priceFocusNode.removeListener(_onEditFocusChange);
     _qtyController.dispose();
     _priceController.dispose();
+    _qtyFocusNode.dispose();
+    _priceFocusNode.dispose();
     super.dispose();
   }
 
@@ -1012,19 +1053,21 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     return num.tryParse(t);
   }
 
-  void _commitQuantity() {
-    final q = _parseQty(_qtyController.text);
+  void _applyQuantityInput(String raw, {bool resetIfInvalid = false}) {
+    final q = _parseQty(raw);
     if (q == null || q <= 0) {
-      _qtyController.text = _qtyText(widget.item.quantity);
+      if (resetIfInvalid) _qtyController.text = _qtyText(widget.item.quantity);
       return;
     }
     if (q != widget.item.quantity) widget.onQuantityChanged(q);
   }
 
-  void _commitPrice() {
-    final v = parseFormattedSum(_priceController.text);
+  void _commitQuantity() => _applyQuantityInput(_qtyController.text, resetIfInvalid: true);
+
+  void _applyPriceInput(String raw, {bool resetIfInvalid = false}) {
+    final v = parseFormattedSum(raw);
     if (v == null || v < 0) {
-      _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+      if (resetIfInvalid) _priceController.text = formatThousands(widget.item.unitPriceDisplay);
       return;
     }
     final def = widget.item.defaultLineUnitPrice.round();
@@ -1033,6 +1076,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     final next = override?.round();
     if (current != next) widget.onUnitPriceChanged(override);
   }
+
+  void _commitPrice() => _applyPriceInput(_priceController.text, resetIfInvalid: true);
 
   InputDecoration get _inputDecoration => InputDecoration(
         isDense: true,
@@ -1165,13 +1210,15 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                         'Miqdori',
                         TextField(
                           controller: _qtyController,
+                          focusNode: _qtyFocusNode,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           inputFormatters: [
                             FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
                           ],
                           decoration: _inputDecoration,
-                          onSubmitted: (_) => _commitQuantity(),
-                          onEditingComplete: _commitQuantity,
+                          onChanged: _applyQuantityInput,
+                          onSubmitted: (_) => _submitQuantityAndCollapse(),
+                          onEditingComplete: _submitQuantityAndCollapse,
                         ),
                       ),
                     ),
@@ -1181,11 +1228,13 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                         'Chegirmali narx',
                         TextField(
                           controller: _priceController,
+                          focusNode: _priceFocusNode,
                           keyboardType: TextInputType.number,
                           inputFormatters: [ThousandsInputFormatter()],
                           decoration: _inputDecoration,
-                          onSubmitted: (_) => _commitPrice(),
-                          onEditingComplete: _commitPrice,
+                          onChanged: _applyPriceInput,
+                          onSubmitted: (_) => _submitPriceAndCollapse(),
+                          onEditingComplete: _submitPriceAndCollapse,
                         ),
                       ),
                     ),

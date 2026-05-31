@@ -17,7 +17,9 @@ import '../providers/products_provider.dart';
 import '../utils/filter_options_parser.dart';
 import '../utils/product_search.dart';
 import '../utils/barcode_product_lookup.dart';
+import '../utils/product_catalog_filter.dart';
 import '../utils/sales_products.dart';
+import '../utils/sales_products_request_body.dart';
 import '../utils/hold_orders_response.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/sales_store_body.dart';
@@ -376,15 +378,27 @@ class SalesSessionProvider extends ChangeNotifier {
       await trySource(ProductsApi.getFilterOptions(), brandsOnly: true),
       await trySource(ProductsApi.getSupportingData(), brandsOnly: true),
     ]) {
-      if (list.isNotEmpty) return list;
+      if (list.isNotEmpty) {
+        final cid = (await getCompanyId())?.trim();
+        return _filterIdNameByCompany(list, cid);
+      }
     }
     return [];
   }
 
   /// 0 qoldiq filtri qo'llangan katalog.
   List<Product> get catalogProductsVisible {
-    if (!hideZeroStock) return salesProducts;
-    return salesProducts.where((p) => p.hasStock).toList();
+    var list = ProductCatalogFilter.apply(
+      salesProducts,
+      categoryId: categoryId,
+      brandId: brandId,
+      categories: categories,
+      brands: brands,
+    );
+    if (hideZeroStock) {
+      list = list.where((p) => p.hasStock).toList();
+    }
+    return list;
   }
 
   Future<void> _loadCashRegisters() async {
@@ -480,17 +494,22 @@ class SalesSessionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final body = <String, dynamic>{
-        'orderType': 'sales',
-        'currentBranch': branchId ?? 1,
-        'searchValue': _lastSearch,
-        'rowLimit': 40,
-        'offset': _offset,
-        'categoryId': categoryId ?? '',
-        'brandId': brandId ?? '',
-      };
+      final body = buildSalesProductsRequestBody(
+        branchId: branchId ?? 1,
+        searchValue: _lastSearch,
+        offset: _offset,
+        categoryId: categoryId,
+        brandId: brandId,
+      );
       final res = await SalesApi.getSalesProducts(body: body);
       var page = SalesProducts.fromSalesResponse(res);
+      page = ProductCatalogFilter.apply(
+        page,
+        categoryId: categoryId,
+        brandId: brandId,
+        categories: categories,
+        brands: brands,
+      );
       page = ProductsProvider.instance.withCatalogStockAll(page);
       if (reset) {
         salesProducts = page;
@@ -651,6 +670,8 @@ class SalesSessionProvider extends ChangeNotifier {
     required bool showPurchaseOnCards,
     required bool showUsdOnCards,
   }) {
+    final catChanged = categoryId != category;
+    final brandChanged = brandId != brand;
     categoryId = category;
     brandId = brand;
     hideZeroStock = hideZero;
@@ -660,7 +681,11 @@ class SalesSessionProvider extends ChangeNotifier {
     if (sellPurchase) sellAtWholesalePrice = false;
     showPurchasePrice = showPurchaseOnCards;
     showUsdEquivalent = showUsdOnCards;
-    notifyListeners();
+    if (catChanged || brandChanged) {
+      loadProducts(reset: true);
+    } else {
+      notifyListeners();
+    }
   }
 
   void clearSalesFilters() {

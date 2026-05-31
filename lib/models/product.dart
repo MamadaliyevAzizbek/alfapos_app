@@ -15,6 +15,9 @@ class Product {
   final String quantityInfo;
   final String? unit; // dona, kg, pachka
   final String? category;
+  final String? categoryId;
+  final String? brandId;
+  final String? brand;
   final String? description;
   final bool quantityInPack; // pachka mavjud: API da units_per_package > 1
   final int quantityPerPack; // 1 pachkada nechta dona (API: units_per_package)
@@ -50,6 +53,9 @@ class Product {
     this.quantityInfo = '0 sht',
     this.unit,
     this.category,
+    this.categoryId,
+    this.brandId,
+    this.brand,
     this.description,
     this.quantityInPack = false,
     this.quantityPerPack = 0,
@@ -233,6 +239,9 @@ class Product {
       quantityInfo: mergedQtyInfo,
       unit: mergedUnit,
       category: mergedCategory,
+      categoryId: categoryId ?? local.categoryId,
+      brandId: brandId ?? local.brandId,
+      brand: brand ?? local.brand,
       description: mergedDescription,
       quantityInPack: mergedQtyInPack,
       quantityPerPack: mergedQtyPerPack,
@@ -476,6 +485,9 @@ class Product {
       'quantityInfo': quantityInfo,
       'unit': unit,
       'category': category,
+      'categoryId': categoryId,
+      'brandId': brandId,
+      'brand': brand,
       'description': description,
       'quantityInPack': quantityInPack,
       'quantityPerPack': quantityPerPack,
@@ -708,6 +720,9 @@ class Product {
       )!,
       unit: sanitizeUnitLabel(json['unit'] as String?),
       category: json['category'] as String?,
+      categoryId: json['categoryId'] as String?,
+      brandId: json['brandId'] as String?,
+      brand: json['brand'] as String?,
       description: json['description'] as String?,
       quantityInPack: json['quantityInPack'] as bool? ?? false,
       quantityPerPack: json['quantityPerPack'] as int? ?? 0,
@@ -911,9 +926,37 @@ class Product {
 
     // Kategoriya: ob'ekt yoki string
     final cat = m['category'];
-    final categoryStr = cat is Map
-        ? _stringFromJson((cat as Map)['name']) ?? _stringFromJson((cat as Map)['title'])
-        : _stringFromJson(m['category_name']) ?? _stringFromJson(m['category_id']?.toString());
+    String? categoryIdStr = _stringFromJson(m['category_id'] ?? m['categoryId']);
+    String? categoryNameStr;
+    if (cat is Map) {
+      categoryIdStr ??= _stringFromJson((cat as Map)['id']);
+      categoryNameStr = _stringFromJson((cat as Map)['name']) ?? _stringFromJson((cat as Map)['title']);
+    } else {
+      categoryNameStr = _stringFromJson(m['category_name']) ?? _stringFromJson(cat);
+    }
+    if ((categoryNameStr == null || categoryNameStr.isEmpty) &&
+        categoryIdStr != null &&
+        !_isCategoryIdOnly(categoryIdStr)) {
+      categoryNameStr = categoryIdStr;
+    }
+    final categoryStr = categoryNameStr ?? categoryIdStr;
+
+    final brandRaw = m['brand'] ?? m['brand_id'] ?? m['brandId'];
+    String? brandIdStr;
+    String? brandNameStr = _stringFromJson(m['brand_name']);
+    if (brandRaw is Map) {
+      brandIdStr = _stringFromJson((brandRaw as Map)['id']);
+      brandNameStr ??= _stringFromJson((brandRaw as Map)['name']) ?? _stringFromJson((brandRaw as Map)['title']);
+    } else {
+      brandIdStr = _stringFromJson(brandRaw);
+    }
+    if ((brandNameStr == null || brandNameStr.isEmpty) &&
+        brandIdStr != null &&
+        brandIdStr.isNotEmpty &&
+        !RegExp(r'^\d+$').hasMatch(brandIdStr)) {
+      brandNameStr = brandIdStr;
+      brandIdStr = null;
+    }
 
     // Pachka: API da variant ichida — units_per_package, package_selling_price, package_purchase_price (1.2)
     // Avval variants ichidan pachka maydonlari bor variantni topamiz (odatda default_variant)
@@ -1051,6 +1094,9 @@ class Product {
       quantityInfo: _quantityInfoLabel(initialQuantity, unit),
       unit: unit,
       category: categoryStr,
+      categoryId: categoryIdStr,
+      brandId: brandIdStr,
+      brand: brandNameStr,
       description: _stringFromJson(m['description']),
       quantityInPack: quantityInPack,
       quantityPerPack: quantityPerPack,

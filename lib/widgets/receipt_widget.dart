@@ -12,15 +12,29 @@ import '../utils/thermal_receipt_line_wrap.dart';
 class ReceiptRow {
   final String productName;
   final String quantityStr;
+  /// To'langan birlik narxi
   final int price;
+  /// To'langan qator jami
   final int sum;
+  /// Katalog birlik narxi (chegirma bo'lsa — ustidan chiziladi)
+  final int? catalogPrice;
+  /// Katalog qator jami (chegirma bo'lsa — ustidan chiziladi)
+  final int? catalogSum;
 
   const ReceiptRow({
     required this.productName,
     required this.quantityStr,
     required this.price,
     required this.sum,
+    this.catalogPrice,
+    this.catalogSum,
   });
+
+  bool get hasUnitDiscount =>
+      catalogPrice != null && catalogPrice! > price;
+
+  bool get hasSumDiscount =>
+      catalogSum != null && catalogSum! > sum;
 }
 
 /// To'lov qatori: usul, summa
@@ -98,6 +112,7 @@ class ReceiptWidget extends StatelessWidget {
                 quantity: r.quantityStr,
                 unitPrice: _fmt(r.price),
                 lineTotal: _fmt(r.sum),
+                catalogUnitPrice: r.hasUnitDiscount ? _fmt(r.catalogPrice!) : null,
               ),
             )
             .toList(),
@@ -234,22 +249,10 @@ class ReceiptWidget extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      '${_normalizeQty(productRows[i].quantityStr)} x ${_fmt(productRows[i].price)} $som.',
-                      style: textStyle,
-                    ),
-                  ),
+                  Expanded(child: _productPriceLine(productRows[i], textStyle, som)),
                   SizedBox(
                     width: 108,
-                    child: Text(
-                      '${_fmt(productRows[i].sum)} $som',
-                      style: textStyle,
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.visible,
-                      softWrap: false,
-                    ),
+                    child: _productSumColumn(productRows[i], textStyle, som),
                   ),
                 ],
               ),
@@ -278,13 +281,21 @@ class ReceiptWidget extends StatelessWidget {
                   ],
                 ),
               ),
-          Row(
-            children: [
-              Expanded(child: Text(design.discountLabel, style: textStyle)),
-              Text('${_fmt(discount)} $som', style: textStyle, softWrap: false),
+          if (discount > 0) ...[
+            Row(
+              children: [
+                Expanded(child: Text(design.discountLabel, style: textStyle)),
+                Text('${_fmt(discount)} $som', style: textStyle, softWrap: false),
+              ],
+            ),
+            if (design.showItemSeparator) ...[
+              const SizedBox(height: 4),
+              Text(
+                ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+                style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+              ),
             ],
-          ),
-          if (design.showItemSeparator) ...[
+          ] else if (design.showItemSeparator) ...[
             const SizedBox(height: 4),
             Text(
               ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
@@ -352,6 +363,42 @@ class ReceiptWidget extends StatelessWidget {
         .replaceAll('шт', 'dona')
         .replaceAll('Шт', 'dona')
         .replaceAll('×', 'x');
+  }
+
+  static TextStyle _strikeStyle(TextStyle base) =>
+      base.copyWith(
+        decoration: TextDecoration.lineThrough,
+        decorationThickness: 2,
+        decorationColor: Colors.grey.shade700,
+        color: Colors.grey.shade600,
+      );
+
+  static Widget _productPriceLine(ReceiptRow row, TextStyle textStyle, String som) {
+    final qty = _normalizeQty(row.quantityStr);
+    if (row.hasUnitDiscount) {
+      return Text.rich(
+        TextSpan(
+          style: textStyle,
+          children: [
+            TextSpan(text: '$qty x '),
+            TextSpan(text: '${_fmt(row.catalogPrice!)}', style: _strikeStyle(textStyle)),
+            TextSpan(text: ' ${_fmt(row.price)} $som'),
+          ],
+        ),
+      );
+    }
+    return Text('$qty x ${_fmt(row.price)} $som', style: textStyle);
+  }
+
+  static Widget _productSumColumn(ReceiptRow row, TextStyle textStyle, String som) {
+    return Text(
+      '${_fmt(row.sum)} $som',
+      style: textStyle,
+      textAlign: TextAlign.right,
+      maxLines: 1,
+      overflow: TextOverflow.visible,
+      softWrap: false,
+    );
   }
 }
 

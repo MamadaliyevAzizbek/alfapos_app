@@ -1,13 +1,12 @@
 import 'dart:io';
 
 import '../core/seller_preferences.dart';
-import '../models/cart_item.dart';
-import '../models/product.dart';
 import '../models/receipt_design_config.dart';
 import '../providers/sales_session_provider.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../utils/receipt_row_builder.dart';
 import '../widgets/receipt_widget.dart';
 import 'hold_order_cart.dart';
 import 'hold_orders_response.dart';
@@ -44,7 +43,6 @@ class HoldOrderPrecheckPrint {
 
     final raw = resume.items.fold<int>(0, (s, e) => s + e.total);
     final total = _resolveGrandTotal(raw, resume);
-    final discount = (raw - total).clamp(0, raw);
     final client = resume.customer;
 
     final widget = ReceiptWidget(
@@ -56,9 +54,12 @@ class HoldOrderPrecheckPrint {
       clientName: client?.name,
       clientPhone: client?.phone,
       clientAddress: client?.address,
-      productRows: _productRows(resume.items),
+      productRows: ReceiptRowBuilder.fromCartItems(resume.items),
       paymentRows: const [],
-      discount: discount,
+      discount: ReceiptRowBuilder.totalDiscountUzs(
+        items: resume.items,
+        totalAfterDiscount: total,
+      ),
       totalSum: total,
       isPrecheck: true,
       design: design,
@@ -69,19 +70,6 @@ class HoldOrderPrecheckPrint {
       widget.toThermalPrintLines(),
       directOnly: directOnly,
     );
-  }
-
-  static List<ReceiptRow> _productRows(List<CartItem> items) {
-    return items.map((item) {
-      final p = item.product;
-      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
-      return ReceiptRow(
-        productName: p.name,
-        quantityStr: '${item.quantity} $unitLabel',
-        price: item.unitPriceDisplay,
-        sum: item.total,
-      );
-    }).toList();
   }
 
   static int _resolveGrandTotal(int raw, HoldOrderResume resume) {

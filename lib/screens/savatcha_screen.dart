@@ -19,6 +19,7 @@ import '../widgets/product_tile.dart';
 import 'tranzaksiya_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/barcode_product_lookup.dart';
+import '../utils/product_catalog_filter.dart';
 import '../utils/product_search.dart' as product_search;
 import '../utils/platform_layout.dart';
 import '../core/input_formatters.dart';
@@ -352,8 +353,28 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   /// Desktop: filtrsiz ko‘rish — to‘liq mahalliy katalog (Mahsulotlar bo‘limi).
   List<Product> get _desktopBrowseProducts {
-    if (_sales.categoryId != null || _sales.brandId != null) {
-      return _sales.catalogProductsVisible;
+    final hasCatBrand = _sales.categoryId != null || _sales.brandId != null;
+    if (hasCatBrand) {
+      final seen = <String>{};
+      final merged = <Product>[];
+      for (final p in [
+        ..._sales.salesProducts,
+        ...ProductsProvider.instance.withCatalogStockAll(_products.items),
+      ]) {
+        if (p.id.isEmpty || !seen.add(p.id)) continue;
+        merged.add(p);
+      }
+      var list = ProductCatalogFilter.apply(
+        merged,
+        categoryId: _sales.categoryId,
+        brandId: _sales.brandId,
+        categories: _sales.categories,
+        brands: _sales.brands,
+      );
+      if (_sales.hideZeroStock) {
+        list = list.where((p) => p.hasStock).toList();
+      }
+      return list;
     }
     if (_products.items.isNotEmpty) {
       var list = ProductsProvider.instance.withCatalogStockAll(_products.items);
@@ -767,8 +788,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   void _addProductToCart(Product product) {
+    void afterAdd(CartItem line) {
+      _applyCustomerPricingToNewItem(line);
+      _expandedCartLine = null;
+      setState(() {});
+    }
+
     if (product.canSellByPack) {
-      final packQty = product.quantityPerPack;
       showCupertinoModalPopup<void>(
         context: context,
         builder: (ctx) => CupertinoActionSheet(
@@ -778,18 +804,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.pop(ctx);
-                final line = _cart.add(CartItem(product: product, quantity: 1, sellByPack: true));
-                _applyCustomerPricingToNewItem(line);
-                setState(() {});
+                afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: true)));
               },
               child: Text(_packChoiceLabel(product)),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.pop(ctx);
-                final line = _cart.add(CartItem(product: product, quantity: 1, sellByPack: false));
-                _applyCustomerPricingToNewItem(line);
-                setState(() {});
+                afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: false)));
               },
               child: Text(_pieceChoiceLabel(product)),
             ),
@@ -802,9 +824,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         ),
       ).whenComplete(_refocusCatalogSearch);
     } else {
-      final line = _cart.add(CartItem(product: product, quantity: 1, sellByPack: false));
-      _applyCustomerPricingToNewItem(line);
-      setState(() {});
+      afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: false)));
       _refocusCatalogSearch();
     }
   }
@@ -935,6 +955,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           setState(() {
             _expandedCartLine = identical(_expandedCartLine, item) ? null : item;
           });
+        },
+        onCollapseCartExpand: () {
+          setState(() => _expandedCartLine = null);
         },
         onCartQuantityChanged: (item, qty) {
           if (qty <= 0) {

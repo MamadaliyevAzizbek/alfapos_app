@@ -11,6 +11,8 @@ import '../services/api_service.dart';
 import '../widgets/auth_network_image.dart';
 import '../widgets/ios_style_modals.dart';
 import '../widgets/product_tile.dart';
+import '../utils/platform_layout.dart';
+import '../utils/sale_receipt_reprint_print.dart';
 import '../utils/sale_return_utils.dart';
 
 /// API dan kelgan chek batafsil — to'liq chek ko'rinishi (Hisobotlar, Tranzaksiyalar, Mijoz detali).
@@ -93,6 +95,7 @@ class ApiChekDetailScreen extends StatefulWidget {
 
 class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
   bool _catalogReady = false;
+  bool _printing = false;
 
   @override
   void initState() {
@@ -106,6 +109,27 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
       await ProductsProvider.instance.loadFromApi();
     } catch (_) {}
     if (mounted) setState(() => _catalogReady = true);
+  }
+
+  Future<void> _printReceipt() async {
+    if (_printing) return;
+    setState(() => _printing = true);
+    try {
+      final result = await SaleReceiptReprintPrint.print(
+        sale: widget.sale,
+        invoiceDetail: widget.invoiceDetail,
+      );
+      if (!mounted) return;
+      if (result.ok) {
+        AppNotify.success(context, result.message);
+      } else {
+        AppNotify.warning(context, result.message);
+      }
+    } catch (e) {
+      if (mounted) AppNotify.error(context, 'Chop etish xatosi: $e');
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
   }
 
   @override
@@ -296,6 +320,32 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                 ],
               ),
             ),
+
+            if (isDesktopPosLayout) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _printing ? null : _printReceipt,
+                  icon: _printing
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.primary),
+                        )
+                      : const Icon(Icons.print_rounded, size: 22, color: AppTheme.primary),
+                  label: Text(
+                    _printing ? 'Chop etilmoqda...' : 'Chekni chop etish',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: AppTheme.primary, width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
 
             if (showReturnButton) ...[
             const SizedBox(height: 32),

@@ -25,6 +25,7 @@ import '../utils/sale_store_due_amount.dart';
 import '../services/api_service.dart';
 import '../core/api_client.dart';
 import '../core/api_sync_throttle.dart';
+import '../utils/receipt_row_builder.dart';
 import '../widgets/receipt_widget.dart';
 import '../widgets/ios_style_modals.dart';
 import 'mijoz_screen.dart';
@@ -2003,17 +2004,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     DateTime at, {
     String? sellerPhone,
   }) {
-    final productRows = widget.items.map((item) {
-      final p = item.product;
-      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
-      return ReceiptRow(
-        productName: p.name,
-        quantityStr: '${item.quantity} $unitLabel',
-        price: item.unitPriceDisplay,
-        sum: item.total,
-      );
-    }).toList();
-    final discountUzs = _totalRaw - _totalAfterDiscount;
+    final productRows = ReceiptRowBuilder.fromCartItems(widget.items);
+    final discountUzs = ReceiptRowBuilder.totalDiscountUzs(
+      items: widget.items,
+      totalAfterDiscount: _totalAfterDiscount,
+    );
     return ReceiptWidget(
       dateTime: at,
       receiptNumber: '—',
@@ -2041,17 +2036,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     String? receiptId,
   }) {
     final posNumber = receiptId ?? _txId;
-    final productRows = widget.items.map((item) {
-      final p = item.product;
-      final unitLabel = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
-      final unitPrice = item.unitPriceDisplay;
-      return ReceiptRow(
-        productName: p.name,
-        quantityStr: '${item.quantity} $unitLabel',
-        price: unitPrice,
-        sum: item.total,
-      );
-    }).toList();
+    final productRows = ReceiptRowBuilder.fromCartItems(widget.items);
     final allocated = _getAllocatedPaymentAmounts();
     final paymentRows = allocated.entries.map((e) {
       final label = _paymentList.firstWhere((m) => m.key == e.key, orElse: () => MapEntry(e.key, e.key)).value;
@@ -2060,7 +2045,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         sum: e.value,
       );
     }).toList();
-    final discountUzs = _totalRaw - _totalAfterDiscount;
+    final discountUzs = ReceiptRowBuilder.totalDiscountUzs(
+      items: widget.items,
+      totalAfterDiscount: _totalAfterDiscount,
+    );
     return ReceiptWidget(
       dateTime: at,
       receiptNumber: posNumber.startsWith('POS') ? posNumber : 'POS$posNumber',
