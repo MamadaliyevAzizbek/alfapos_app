@@ -8,4 +8,8 @@ class ProductCatalogSalesBridge {
   static Future<void> afterProductSaved(Product product) {
     return SalesSessionProvider.instance.onCatalogProductSaved(product);
   }
+
+  static Future<void> afterProductRemoved(Product product) {
+    return SalesSessionProvider.instance.onCatalogProductRemoved(product);
+  }
 }

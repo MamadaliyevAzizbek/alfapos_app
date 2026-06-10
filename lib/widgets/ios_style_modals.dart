@@ -11,7 +11,23 @@ class AppModals {
 
   static Color _barrier() => Colors.black.withValues(alpha: 0.45);
 
-  /// Pastki varaq — oq fon, tutqich chizig'i.
+  static Widget sheetSurface({
+    required Widget child,
+    Color color = Colors.white,
+  }) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(sheetCornerRadius)),
+      child: Material(
+        color: color,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        type: MaterialType.canvas,
+        child: child,
+      ),
+    );
+  }
+
+  /// Pastki varaq — oq fon, tutqich chizig'i, soyasiz (iOS uslubi).
   static Future<T?> showSheet<T>({
     required BuildContext context,
     required Widget child,
@@ -24,6 +40,7 @@ class AppModals {
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       barrierColor: _barrier(),
+      elevation: 0,
       builder: (ctx) {
         final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
         final maxSheetHeight = MediaQuery.sizeOf(ctx).height * 0.82;
@@ -31,27 +48,62 @@ class AppModals {
           padding: EdgeInsets.only(bottom: bottom),
           child: Align(
             alignment: Alignment.bottomCenter,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(sheetCornerRadius)),
-              child: Material(
-                color: Colors.white,
-                elevation: 12,
-                shadowColor: Colors.black.withValues(alpha: 0.12),
-                child: SafeArea(
-                  top: false,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxSheetHeight),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (showGrabber) grabber(),
-                        child,
-                      ],
-                    ),
+            child: sheetSurface(
+              child: SafeArea(
+                top: false,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxSheetHeight),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showGrabber) grabber(),
+                      child,
+                    ],
                   ),
                 ),
               ),
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Suriladigan pastki varaq (filtr, tarix) — qora soya animatsiyasiz.
+  static Future<T?> showDraggableSheet<T>({
+    required BuildContext context,
+    required Widget Function(BuildContext context, ScrollController scrollController) builder,
+    double initialChildSize = 0.82,
+    double minChildSize = 0.45,
+    double maxChildSize = 0.92,
+    Widget? header,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: _barrier(),
+      elevation: 0,
+      builder: (ctx) {
+        final bottom = MediaQuery.paddingOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottom),
+          child: DraggableScrollableSheet(
+            initialChildSize: initialChildSize,
+            minChildSize: minChildSize,
+            maxChildSize: maxChildSize,
+            expand: false,
+            builder: (sheetCtx, scrollController) {
+              return sheetSurface(
+                child: Column(
+                  children: [
+                    if (header != null) header,
+                    Expanded(child: builder(sheetCtx, scrollController)),
+                  ],
+                ),
+              );
+            },
           ),
         );
       },

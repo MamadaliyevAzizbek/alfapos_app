@@ -14,6 +14,8 @@ import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/product_search.dart' as product_search;
 import '../utils/platform_layout.dart';
 import '../widgets/add_category_sheet.dart';
+import '../widgets/category_image_cover.dart';
+import '../widgets/edit_category_sheet.dart';
 import '../widgets/ios_style_modals.dart';
 import 'desktop/desktop_shell_scope.dart';
 import '../services/app_data_sync.dart';
@@ -403,7 +405,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   }
 
   Widget _buildCategoriesTab() {
-    final list = _categories.items;
+    final list = _categories.rawList;
     final loadError = _categories.loadError;
     return Column(
       children: [
@@ -489,46 +491,52 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: list.length,
                     itemBuilder: (context, index) {
-                      final name = list[index];
+                      final row = list[index];
+                      final name = (row['name'] as String? ??
+                              row['title'] as String? ??
+                              row['category_name'] as String? ??
+                              '')
+                          .trim();
+                      if (name.isEmpty) return const SizedBox.shrink();
+                      final imageUrl = _categories.categoryImageUrl(row['id']?.toString());
                       return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
-                        onTap: () {},
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryLight,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: InkWell(
+                          onTap: () => EditCategorySheet.show(context, categoryName: name),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.category_rounded, color: AppTheme.primary, size: 36),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Text(
-                                  name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                    color: AppTheme.textPrimary,
+                                  child: CategoryImageCover.build(
+                                    imageUrl,
+                                    width: 72,
+                                    height: 72,
                                   ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.more_vert_rounded),
-                                onPressed: () => _showCategoryMenu(context, name),
-                              ),
-                            ],
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.more_vert_rounded),
+                                  onPressed: () => _showCategoryMenu(context, name),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
                 ),
           ),
         ),
@@ -568,41 +576,9 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     if (name != null && mounted) setState(() {});
   }
 
-  void _showEditCategory(BuildContext context, String oldName) {
-    final controller = TextEditingController(text: oldName);
-    IosStyleModals.showSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showGrabber: true,
-      child: Builder(
-        builder: (ctx) => IosStyleModals.sheetKeyboardForm(
-          context: ctx,
-          onCancel: () => Navigator.pop(ctx),
-          onSave: () async {
-            final newName = controller.text.trim();
-            if (newName.isNotEmpty) {
-              await _categories.updateCategory(oldName, newName);
-              if (ctx.mounted) Navigator.pop(ctx);
-              setState(() {});
-            }
-          },
-          cancelLabel: Strings.bekorQilish,
-          saveLabel: Strings.saqlash,
-          body: [
-            const Text("Kategoriyani tahrirlash", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Kategoriya nomi',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _showEditCategory(BuildContext context, String oldName) async {
+    await EditCategorySheet.show(context, categoryName: oldName);
+    if (mounted) setState(() {});
   }
 
   void _confirmDeleteCategory(BuildContext context, String name) {

@@ -27,6 +27,14 @@ class BarcodeValidation {
     return null;
   }
 
+  /// Katalogdan o'chirilganda: o'zi va shu shtrix kod(lar)idagi barcha yozuvlar.
+  static bool catalogEntryConflictsWithRemoved(Product entry, Product removed) {
+    if (entry.id == removed.id) return true;
+    final codes = collectFromProduct(removed);
+    if (codes.isEmpty) return false;
+    return codes.any((bc) => entry.matchesBarcode(bc));
+  }
+
   /// Bir xil mahsulot ichidagi barcha kodlar (asosiy + qo'shimcha).
   static List<String> collectFromProduct(Product product) {
     final list = <String>[];

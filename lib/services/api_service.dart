@@ -392,6 +392,9 @@ class ProductsApi {
     return !_isPlaceholderImagePath(top);
   }
 
+  static bool _isProductStorePath(String path) =>
+      path == '/products/store' || path.endsWith('/products/store');
+
   static int? _productIdFromResponse(Map<String, dynamic> res) {
     final data = res['data'] ?? res['product'];
     if (data is Map) {
@@ -424,6 +427,14 @@ class ProductsApi {
     return ApiClient.postMultipart(path, fields: fields, file: multipartFile);
   }
 
+  /// `/products/store` ga faqat bir marta POST — keyin rasm uchun `/products/{id}/edit`.
+  static String? _switchStorePathToEditAfterCreate(String path, Map<String, dynamic> res) {
+    if (!_isProductStorePath(path)) return null;
+    final id = _productIdFromResponse(res);
+    if (id == null || id <= 0) return null;
+    return '/products/$id/edit';
+  }
+
   /// Avval JSON base64 (`image`), keyin multipart — server `public/uploads/products/`.
   static Future<Map<String, dynamic>> _postProductWithImageFallback(
     String path,
@@ -443,6 +454,8 @@ class ProductsApi {
 
     ApiException? lastError;
     Map<String, dynamic>? lastOk;
+    var effectivePath = path;
+    var storeCreateDone = false;
 
     final jsonBodies = <Map<String, dynamic>>[
       {...data, 'image': dataUri, 'image_base64': b64},
@@ -451,10 +464,20 @@ class ProductsApi {
       {...data, 'productImage': dataUri},
     ];
     for (final body in jsonBodies) {
+      if (storeCreateDone && _isProductStorePath(effectivePath)) break;
       try {
-        final res = await ApiClient.post(path, body: body);
+        final res = await ApiClient.post(effectivePath, body: body);
         if (_responseHasProductImage(res)) return res;
         lastOk = res;
+        if (_isProductStorePath(effectivePath)) {
+          storeCreateDone = true;
+          final editPath = _switchStorePathToEditAfterCreate(effectivePath, res);
+          if (editPath != null) {
+            effectivePath = editPath;
+          } else {
+            break;
+          }
+        }
       } on ApiException catch (e) {
         lastError = e;
       }
@@ -466,10 +489,20 @@ class ProductsApi {
       multipartFields.addAll(['variant_image', 'variantDetails[0][image]']);
     }
     for (final field in multipartFields) {
+      if (storeCreateDone && _isProductStorePath(effectivePath)) break;
       try {
-        final res = await _postMultipartWithImageField(path, data, localImagePath, field);
+        final res = await _postMultipartWithImageField(effectivePath, data, localImagePath, field);
         if (_responseHasProductImage(res)) return res;
         lastOk = res;
+        if (_isProductStorePath(effectivePath)) {
+          storeCreateDone = true;
+          final editPath = _switchStorePathToEditAfterCreate(effectivePath, res);
+          if (editPath != null) {
+            effectivePath = editPath;
+          } else {
+            break;
+          }
+        }
       } on ApiException catch (e) {
         lastError = e;
       }
@@ -711,10 +744,26 @@ class SalesApi {
     return ApiClient.post('/sales/hold-orders/update-status', body: body);
   }
 
+  static bool _doneStoreSaleInFlight = false;
+
   static Future<Map<String, dynamic>> storeSale(Map<String, dynamic> data) async {
-    final res = await ApiClient.post('/sales/store', body: data);
-    SaleStoreResponse.ensureCreated(res);
-    return res;
+    final isDone = data['status']?.toString() == 'done';
+    if (isDone) {
+      if (_doneStoreSaleInFlight) {
+        throw ApiException(
+          'Sotuv allaqachon yuborilmoqda. Biroz kuting.',
+          429,
+        );
+      }
+      _doneStoreSaleInFlight = true;
+    }
+    try {
+      final res = await ApiClient.post('/sales/store', body: data);
+      SaleStoreResponse.ensureCreated(res);
+      return res;
+    } finally {
+      if (isDone) _doneStoreSaleInFlight = false;
+    }
   }
 
   static Future<Map<String, dynamic>> sendTelegramReceipt({
@@ -1184,6 +1233,22 @@ class CurrenciesApi {
         'primary_sales_currency': primarySalesCurrency,
       },
     );
+  }
+}
+
+/// Kompaniya branding (logo, theme)
+class BrandingApi {
+  /// GET /support/branding — joriy kompaniya (auth kerak)
+  static Future<Map<String, dynamic>> getBranding() async {
+    return ApiClient.get('/support/branding');
+  }
+
+  static String? logoUrlFromResponse(Map<String, dynamic> response) {
+    final data = response['data'];
+    if (data is! Map) return null;
+    final url = data['app_logo_url'];
+    if (url is String && url.trim().isNotEmpty) return url.trim();
+    return null;
   }
 }
 

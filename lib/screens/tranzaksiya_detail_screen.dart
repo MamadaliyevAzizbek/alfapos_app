@@ -215,6 +215,19 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return name.contains('qarz') || type == 'credit' || type == 'debt' || type == 'qarz';
   }
 
+  /// «To'lovsiz» — faqat mijoz tanlanganida (bepul sotuv mijozga bog'langan).
+  static bool _isFreePaymentType(Map<String, dynamic> e) {
+    if (_isSupplierBalancePayment(e)) return false;
+    final name = _paymentNameLower(e);
+    final type = _paymentTypeLower(e);
+    final compact = name.replaceAll(RegExp(r"[\s'’`\-_]"), '');
+    return compact.contains('tolovsiz') ||
+        name.contains('to\'lovsiz') ||
+        type == 'free' ||
+        type == 'no_payment' ||
+        type == 'without_payment';
+  }
+
   static bool _isClientBalancePaymentType(Map<String, dynamic> e) {
     if (_isSupplierBalancePayment(e) || _isQarzPayment(e)) return false;
     final name = _paymentNameLower(e);
@@ -225,11 +238,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   static bool _isCustomerRelatedPayment(Map<String, dynamic> e) =>
-      _isQarzPayment(e) || _isClientBalancePaymentType(e);
+      _isQarzPayment(e) || _isClientBalancePaymentType(e) || _isFreePaymentType(e);
 
   bool _shouldShowPaymentType(Map<String, dynamic> e) {
     if (_isSupplierBalancePayment(e)) return false;
     if (widget.isReturnCheckout && _isClientBalancePaymentType(e)) return false;
+    if (_isFreePaymentType(e)) return _client != null;
     if (_isQarzPayment(e)) return _client != null;
     if (_isClientBalancePaymentType(e)) return _client != null && _clientBalanceUzs > 0;
     return true;
@@ -786,11 +800,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         ),
       );
     }
-    return Scaffold(
+    return PopScope(
+      canPop: !_submittingPay,
+      child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _submittingPay ? null : () => Navigator.pop(context),
         ),
         title: const Text('Yangi chek'),
       ),
@@ -928,6 +944,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -1382,6 +1399,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       useSafeArea: true,
       showDragHandle: false,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      elevation: 0,
       builder: (ctx) {
         final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
         final screenH = MediaQuery.sizeOf(ctx).height;
@@ -1396,6 +1415,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                 final basis = maxAllowed != null && maxAllowed < basisRaw ? maxAllowed : basisRaw;
                 return Material(
                   color: Colors.white,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  type: MaterialType.canvas,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                   clipBehavior: Clip.antiAlias,
                   child: ConstrainedBox(
@@ -1788,6 +1810,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   Future<void> _doPay() async {
+    if (_submittingPay) return;
+    _submittingPay = true;
+    if (mounted) setState(() {});
+
+    var paySucceeded = false;
+    try {
     if (_remainingToPay > 0) {
       if (mounted) {
         AppNotify.error(
@@ -1834,17 +1862,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       if (mounted) AppNotify.error(context, e.message);
       return;
     }
-    setState(() => _submittingPay = true);
     Client? saleCustomer;
     if (_client != null) {
       try {
         saleCustomer = await ClientsProvider.instance.resolveClientForSales(_client!);
         if (mounted) setState(() => _client = saleCustomer);
       } on ApiException catch (e) {
-        if (mounted) {
-          setState(() => _submittingPay = false);
-          AppNotify.error(context, e.message);
-        }
+        if (mounted) AppNotify.error(context, e.message);
         return;
       }
     }
@@ -1926,7 +1950,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       if (mounted) {
         AppNotify.error(context, 'API xatosi: ${e.message}');
       }
-      if (mounted) setState(() => _submittingPay = false);
       return;
     } catch (e) {
       if (mounted) {
@@ -1935,7 +1958,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           widget.isReturnCheckout ? 'Qaytarish yuborilmadi: $e' : 'Sotuv yuborilmadi: $e',
         );
       }
-      if (mounted) setState(() => _submittingPay = false);
       return;
     }
     // Chek ID — darhol ko'rsatamiz; POS formatini reports dan keyinroq yangilash mumkin (bloklamaydi).
@@ -1956,18 +1978,17 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
               : "API chek ID qaytarmadi. Sotuv serverda saqlanmagan bo'lishi mumkin.",
         );
       }
-      if (mounted) setState(() => _submittingPay = false);
       return;
     }
 
     final rid = receiptId!;
+    paySucceeded = true;
     final orderId = ThermalReceiptPrinter.orderIdFromStoreResponse(storeRes);
     CartProvider.instance.clear();
     final sellerName = await getSellerName();
     final clientName = _client?.name;
     if (!mounted) return;
     setState(() {
-      _submittingPay = false;
       if (widget.useDesktopFullscreenLayout) {
         _desktopPaymentComplete = true;
         _completedReceiptId = rid;
@@ -1994,6 +2015,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           invoiceId: widget.initialInvoiceId,
         ),
       );
+    }
+    } finally {
+      if (mounted && _submittingPay && !paySucceeded) {
+        setState(() => _submittingPay = false);
+      } else if (!mounted) {
+        _submittingPay = false;
+      }
     }
   }
 

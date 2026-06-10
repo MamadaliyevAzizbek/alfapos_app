@@ -3,7 +3,9 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 import '../../core/app_notify.dart';
 import '../../core/seller_preferences.dart';
 import '../../core/theme.dart';
+import '../../services/api_service.dart';
 import '../../services/app_data_sync.dart';
+import '../../widgets/auth_network_image.dart';
 import 'desktop_shell_scope.dart';
 import 'asosiy_desktop_screen.dart';
 import '../hisobotlar_screen.dart';
@@ -315,19 +317,7 @@ class _DesktopSidebar extends StatelessWidget {
                       width: double.infinity,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
-                        child: Image.asset(
-                          'Untitled-1-01.png',
-                          fit: BoxFit.cover,
-                          alignment: Alignment.center,
-                          errorBuilder: (_, __, ___) => const Text(
-                            'alfapos',
-                            style: TextStyle(
-                              color: Color(0xFFE2E8F0),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 24,
-                            ),
-                          ),
-                        ),
+                        child: _SidebarBrandingLogo(height: _logoHeight + 4),
                       ),
                     ),
                   ),
@@ -406,6 +396,78 @@ class _DesktopSidebar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SidebarBrandingLogo extends StatefulWidget {
+  final double height;
+
+  const _SidebarBrandingLogo({required this.height});
+
+  @override
+  State<_SidebarBrandingLogo> createState() => _SidebarBrandingLogoState();
+}
+
+class _SidebarBrandingLogoState extends State<_SidebarBrandingLogo> {
+  String? _logoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBranding();
+  }
+
+  Future<void> _loadBranding() async {
+    try {
+      final res = await BrandingApi.getBranding();
+      final url = BrandingApi.logoUrlFromResponse(res);
+      if (url != null && mounted) setState(() => _logoUrl = url);
+    } catch (_) {}
+  }
+
+  Widget _fallbackText() {
+    return const Center(
+      child: Text(
+        'alfapos',
+        style: TextStyle(
+          color: Color(0xFFE2E8F0),
+          fontWeight: FontWeight.w700,
+          fontSize: 24,
+        ),
+      ),
+    );
+  }
+
+  Widget _assetFallback() {
+    return Image.asset(
+      'Untitled-1-01.png',
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      errorBuilder: (_, __, ___) => _fallbackText(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _logoUrl;
+    if (url == null) {
+      return SizedBox(
+        height: widget.height,
+        width: double.infinity,
+        child: _assetFallback(),
+      );
+    }
+    return AuthNetworkImage(
+      url: url,
+      height: widget.height,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      placeholder: SizedBox(
+        height: widget.height,
+        width: double.infinity,
+        child: _assetFallback(),
       ),
     );
   }

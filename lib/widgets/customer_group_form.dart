@@ -251,21 +251,15 @@ Future<CustomerGroupFormData?> showCustomerGroupForm(
     );
   }
 
-  return showModalBottomSheet<CustomerGroupFormData>(
+  return AppModals.showSheet<CustomerGroupFormData>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-      child: CustomerGroupFormBody(
-        groupId: groupId,
-        initialTitle: title,
-        initialDiscount: discount,
-        initialIsDefault: isDefault,
-      ),
+    showGrabber: true,
+    child: CustomerGroupFormBody(
+      groupId: groupId,
+      initialTitle: title,
+      initialDiscount: discount,
+      initialIsDefault: isDefault,
     ),
   );
 }

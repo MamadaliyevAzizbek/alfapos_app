@@ -464,135 +464,139 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
 
   Future<void> _save() async {
     if (_isSaving) return;
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      AppNotify.info(context, "Mahsulot nomini kiriting");
-      return;
-    }
-    final existing = widget.product;
-    late final num sellForApi;
-    late final int sellDisplayInt;
-    if (_sellingCurrency == 'usd') {
-      final d = _parseUsd(_sellPriceController.text) ?? 0;
-      if (d <= 0) {
-        AppNotify.info(context, "Sotish narxini kiriting (USD)");
-        return;
-      }
-      sellForApi = d;
-      sellDisplayInt = d.round();
-    } else {
-      final sellPrice = _parsePrice(_sellPriceController.text, existing?.priceUzs ?? 0);
-      if (sellPrice <= 0) {
-        AppNotify.info(context, "Sotish narxini kiriting");
-        return;
-      }
-      sellForApi = sellPrice;
-      sellDisplayInt = sellPrice;
-    }
-    if (_quantityInPack) {
-      final qtyPerPack = _parseQty(_quantityPerPackController.text, 0);
-      final sellPerPack = _parsePrice(_sellPricePerPackController.text, 0);
-      if (qtyPerPack <= 1 || sellPerPack <= 0) {
-        AppNotify.info(context, "Pachkada 2 yoki undan ortiq dona va pachka sotish narxini kiriting");
-        return;
-      }
-    }
-    num? purchaseForApi;
-    int? costDisplayInt;
-    final costText = _costPriceController.text.trim();
-    if (costText.isEmpty) {
-      purchaseForApi = null;
-      costDisplayInt = null;
-    } else if (_purchaseCurrency == 'usd') {
-      final d = _parseUsd(_costPriceController.text);
-      if (d == null) {
-        AppNotify.info(context, "Kelish narxi noto'g'ri (USD)");
-        return;
-      }
-      purchaseForApi = d;
-      costDisplayInt = d.round();
-    } else {
-      final costPrice = _parsePrice(_costPriceController.text, existing?.costPriceUzs ?? 0);
-      purchaseForApi = costPrice;
-      costDisplayInt = costPrice > 0 ? costPrice : null;
-    }
-    // Tahrirlashda miqdor o'zgartirilmaydi — faqat mavjud qiymat saqlanadi
-    final initialQty = existing != null
-        ? existing!.initialQuantity
-        : _parseQty(_initialQtyController.text, 0);
-    final qtyPerPack = _parseQty(_quantityPerPackController.text, 0);
-    // Pachka narxlari — faqat pachka maydonlaridan (dona narxlari emas)
-    final costPerPack = _parsePrice(_costPricePerPackController.text, 0);
-    final sellPerPack = _parsePrice(_sellPricePerPackController.text, 0);
+    // Darhol bloklash — setState dan oldin; aks holda validatsiya/rasm saqlash
+    // davomida qayta bosish ikkinchi POST yuboradi (har safar yangi local_* id).
+    _isSaving = true;
+    if (mounted) setState(() {});
 
-    num? wholesaleForApi;
-    int? wholesaleDisplayInt;
-    final wholesaleText = _wholesalePriceController.text.trim();
-    if (wholesaleText.isEmpty) {
-      wholesaleForApi = null;
-      wholesaleDisplayInt = null;
-    } else if (_wholesaleCurrency == 'usd') {
-      final d = _parseUsd(_wholesalePriceController.text);
-      if (d == null) {
-        AppNotify.info(context, "Ulgurji narxi noto'g'ri (USD)");
-        return;
-      }
-      wholesaleForApi = d;
-      wholesaleDisplayInt = d.round();
-    } else {
-      final w = _parsePrice(_wholesalePriceController.text, existing?.wholesalePriceUzs ?? 0);
-      wholesaleForApi = w > 0 ? w : null;
-      wholesaleDisplayInt = w > 0 ? w : null;
-    }
-
-    final qtyInfo = _addInitialQuantity && initialQty > 0
-        ? '$initialQty $_unit'
-        : '0 $_unit';
-
-    final productId = existing?.id ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
-    String? savedImagePath = _imageDeleted ? null : (_localImagePath ?? _remoteImagePath);
-    if (_localImagePath != null && !_imageDeleted) {
-      savedImagePath =
-          await ProductImageUpload.persistLocalFile(_localImagePath!) ?? _localImagePath;
-    }
-    final additionalBarcodesRaw = _collectAdditionalBarcodes();
-    final product = Product(
-      id: productId,
-      name: name,
-      sku: existing?.sku,
-      variantId: existing?.variantId,
-      barcode: _barcodeController.text.trim().isEmpty ? null : _barcodeController.text.trim(),
-      additionalBarcodes: additionalBarcodesRaw.isNotEmpty ? additionalBarcodesRaw : null,
-      priceUzs: sellDisplayInt,
-      costPriceUzs: costDisplayInt,
-      sellingPriceCurrency: _sellingCurrency,
-      purchasePriceCurrency: _purchaseCurrency,
-      sellingPriceApi: _sellingCurrency == 'usd' ? sellForApi : null,
-      purchasePriceApi: (_purchaseCurrency == 'usd' && purchaseForApi != null) ? purchaseForApi : null,
-      quantityInfo: qtyInfo,
-      unit: _unit,
-      category: _category == Strings.tanlanmagan ? null : _category,
-      description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-      quantityInPack: _quantityInPack && qtyPerPack > 1,
-      quantityPerPack: (_quantityInPack && qtyPerPack > 1) ? qtyPerPack : 0,
-      costPricePerPack: (_quantityInPack && qtyPerPack > 1) ? costPerPack : null,
-      sellPricePerPack: (_quantityInPack && qtyPerPack > 1) ? sellPerPack : null,
-      wholesalePriceUzs: wholesaleDisplayInt,
-      wholesalePriceCurrency: _wholesaleCurrency,
-      wholesalePriceApi: (_wholesaleCurrency == 'usd' && wholesaleForApi != null) ? wholesaleForApi : null,
-      reorderLevel: 0,
-      initialQuantity: initialQty,
-      imageUrl: savedImagePath,
-    );
-
-    final dupMsg = await ProductsProvider.instance.validateProductBarcodes(product);
-    if (dupMsg != null) {
-      if (mounted) AppNotify.error(context, dupMsg);
-      return;
-    }
-
-    setState(() => _isSaving = true);
     try {
+      final name = _nameController.text.trim();
+      if (name.isEmpty) {
+        AppNotify.info(context, "Mahsulot nomini kiriting");
+        return;
+      }
+      final existing = widget.product;
+      late final num sellForApi;
+      late final int sellDisplayInt;
+      if (_sellingCurrency == 'usd') {
+        final d = _parseUsd(_sellPriceController.text) ?? 0;
+        if (d <= 0) {
+          AppNotify.info(context, "Sotish narxini kiriting (USD)");
+          return;
+        }
+        sellForApi = d;
+        sellDisplayInt = d.round();
+      } else {
+        final sellPrice = _parsePrice(_sellPriceController.text, existing?.priceUzs ?? 0);
+        if (sellPrice <= 0) {
+          AppNotify.info(context, "Sotish narxini kiriting");
+          return;
+        }
+        sellForApi = sellPrice;
+        sellDisplayInt = sellPrice;
+      }
+      if (_quantityInPack) {
+        final qtyPerPack = _parseQty(_quantityPerPackController.text, 0);
+        final sellPerPack = _parsePrice(_sellPricePerPackController.text, 0);
+        if (qtyPerPack <= 1 || sellPerPack <= 0) {
+          AppNotify.info(context, "Pachkada 2 yoki undan ortiq dona va pachka sotish narxini kiriting");
+          return;
+        }
+      }
+      num? purchaseForApi;
+      int? costDisplayInt;
+      final costText = _costPriceController.text.trim();
+      if (costText.isEmpty) {
+        purchaseForApi = null;
+        costDisplayInt = null;
+      } else if (_purchaseCurrency == 'usd') {
+        final d = _parseUsd(_costPriceController.text);
+        if (d == null) {
+          AppNotify.info(context, "Kelish narxi noto'g'ri (USD)");
+          return;
+        }
+        purchaseForApi = d;
+        costDisplayInt = d.round();
+      } else {
+        final costPrice = _parsePrice(_costPriceController.text, existing?.costPriceUzs ?? 0);
+        purchaseForApi = costPrice;
+        costDisplayInt = costPrice > 0 ? costPrice : null;
+      }
+      // Tahrirlashda miqdor o'zgartirilmaydi — faqat mavjud qiymat saqlanadi
+      final initialQty = existing != null
+          ? existing!.initialQuantity
+          : _parseQty(_initialQtyController.text, 0);
+      final qtyPerPack = _parseQty(_quantityPerPackController.text, 0);
+      // Pachka narxlari — faqat pachka maydonlaridan (dona narxlari emas)
+      final costPerPack = _parsePrice(_costPricePerPackController.text, 0);
+      final sellPerPack = _parsePrice(_sellPricePerPackController.text, 0);
+
+      num? wholesaleForApi;
+      int? wholesaleDisplayInt;
+      final wholesaleText = _wholesalePriceController.text.trim();
+      if (wholesaleText.isEmpty) {
+        wholesaleForApi = null;
+        wholesaleDisplayInt = null;
+      } else if (_wholesaleCurrency == 'usd') {
+        final d = _parseUsd(_wholesalePriceController.text);
+        if (d == null) {
+          AppNotify.info(context, "Ulgurji narxi noto'g'ri (USD)");
+          return;
+        }
+        wholesaleForApi = d;
+        wholesaleDisplayInt = d.round();
+      } else {
+        final w = _parsePrice(_wholesalePriceController.text, existing?.wholesalePriceUzs ?? 0);
+        wholesaleForApi = w > 0 ? w : null;
+        wholesaleDisplayInt = w > 0 ? w : null;
+      }
+
+      final qtyInfo = _addInitialQuantity && initialQty > 0
+          ? '$initialQty $_unit'
+          : '0 $_unit';
+
+      final productId = existing?.id ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+      String? savedImagePath = _imageDeleted ? null : (_localImagePath ?? _remoteImagePath);
+      if (_localImagePath != null && !_imageDeleted) {
+        savedImagePath =
+            await ProductImageUpload.persistLocalFile(_localImagePath!) ?? _localImagePath;
+      }
+      final additionalBarcodesRaw = _collectAdditionalBarcodes();
+      final product = Product(
+        id: productId,
+        name: name,
+        sku: existing?.sku,
+        variantId: existing?.variantId,
+        barcode: _barcodeController.text.trim().isEmpty ? null : _barcodeController.text.trim(),
+        additionalBarcodes: additionalBarcodesRaw.isNotEmpty ? additionalBarcodesRaw : null,
+        priceUzs: sellDisplayInt,
+        costPriceUzs: costDisplayInt,
+        sellingPriceCurrency: _sellingCurrency,
+        purchasePriceCurrency: _purchaseCurrency,
+        sellingPriceApi: _sellingCurrency == 'usd' ? sellForApi : null,
+        purchasePriceApi: (_purchaseCurrency == 'usd' && purchaseForApi != null) ? purchaseForApi : null,
+        quantityInfo: qtyInfo,
+        unit: _unit,
+        category: _category == Strings.tanlanmagan ? null : _category,
+        description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        quantityInPack: _quantityInPack && qtyPerPack > 1,
+        quantityPerPack: (_quantityInPack && qtyPerPack > 1) ? qtyPerPack : 0,
+        costPricePerPack: (_quantityInPack && qtyPerPack > 1) ? costPerPack : null,
+        sellPricePerPack: (_quantityInPack && qtyPerPack > 1) ? sellPerPack : null,
+        wholesalePriceUzs: wholesaleDisplayInt,
+        wholesalePriceCurrency: _wholesaleCurrency,
+        wholesalePriceApi: (_wholesaleCurrency == 'usd' && wholesaleForApi != null) ? wholesaleForApi : null,
+        reorderLevel: 0,
+        initialQuantity: initialQty,
+        imageUrl: savedImagePath,
+      );
+
+      final dupMsg = await ProductsProvider.instance.validateProductBarcodes(product);
+      if (dupMsg != null) {
+        if (mounted) AppNotify.error(context, dupMsg);
+        return;
+      }
+
       if (existing != null) {
         await ProductsProvider.instance.saveProductToServer(
           product,
@@ -603,7 +607,6 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
         await ProductsProvider.instance.saveProductToServer(product, isCreate: true);
       }
       if (!mounted) return;
-      setState(() => _isSaving = false);
       AppNotify.success(
         context,
         existing != null ? 'Mahsulot muvaffaqiyatli yangilandi' : 'Mahsulot muvaffaqiyatli saqlandi',
@@ -612,10 +615,9 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     } on ApiException catch (e) {
       if (mounted) {
         if (ApiClient.isSuccessLikeMessage(e.message)) {
-          setState(() => _isSaving = false);
           AppNotify.success(
             context,
-            existing != null ? 'Mahsulot muvaffaqiyatli yangilandi' : 'Mahsulot muvaffaqiyatli saqlandi',
+            widget.product != null ? 'Mahsulot muvaffaqiyatli yangilandi' : 'Mahsulot muvaffaqiyatli saqlandi',
           );
           Navigator.of(context).pop(true);
         } else {
@@ -625,7 +627,11 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Xatolik: $e');
     } finally {
-      if (mounted && _isSaving) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+      } else {
+        _isSaving = false;
+      }
     }
   }
 

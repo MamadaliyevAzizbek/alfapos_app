@@ -228,88 +228,78 @@ class _MijozScreenState extends State<MijozScreen> {
   Future<void> _showDebtHistory(BuildContext context, Client client) async {
     final entries = await _clients.getDebtEntries(client.id);
     if (!context.mounted) return;
-    showModalBottomSheet<void>(
+    IosStyleModals.showDraggableSheet<void>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: false,
-      backgroundColor: Colors.transparent,
-      barrierColor: CupertinoColors.black.withValues(alpha: 0.4),
-      builder: (ctx) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(IosStyleModals.sheetCornerRadius)),
-        child: Material(
-          color: CupertinoColors.systemBackground.resolveFrom(ctx),
-          child: DraggableScrollableSheet(
-            initialChildSize: 0.5,
-            minChildSize: 0.3,
-            maxChildSize: 0.9,
-            expand: false,
-            builder: (ctx, scrollController) => Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  IosStyleModals.grabber(),
-                  Text(
-                    '${client.name} — qarz (chek bilan)',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      header: Column(
+        children: [
+          const SizedBox(height: 10),
+          IosStyleModals.grabber(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${client.name} — qarz (chek bilan)',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Jami: ${formatThousands(entries.fold<int>(0, (s, e) => s + e.amount))} so'm",
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Jami: ${formatThousands(entries.fold<int>(0, (s, e) => s + e.amount))} so'm",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      builder: (_, scrollController) => entries.isEmpty
+          ? const Center(
+              child: Text(
+                "Qarz yozuvlari yo'q",
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+            )
+          : ListView.builder(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+              itemCount: entries.length,
+              itemBuilder: (context, index) {
+                final e = entries[index];
+                DateTime? dt;
+                try {
+                  dt = DateTime.tryParse(e.dateTime);
+                } catch (_) {}
+                final dateStr = dt != null
+                    ? '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'
+                    : e.dateTime;
+                return ListTile(
+                  leading: const Icon(Icons.receipt_rounded, color: AppTheme.primary),
+                  title: Text(
+                    "Chek #${e.receiptId.startsWith('POS') ? e.receiptId : 'POS${e.receiptId}'}",
+                  ),
+                  subtitle: Text(dateStr),
+                  trailing: Text(
+                    "${formatThousands(e.amount)} so'm",
                     style: const TextStyle(
-                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.primary,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: entries.isEmpty
-                        ? const Center(
-                            child: Text(
-                              "Qarz yozuvlari yo'q",
-                              style: TextStyle(color: AppTheme.textSecondary),
-                            ),
-                          )
-                        : ListView.builder(
-                            controller: scrollController,
-                            itemCount: entries.length,
-                            itemBuilder: (context, index) {
-                              final e = entries[index];
-                              DateTime? dt;
-                              try {
-                                dt = DateTime.tryParse(e.dateTime);
-                              } catch (_) {}
-                              final dateStr = dt != null
-                                  ? '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}'
-                                  : e.dateTime;
-                              return ListTile(
-                                leading: const Icon(Icons.receipt_rounded, color: AppTheme.primary),
-                                title: Text(
-                                  "Chek #${e.receiptId.startsWith('POS') ? e.receiptId : 'POS${e.receiptId}'}",
-                                ),
-                                subtitle: Text(dateStr),
-                                trailing: Text(
-                                  "${formatThousands(e.amount)} so'm",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primary,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
-          ),
-        ),
-      ),
     );
   }
 

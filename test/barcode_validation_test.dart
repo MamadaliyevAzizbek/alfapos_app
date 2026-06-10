@@ -69,6 +69,15 @@ void main() {
       expect(msg, contains('Choy'));
     });
 
+    test('catalog purge removes product and same-barcode ghosts', () {
+      final removed = catalogItem(id: '10', name: 'Eski', barcode: '7788649878923');
+      final ghost = catalogItem(id: 'local_99', name: 'Eski nusxa', barcode: '7788649878923');
+      final other = catalogItem(id: '2', name: 'Boshqa', barcode: '999');
+      expect(BarcodeValidation.catalogEntryConflictsWithRemoved(removed, removed), isTrue);
+      expect(BarcodeValidation.catalogEntryConflictsWithRemoved(ghost, removed), isTrue);
+      expect(BarcodeValidation.catalogEntryConflictsWithRemoved(other, removed), isFalse);
+    });
+
     test('leading zeros treated as same', () {
       final catalog = [
         catalogItem(id: '1', name: 'Yog', barcode: '00123'),

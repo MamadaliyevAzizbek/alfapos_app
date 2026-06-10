@@ -37,6 +37,8 @@ class ProductsProvider extends ChangeNotifier {
   int? _cachedDefaultBranchId;
   /// Serverga ketma-ket yuborish (navbat).
   bool _syncDrainActive = false;
+  /// Bir vaqtda faqat bitta yangi mahsulot POST (UI race / qayta bosishdan himoya).
+  bool _serverCreateInFlight = false;
 
   List<Product> get items => List.unmodifiable(_items);
   Stream<List<Product>> get stream => _controller.stream;
@@ -157,41 +159,55 @@ class ProductsProvider extends ChangeNotifier {
     required bool isCreate,
     bool deleteImage = false,
   }) async {
-    if (!_loaded || _items.isEmpty) {
-      final cached = await ProductCatalogStorage.loadCatalog();
-      if (cached.isNotEmpty) {
-        _items = cached;
-        _loaded = true;
-      }
-    }
-    _assertBarcodesUnique(product);
-    var toSave = product;
-    final persistedImage = await ProductImageUpload.prepareUploadPath(product.imageUrl);
-    if (persistedImage != null) {
-      toSave = _withImageUrl(product, persistedImage);
-    }
-
-    final oldId = toSave.id;
-    final Product result;
-    if (isCreate || _isLocalOnlyProductId(toSave.id)) {
-      result = await _syncCreateToServer(toSave);
-    } else {
-      final idNum = int.tryParse(toSave.id);
-      if (idNum == null || _isLocalOnlyProductId(toSave.id)) {
+    final creating = isCreate || _isLocalOnlyProductId(product.id);
+    if (creating) {
+      if (_serverCreateInFlight) {
         throw ApiException(
-          'Mahsulot serverda ro\'yxatdan o\'tmagan. Avval qayta saqlang yoki sinxronlang.',
-          400,
+          'Mahsulot allaqachon saqlanmoqda. Biroz kuting.',
+          429,
         );
       }
-      await _syncUpdateToServer(toSave, deleteImage: deleteImage);
-      result = getProductById(toSave.id) ?? toSave;
+      _serverCreateInFlight = true;
     }
+    try {
+      if (!_loaded || _items.isEmpty) {
+        final cached = await ProductCatalogStorage.loadCatalog();
+        if (cached.isNotEmpty) {
+          _items = cached;
+          _loaded = true;
+        }
+      }
+      _assertBarcodesUnique(product);
+      var toSave = product;
+      final persistedImage = await ProductImageUpload.prepareUploadPath(product.imageUrl);
+      if (persistedImage != null) {
+        toSave = _withImageUrl(product, persistedImage);
+      }
 
-    await _removeSyncJobsForProduct(oldId);
-    await _removeSyncJobsForProduct(result.id);
-    await _persistCatalog();
-    unawaited(ProductCatalogSalesBridge.afterProductSaved(result));
-    return result;
+      final oldId = toSave.id;
+      final Product result;
+      if (creating) {
+        result = await _syncCreateToServer(toSave);
+      } else {
+        final idNum = int.tryParse(toSave.id);
+        if (idNum == null || _isLocalOnlyProductId(toSave.id)) {
+          throw ApiException(
+            'Mahsulot serverda ro\'yxatdan o\'tmagan. Avval qayta saqlang yoki sinxronlang.',
+            400,
+          );
+        }
+        await _syncUpdateToServer(toSave, deleteImage: deleteImage);
+        result = getProductById(toSave.id) ?? toSave;
+      }
+
+      await _removeSyncJobsForProduct(oldId);
+      await _removeSyncJobsForProduct(result.id);
+      await _persistCatalog();
+      unawaited(ProductCatalogSalesBridge.afterProductSaved(result));
+      return result;
+    } finally {
+      if (creating) _serverCreateInFlight = false;
+    }
   }
 
   Future<void> _removeSyncJobsForProduct(String productId) async {
@@ -869,11 +885,17 @@ class ProductsProvider extends ChangeNotifier {
       } on ApiException catch (e) {
         final msg = e.message.toLowerCase();
         if (msg.contains('name') || msg.contains('type') || msg.contains('unit') || msg.contains('required')) {
-          res = await ProductsApi.storeProduct(
-            body,
-            localImagePath: useMultipart ? uploadPath : null,
-            imageHintProduct: product,
-          );
+          // Birinchi urinish serverda yaratilgan bo'lishi mumkin — qayta POST dublikat qiladi.
+          final already = await _findProductOnServerByBarcode(product.barcode, name: product.name);
+          if (already != null) {
+            res = {'data': {'id': int.tryParse(already.id) ?? already.id, 'productID': already.id}};
+          } else {
+            res = await ProductsApi.storeProduct(
+              body,
+              localImagePath: useMultipart ? uploadPath : null,
+              imageHintProduct: product,
+            );
+          }
         } else {
           rethrow;
         }
@@ -1075,11 +1097,39 @@ class ProductsProvider extends ChangeNotifier {
     return merged;
   }
 
+  /// O'chirilgan mahsulot va shu shtrix kod(lar)ga ega barcha qoldiq/dublikat yozuvlar.
+  Set<String> _purgeCatalogEntriesForRemovedProduct(Product removed) {
+    final removedIds = <String>{};
+    _items.removeWhere((e) {
+      if (!BarcodeValidation.catalogEntryConflictsWithRemoved(e, removed)) {
+        return false;
+      }
+      removedIds.add(e.id);
+      return true;
+    });
+    return removedIds;
+  }
+
   Future<void> removeProduct(Product product) async {
     final idNum = int.tryParse(product.id);
-    if (idNum == null) return;
-    await ProductsApi.deleteProduct(idNum);
-    _items.removeWhere((e) => e.id == product.id);
+    final isServerId = idNum != null && idNum > 0 && !_isLocalOnlyProductId(product.id);
+    if (isServerId) {
+      try {
+        await ProductsApi.deleteProduct(idNum);
+      } on ApiException catch (e) {
+        if (e.statusCode != 404) rethrow;
+      }
+    } else if (!_isLocalOnlyProductId(product.id)) {
+      return;
+    }
+
+    final removedIds = _purgeCatalogEntriesForRemovedProduct(product);
+    for (final id in removedIds) {
+      await _removeSyncJobsForProduct(id);
+    }
+    await _persistCatalog();
+    ApiSyncThrottle.invalidate('products_full_catalog');
+    unawaited(ProductCatalogSalesBridge.afterProductRemoved(product));
     _controller.add(items);
     notifyListeners();
   }

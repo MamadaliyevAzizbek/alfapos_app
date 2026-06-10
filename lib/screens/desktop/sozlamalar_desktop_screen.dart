@@ -6,6 +6,7 @@ import 'dart:io' show Platform;
 import '../../core/desktop_runtime.dart';
 import '../../services/local_receipt_sample.dart';
 import '../../services/printer_settings.dart';
+import '../../services/desktop_sales_layout_settings.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
@@ -28,6 +29,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
 
   List<String> _sampleLines = [];
   bool _previewLoading = false;
+  DesktopSalesLayoutMode _salesLayoutMode = DesktopSalesLayoutMode.standard;
 
   @override
   void initState() {
@@ -45,11 +47,13 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final names = await PrinterSettings.discoverPrinters();
       final selected = await PrinterSettings.selectedPrinterName();
       final auto = await PrinterSettings.isAutoPrintEnabled();
+      final salesMode = await DesktopSalesLayoutSettings.getMode();
       if (!mounted) return;
       setState(() {
         _printers = names;
         _selected = selected != null && names.contains(selected) ? selected : null;
         _autoPrint = auto;
+        _salesLayoutMode = salesMode;
         _loading = false;
       });
     } catch (e) {
@@ -63,12 +67,17 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   Future<void> _save() async {
     await PrinterSettings.setSelectedPrinterName(_selected);
     await PrinterSettings.setAutoPrintEnabled(_autoPrint);
+    await DesktopSalesLayoutSettings.setMode(_salesLayoutMode);
+    if (!mounted) return;
+    AppNotify.success(context, 'Sozlamalar saqlandi');
+  }
+
+  Future<void> _saveSalesLayoutMode() async {
+    await DesktopSalesLayoutSettings.setMode(_salesLayoutMode);
     if (!mounted) return;
     AppNotify.success(
       context,
-      _selected == null
-          ? 'Printer tanlanmadi'
-          : 'Printer saqlandi: $_selected',
+      'Sotuv ko‘rinishi: ${DesktopSalesLayoutSettings.modeLabel(_salesLayoutMode)}',
     );
   }
 
@@ -235,9 +244,71 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
             ),
           ),
           const SizedBox(height: 20),
+          _buildSalesLayoutCard(),
+          const SizedBox(height: 20),
           _card(child: ReceiptDesignEditorPanel(onSaved: _loadLocalReceiptPreview)),
           const SizedBox(height: 20),
           _buildReceiptPreviewCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalesLayoutCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.storefront_rounded, color: AppTheme.primary, size: 28),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sotuv bo‘limi ko‘rinishi',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Desktop sotuv ekranida mahsulotlar qanday ko‘rinishini tanlang. '
+            'Restoran rejimida avval kategoriyalar, keyin mahsulotlar chiqadi.',
+            style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+          ),
+          const SizedBox(height: 20),
+          SegmentedButton<DesktopSalesLayoutMode>(
+            segments: const [
+              ButtonSegment(
+                value: DesktopSalesLayoutMode.standard,
+                label: Text('Oddiy'),
+                icon: Icon(Icons.grid_view_rounded),
+              ),
+              ButtonSegment(
+                value: DesktopSalesLayoutMode.restaurant,
+                label: Text('Restoran'),
+                icon: Icon(Icons.restaurant_rounded),
+              ),
+            ],
+            selected: {_salesLayoutMode},
+            onSelectionChanged: (v) {
+              if (v.isEmpty) return;
+              setState(() => _salesLayoutMode = v.first);
+            },
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: _saveSalesLayoutMode,
+              icon: const Icon(Icons.save_rounded),
+              label: const Text('Saqlash'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              ),
+            ),
+          ),
         ],
       ),
     );

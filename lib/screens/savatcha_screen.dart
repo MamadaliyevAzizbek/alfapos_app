@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/app_navigator.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
@@ -11,6 +12,7 @@ import '../models/product.dart';
 import '../providers/cart_provider.dart';
 import '../providers/clients_provider.dart';
 import '../providers/products_provider.dart';
+import '../providers/categories_provider.dart';
 import '../providers/sales_session_provider.dart';
 import '../core/api_client.dart';
 import '../services/api_service.dart';
@@ -39,7 +41,9 @@ import '../utils/customer_group_discount.dart';
 import '../utils/sales_filter_cart_price.dart';
 import '../utils/catalog_product_price_label.dart';
 import '../utils/hold_order_cart.dart';
+import '../utils/hold_order_precheck_excel_export.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../services/desktop_sales_layout_settings.dart';
 import '../utils/hold_cart_action.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 import '../widgets/sales_customer_search.dart';
@@ -68,6 +72,7 @@ class SavatchaScreen extends StatefulWidget {
 class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMixin {
   StreamSubscription<List<CartItem>>? _cartSub;
   StreamSubscription<List<Product>>? _productsSub;
+  StreamSubscription<List<String>>? _categoriesSub;
   final _searchController = TextEditingController();
   final _catalogSearchFocus = FocusNode();
   final _discountPercentController = TextEditingController();
@@ -87,41 +92,48 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   int _savedOrdersCount = 0;
   CartItem? _expandedCartLine;
   bool _isReturnMode = false;
+  DesktopSalesLayoutMode _desktopSalesLayoutMode = DesktopSalesLayoutMode.standard;
+  String? _restaurantCategoryId;
 
   Future<void> _onRefresh() async {
     if (isDesktopPosLayout) {
       await _products.loadFromApi();
-    } else if (_sales.initError == null) {
-      await _sales.loadProducts(reset: true, searchValue: '');
-      _sales.setSearchQuery('');
     } else {
-      await ProductsProvider.instance.loadFromStorage();
+      await _products.loadFromStorage(refreshInBackground: true);
+      if (_sales.initError == null) {
+        await _sales.loadProducts(reset: true, searchValue: '');
+        _sales.setSearchQuery('');
+      }
     }
     if (mounted) setState(() {});
   }
 
-  bool get _salesFiltersActive =>
-      _sales.categoryId != null ||
-      _sales.brandId != null ||
-      _sales.hideZeroStock ||
-      _sales.sellAtWholesalePrice ||
-      _sales.sellAtPurchasePrice ||
-      _sales.showPurchasePrice ||
-      _sales.showUsdEquivalent;
+  /// Mahsulotlar (Katalog) bilan bir xil manba — to'liq mahalliy katalog.
+  List<Product> _catalogProductsForSearch() {
+    final catalog = ProductsProvider.instance.withCatalogStockAll(_products.items);
+    if (catalog.isNotEmpty) return catalog;
+    if (_sales.salesProducts.isNotEmpty) {
+      return ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts);
+    }
+    return catalog;
+  }
 
-  bool get _useSalesCatalog =>
-      !isDesktopPosLayout && _sales.initError == null && _sales.salesProducts.isNotEmpty;
+  bool get _salesFiltersActive {
+    final toggles = _sales.hideZeroStock ||
+        _sales.sellAtWholesalePrice ||
+        _sales.sellAtPurchasePrice ||
+        _sales.showPurchasePrice ||
+        _sales.showUsdEquivalent;
+    if (isDesktopPosLayout) {
+      return toggles || _sales.categoryId != null || _sales.brandId != null;
+    }
+    return toggles;
+  }
 
   List<Product> get _mobileCatalogProducts {
-    var list = _useSalesCatalog
-        ? List<Product>.from(_sales.catalogProductsVisible)
-        : List<Product>.from(_products.items);
-    list = ProductsProvider.instance.withCatalogStockAll(list);
     final q = _query.trim();
-    if (q.isNotEmpty) {
-      list = product_search.filterCatalogProducts(list, q);
-    }
-    return list;
+    if (q.isEmpty) return _catalogProductsForSearch();
+    return product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
   }
 
   @override
@@ -130,7 +142,51 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     await _products.refreshFromServer(force: true);
     _sales.applyCatalogStock();
     await _refreshSavedOrdersCount();
+    await _reloadDesktopSalesLayoutMode();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _reloadDesktopSalesLayoutMode() async {
+    if (!isDesktopPosLayout) return;
+    final mode = await DesktopSalesLayoutSettings.getMode();
+    if (!mounted) return;
+    if (mode != _desktopSalesLayoutMode) {
+      setState(() {
+        _desktopSalesLayoutMode = mode;
+        _restaurantCategoryId = null;
+      });
+    }
+  }
+
+  int _restaurantCategoryProductCount(String categoryId) {
+    return ProductCatalogFilter.apply(
+      _desktopBrowseProducts,
+      categoryId: categoryId,
+      categories: _sales.categories,
+    ).length;
+  }
+
+  List<Product> get _restaurantCategoryProducts {
+    final catId = _restaurantCategoryId;
+    if (catId == null) return [];
+    return ProductCatalogFilter.apply(
+      _desktopBrowseProducts,
+      categoryId: catId,
+      categories: _sales.categories,
+    );
+  }
+
+  List<Map<String, dynamic>> get _restaurantCategoriesWithImages {
+    final cats = CategoriesProvider.instance;
+    return _sales.categories
+        .map((c) {
+          final id = c['id']?.toString();
+          return {
+            ...c,
+            'imageUrl': cats.categoryImageUrl(id),
+          };
+        })
+        .toList();
   }
 
   void _onCashShiftChanged() {
@@ -154,15 +210,20 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
     if (isDesktopPosLayout) {
       FocusManager.instance.addListener(_onDesktopFocusChanged);
+      _categoriesSub = CategoriesProvider.instance.stream.listen((_) {
+        if (mounted) setState(() {});
+      });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _sellerName = await getSellerName();
       if (!mounted) return;
       if (isDesktopPosLayout) {
+        _desktopSalesLayoutMode = await DesktopSalesLayoutSettings.getMode();
         await _products.loadFromStorage(refreshInBackground: true);
         await _sales.init(localFirst: true);
         _sales.applyCatalogStock();
         unawaited(_sales.reloadFilterLists());
+        unawaited(CategoriesProvider.instance.loadFromStorage(refreshInBackground: false));
         unawaited(_refreshSavedOrdersCount());
         unawaited(ThermalReceiptPrinter.warmup());
       } else {
@@ -171,7 +232,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         await shift.loadRegisters();
         _sales.syncFromShift();
         await _refreshSavedOrdersCount();
-        await _products.loadFromStorage(refreshInBackground: false);
+        await _products.loadFromStorage(refreshInBackground: true);
         try {
           await _sales.init(localFirst: true);
           unawaited(_sales.reloadFilterLists());
@@ -185,6 +246,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         _refocusCatalogSearch();
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant SavatchaScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (isDesktopPosLayout && widget.isTabActive && !oldWidget.isTabActive) {
+      unawaited(_reloadDesktopSalesLayoutMode());
+    }
   }
 
   /// USB/Bluetooth shtrix skaner klaviatura kabi yozadi — qidiruv inputida fokus bo‘lishi kerak.
@@ -209,6 +278,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   void _scheduleCatalogSearchRefocus() => _refocusCatalogSearch();
+
+  /// Miqdor / mijoz / foiz maydoniga o‘tishda qidiruv avtofokusini vaqtincha to‘xtatish.
+  void _suspendCatalogSearchRefocusBriefly() {
+    _catalogSearchRefocusTimer?.cancel();
+    _catalogSearchRefocusSuspend++;
+    Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _catalogSearchRefocusSuspend--;
+    });
+  }
 
   void _onDesktopFocusChanged() {
     if (!mounted || !isDesktopPosLayout || !widget.isTabActive || _catalogSearchRefocusSuspend > 0) {
@@ -245,6 +324,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void dispose() {
     _cartSub?.cancel();
     _productsSub?.cancel();
+    _categoriesSub?.cancel();
     _barcodeSearchDebounce?.cancel();
     _catalogSearchDebounce?.cancel();
     _catalogSearchRefocusTimer?.cancel();
@@ -388,22 +468,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   List<Product> get _desktopCatalogProducts {
     final q = _query.trim();
-    if (q.isEmpty) return _desktopBrowseProducts;
-
-    final seen = <String>{};
-    final out = <Product>[];
-    void addMatches(Iterable<Product> source) {
-      for (final p in source) {
-        if (p.id.isEmpty || seen.contains(p.id)) continue;
-        if (!product_search.productMatchesSearchQuery(p, q)) continue;
-        seen.add(p.id);
-        out.add(p);
-      }
+    if (q.isNotEmpty) {
+      return product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
     }
-
-    addMatches(ProductsProvider.instance.withCatalogStockAll(_products.items));
-    addMatches(ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts));
-    return product_search.sortProductsBySearchRelevance(out, q);
+    if (_desktopSalesLayoutMode == DesktopSalesLayoutMode.restaurant) {
+      if (_restaurantCategoryId != null) return _restaurantCategoryProducts;
+      return const [];
+    }
+    return _desktopBrowseProducts;
   }
 
   /// Desktop: nom bo'yicha mahalliy qidiruv (Katalog kabi); shtrix — alohida.
@@ -437,13 +509,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     final items = _cart.items;
     final showSearchResults = _query.trim().isNotEmpty;
     final products = showSearchResults ? _mobileCatalogProducts : _filteredProducts;
-    final hasLocalCatalog = _useSalesCatalog
-        ? _sales.salesProducts.isNotEmpty
-        : (_products.isLoaded && _products.items.isNotEmpty);
+    final hasLocalCatalog = _catalogProductsForSearch().isNotEmpty;
     final catalogLoading = showSearchResults &&
         !hasLocalCatalog &&
-        ((_useSalesCatalog && _sales.productsLoading) ||
-            (!_useSalesCatalog && _products.isLoaded != true));
+        !_products.isLoaded &&
+        _sales.productsLoading;
     final shift = CashRegisterShiftProvider.instance;
     final showShiftDashboard = shift.requiresCashRegister && shift.isShiftOpen;
 
@@ -889,6 +959,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         searchController: _searchController,
         catalogSearchFocus: _catalogSearchFocus,
         onCatalogSearchRefocus: _refocusCatalogSearch,
+        onSuspendCatalogSearchRefocus: _suspendCatalogSearchRefocusBriefly,
         query: _query,
         catalogProducts: _desktopCatalogProducts,
         cartItems: items,
@@ -938,6 +1009,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           () => SalesHoldOrdersSheet.show(
             context,
             onResume: _resumeHoldOrder,
+            onExportExcel: _exportHoldOrderExcel,
             onListChanged: () => unawaited(_refreshSavedOrdersCount()),
           ),
         ),
@@ -1008,6 +1080,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
               },
         isReturnMode: _isReturnMode,
         onReturnModeChanged: _setReturnMode,
+        salesLayoutMode: _desktopSalesLayoutMode,
+        restaurantCategories: _restaurantCategoriesWithImages,
+        restaurantCategoryId: _restaurantCategoryId,
+        onRestaurantCategorySelected: (id) {
+          setState(() => _restaurantCategoryId = id);
+        },
+        onRestaurantCategoryBack: () {
+          setState(() => _restaurantCategoryId = null);
+        },
+        restaurantCategoryProductCount: _restaurantCategoryProductCount,
         ),
       ),
     );
@@ -1227,8 +1309,72 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     SalesHoldOrdersSheet.show(
       context,
       onResume: _resumeHoldOrder,
+      onExportExcel: _exportHoldOrderExcel,
       onListChanged: () => unawaited(_refreshSavedOrdersCount()),
     );
+  }
+
+  Future<void> _exportHoldOrderExcel(Map<String, dynamic> hold) async {
+    await _runWithSuspendedCatalogSearchRefocus(() async {
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return null;
+
+      var loadingVisible = false;
+      try {
+        loadingVisible = true;
+        showDialog<void>(
+          context: ctx,
+          barrierDismissible: false,
+          builder: (_) => const PopScope(
+            canPop: false,
+            child: Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: AppTheme.primary),
+                      SizedBox(height: 16),
+                      Text(
+                        'Excel fayl tayyorlanmoqda...',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final result = await HoldOrderPrecheckExcelExport.exportHoldOrderFromApp(
+          hold,
+          onPrepared: () async {
+            if (!ctx.mounted || !loadingVisible) return;
+            Navigator.of(ctx, rootNavigator: true).pop();
+            loadingVisible = false;
+          },
+        );
+
+        if (!ctx.mounted) return null;
+        if (result.cancelled) return null;
+        if (result.ok) {
+          AppNotify.success(ctx, result.message);
+        } else {
+          AppNotify.warning(ctx, result.message);
+        }
+      } catch (e) {
+        if (ctx.mounted) {
+          AppNotify.error(ctx, 'Yuklab olish xatosi: $e');
+        }
+      } finally {
+        if (ctx.mounted && loadingVisible) {
+          Navigator.of(ctx, rootNavigator: true).pop();
+        }
+      }
+      return null;
+    });
   }
 
   Future<void> _sendDailyReport(BuildContext context) async {

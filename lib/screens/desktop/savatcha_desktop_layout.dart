@@ -8,6 +8,8 @@ import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
 import '../../widgets/product_tile.dart';
+import '../../widgets/category_image_cover.dart';
+import '../../services/desktop_sales_layout_settings.dart';
 import 'sales_nav_filters.dart';
 
 /// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
@@ -19,6 +21,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final TextEditingController searchController;
   final FocusNode? catalogSearchFocus;
   final VoidCallback? onCatalogSearchRefocus;
+  final VoidCallback? onSuspendCatalogSearchRefocus;
   final VoidCallback? onPointerDownAnywhere;
   final String query;
   final List<Product> catalogProducts;
@@ -73,12 +76,19 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final double usdExchangeRate;
   final bool isReturnMode;
   final ValueChanged<bool>? onReturnModeChanged;
+  final DesktopSalesLayoutMode salesLayoutMode;
+  final List<Map<String, dynamic>> restaurantCategories;
+  final String? restaurantCategoryId;
+  final ValueChanged<String?> onRestaurantCategorySelected;
+  final VoidCallback onRestaurantCategoryBack;
+  final int Function(String categoryId)? restaurantCategoryProductCount;
 
   const SavatchaDesktopLayout({
     super.key,
     required this.searchController,
     this.catalogSearchFocus,
     this.onCatalogSearchRefocus,
+    this.onSuspendCatalogSearchRefocus,
     this.onPointerDownAnywhere,
     required this.query,
     required this.catalogProducts,
@@ -132,6 +142,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.usdExchangeRate = 12600,
     this.isReturnMode = false,
     this.onReturnModeChanged,
+    this.salesLayoutMode = DesktopSalesLayoutMode.standard,
+    this.restaurantCategories = const [],
+    this.restaurantCategoryId,
+    required this.onRestaurantCategorySelected,
+    required this.onRestaurantCategoryBack,
+    this.restaurantCategoryProductCount,
   });
 
   int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
@@ -342,9 +358,33 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
+  bool get _isRestaurantBrowse =>
+      salesLayoutMode == DesktopSalesLayoutMode.restaurant &&
+      query.trim().isEmpty &&
+      restaurantCategoryId == null;
+
+  bool get _isRestaurantCategoryView =>
+      salesLayoutMode == DesktopSalesLayoutMode.restaurant &&
+      query.trim().isEmpty &&
+      restaurantCategoryId != null;
+
+  String? _restaurantCategoryName() {
+    final id = restaurantCategoryId;
+    if (id == null) return null;
+    for (final c in restaurantCategories) {
+      if (c['id']?.toString() == id) {
+        final name = c['name']?.toString().trim();
+        if (name != null && name.isNotEmpty) return name;
+      }
+    }
+    return null;
+  }
+
   Widget _buildCatalogPanel(BuildContext context) {
-    final initialLoading = productsLoading && catalogProducts.isEmpty;
+    final initialLoading = productsLoading && catalogProducts.isEmpty && !_isRestaurantBrowse;
     final loadingMore = productsLoading && catalogProducts.isNotEmpty;
+    final showCategoryGrid = _isRestaurantBrowse;
+    final showProductGrid = !showCategoryGrid;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -441,70 +481,147 @@ class SavatchaDesktopLayout extends StatelessWidget {
             ],
           ),
         ),
-        Expanded(
-          child: initialLoading
-              ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-              : catalogProducts.isEmpty
-                  ? const Center(
-                      child: Text(
-                        "Mahsulot topilmadi",
-                        style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-                      ),
-                    )
-                  : Stack(
-                      children: [
-                        NotificationListener<ScrollNotification>(
-                          onNotification: (n) {
-                            if (loadingMore || onLoadMoreProducts == null) return false;
-                            if (n is ScrollEndNotification &&
-                                n.metrics.pixels >= n.metrics.maxScrollExtent - 120) {
-                              onLoadMoreProducts!();
-                            }
-                            return false;
-                          },
-                          child: GridView.builder(
-                            key: ValueKey(
-                              'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}',
-                            ),
-                            padding: EdgeInsets.fromLTRB(12, 0, 12, loadingMore ? 40 : 12),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                              childAspectRatio: 0.82,
-                            ),
-                            itemCount: catalogProducts.length,
-                            itemBuilder: (context, i) => _DesktopProductCard(
-                              key: ValueKey(catalogProducts[i].id),
-                              product: catalogProducts[i],
-                              usdRate: usdExchangeRate,
-                              catalogSellPriceType: catalogSellPriceType,
-                              showPurchasePrice: showPurchasePriceOnCards,
-                              showUsdEquivalent: showUsdEquivalentOnCards,
-                              onTap: () => onProductTap(catalogProducts[i]),
-                            ),
-                          ),
+        if (_isRestaurantCategoryView)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: onRestaurantCategoryBack,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.arrow_back_rounded, size: 22, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _restaurantCategoryName() ?? 'Kategoriya',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        if (loadingMore)
-                          const Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 8,
-                            child: Center(
-                              child: SizedBox(
-                                width: 28,
-                                height: 28,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: AppTheme.primary,
+                      ),
+                      TextButton(
+                        onPressed: onRestaurantCategoryBack,
+                        child: const Text('Orqaga'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: showCategoryGrid
+              ? _buildRestaurantCategoryGrid(context)
+              : initialLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                  : showProductGrid && catalogProducts.isEmpty
+                      ? Center(
+                          child: Text(
+                            _isRestaurantCategoryView ? 'Bu kategoriyada mahsulot yo‘q' : 'Mahsulot topilmadi',
+                            style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+                          ),
+                        )
+                      : Stack(
+                          children: [
+                            NotificationListener<ScrollNotification>(
+                              onNotification: (n) {
+                                if (loadingMore || onLoadMoreProducts == null) return false;
+                                if (n is ScrollEndNotification &&
+                                    n.metrics.pixels >= n.metrics.maxScrollExtent - 120) {
+                                  onLoadMoreProducts!();
+                                }
+                                return false;
+                              },
+                              child: GridView.builder(
+                                key: ValueKey(
+                                  'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}-${restaurantCategoryId ?? ''}',
+                                ),
+                                padding: EdgeInsets.fromLTRB(12, 0, 12, loadingMore ? 40 : 12),
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
+                                  childAspectRatio: 0.82,
+                                ),
+                                itemCount: catalogProducts.length,
+                                itemBuilder: (context, i) => _DesktopProductCard(
+                                  key: ValueKey(catalogProducts[i].id),
+                                  product: catalogProducts[i],
+                                  usdRate: usdExchangeRate,
+                                  catalogSellPriceType: catalogSellPriceType,
+                                  showPurchasePrice: showPurchasePriceOnCards,
+                                  showUsdEquivalent: showUsdEquivalentOnCards,
+                                  onTap: () => onProductTap(catalogProducts[i]),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
+                            if (loadingMore)
+                              const Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 8,
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRestaurantCategoryGrid(BuildContext context) {
+    final visible = restaurantCategories.where((c) {
+      final id = c['id']?.toString();
+      if (id == null || id.isEmpty) return false;
+      final count = restaurantCategoryProductCount?.call(id);
+      return count == null || count > 0;
+    }).toList();
+
+    if (visible.isEmpty) {
+      return const Center(
+        child: Text(
+          'Kategoriya topilmadi',
+          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+        ),
+      );
+    }
+
+    return GridView.builder(
+      key: const ValueKey('restaurant-categories'),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.05,
+      ),
+      itemCount: visible.length,
+      itemBuilder: (context, i) {
+        final cat = visible[i];
+        final id = cat['id']!.toString();
+        final name = cat['name']?.toString().trim() ?? 'Kategoriya';
+        final count = restaurantCategoryProductCount?.call(id);
+        return _DesktopCategoryCard(
+          key: ValueKey('cat-$id'),
+          name: name,
+          imageUrl: cat['imageUrl']?.toString(),
+          productCount: count,
+          onTap: () => onRestaurantCategorySelected(id),
+        );
+      },
     );
   }
 
@@ -575,6 +692,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         onRemove: () => onRemoveCartItem(line),
                         onQuantityChanged: (q) => onCartQuantityChanged(line, q),
                         onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
+                        onSuspendCatalogSearchRefocus: onSuspendCatalogSearchRefocus,
                       );
                     },
                   ),
@@ -840,6 +958,76 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 }
 
+class _DesktopCategoryCard extends StatelessWidget {
+  final String name;
+  final String? imageUrl;
+  final int? productCount;
+  final VoidCallback onTap;
+
+  const _DesktopCategoryCard({
+    super.key,
+    required this.name,
+    this.imageUrl,
+    this.productCount,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: AppTheme.divider),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return CategoryImageCover.build(
+                    imageUrl,
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    fallbackIcon: Icons.restaurant_menu_rounded,
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              child: Column(
+                children: [
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                  ),
+                  if (productCount != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '$productCount ta',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DesktopProductCard extends StatelessWidget {
   final Product product;
   final double usdRate;
@@ -962,6 +1150,7 @@ class _DesktopCartLine extends StatefulWidget {
   final VoidCallback onRemove;
   final ValueChanged<num> onQuantityChanged;
   final ValueChanged<double?> onUnitPriceChanged;
+  final VoidCallback? onSuspendCatalogSearchRefocus;
 
   const _DesktopCartLine({
     required this.item,
@@ -973,6 +1162,7 @@ class _DesktopCartLine extends StatefulWidget {
     required this.onRemove,
     required this.onQuantityChanged,
     required this.onUnitPriceChanged,
+    this.onSuspendCatalogSearchRefocus,
   });
 
   @override
@@ -984,6 +1174,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   late final TextEditingController _priceController;
   late final FocusNode _qtyFocusNode;
   late final FocusNode _priceFocusNode;
+  bool _inlineQtyEditing = false;
 
   @override
   void initState() {
@@ -1001,11 +1192,26 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
+      if (_inlineQtyEditing) _closeInlineQtyEdit();
       if (!widget.expanded) return;
       _commitQuantity();
       _commitPrice();
       widget.onCollapse();
     });
+  }
+
+  void _startInlineQtyEdit() {
+    widget.onSuspendCatalogSearchRefocus?.call();
+    _qtyController.text = _qtyText(widget.item.quantity);
+    setState(() => _inlineQtyEditing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _qtyFocusNode.requestFocus();
+    });
+  }
+
+  void _closeInlineQtyEdit() {
+    _commitQuantity();
+    if (mounted) setState(() => _inlineQtyEditing = false);
   }
 
   void _submitQuantityAndCollapse() {
@@ -1064,6 +1270,57 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
 
   void _commitQuantity() => _applyQuantityInput(_qtyController.text, resetIfInvalid: true);
 
+  Widget _buildInlineQuantityControl() {
+    if (_inlineQtyEditing) {
+      return SizedBox(
+        width: 52,
+        child: TextField(
+          controller: _qtyController,
+          focusNode: _qtyFocusNode,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+          ],
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppTheme.divider),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppTheme.divider),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+            ),
+          ),
+          onChanged: _applyQuantityInput,
+          onSubmitted: (_) => _closeInlineQtyEdit(),
+          onEditingComplete: _closeInlineQtyEdit,
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: _startInlineQtyEdit,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Text(
+          _qtyText(widget.item.quantity),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        ),
+      ),
+    );
+  }
+
   void _applyPriceInput(String raw, {bool resetIfInvalid = false}) {
     final v = parseFormattedSum(raw);
     if (v == null || v < 0) {
@@ -1121,7 +1378,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     final p = widget.item.product;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: DecoratedBox(
+      child: PosEditableFocusScope(
+        child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(8),
@@ -1165,13 +1423,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                         ),
                       ),
                       _qtyCircleButton(Icons.remove, widget.onDecrement),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: Text(
-                          _qtyText(widget.item.quantity),
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                        ),
-                      ),
+                      _buildInlineQuantityControl(),
                       _qtyCircleButton(Icons.add, widget.onIncrement, primary: true),
                       const SizedBox(width: 8),
                       SizedBox(
@@ -1194,8 +1446,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
               ),
             ),
             if (widget.expanded)
-              PosEditableFocusScope(
-                child: Container(
+              Container(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
                 decoration: const BoxDecoration(
                   color: Color(0xFFF8FAFC),
@@ -1241,9 +1492,9 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                   ],
                 ),
               ),
-              ),
           ],
         ),
+      ),
       ),
     );
   }

@@ -17,6 +17,7 @@ import '../providers/products_provider.dart';
 import '../utils/filter_options_parser.dart';
 import '../utils/product_search.dart';
 import '../utils/barcode_product_lookup.dart';
+import '../utils/barcode_validation.dart';
 import '../utils/product_catalog_filter.dart';
 import '../utils/sales_products.dart';
 import '../utils/sales_products_request_body.dart';
@@ -583,6 +584,18 @@ class SalesSessionProvider extends ChangeNotifier {
       salesProducts[i] = product;
     } else {
       salesProducts.insert(0, product);
+    }
+    notifyListeners();
+  }
+
+  /// Katalogdan o'chirilgan mahsulot — sotuv ro'yxatidan ham olib tashlanadi (shtrix kod bo'yicha).
+  Future<void> onCatalogProductRemoved(Product product) async {
+    final before = salesProducts.length;
+    salesProducts.removeWhere(
+      (p) => BarcodeValidation.catalogEntryConflictsWithRemoved(p, product),
+    );
+    if (salesProducts.length != before) {
+      unawaited(_persistSessionSnapshot());
     }
     notifyListeners();
   }

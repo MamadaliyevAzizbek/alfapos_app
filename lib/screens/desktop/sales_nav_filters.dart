@@ -24,6 +24,15 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
     required this.onBrandChanged,
   });
 
+  bool get _hasActiveFilter =>
+      (categoryId != null && categoryId!.isNotEmpty) ||
+      (brandId != null && brandId!.isNotEmpty);
+
+  void _clearFilters() {
+    onCategoryChanged(null);
+    onBrandChanged(null);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -51,6 +60,16 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
             size: SalesFilterDropdownSize.navbar,
           ),
         ),
+        if (_hasActiveFilter) ...[
+          const SizedBox(width: 6),
+          IconButton(
+            onPressed: _clearFilters,
+            icon: const Icon(Icons.close_rounded, size: 22, color: Color(0xFF64748B)),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            tooltip: 'Kategoriya va brendni tozalash',
+          ),
+        ],
       ],
     );
   }

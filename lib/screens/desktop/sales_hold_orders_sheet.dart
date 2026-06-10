@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/app_navigator.dart';
 import '../../core/app_notify.dart';
 import '../../core/input_formatters.dart';
 import '../../core/theme.dart';
@@ -9,24 +10,30 @@ import '../../utils/hold_order_precheck_print.dart';
 import '../../utils/hold_orders_response.dart';
 import '../../utils/platform_layout.dart';
 
+enum _HoldOutputAction { print, excel }
+
 /// Saqlangan (pauza) buyurtmalar — «Buyurtmani saqlash ro'yxati».
 class SalesHoldOrdersSheet extends StatefulWidget {
   final Future<void> Function(HoldOrderResume resume) onResume;
+  final Future<void> Function(Map<String, dynamic> hold)? onExportExcel;
   final VoidCallback? onListChanged;
 
   const SalesHoldOrdersSheet({
     super.key,
     required this.onResume,
+    this.onExportExcel,
     this.onListChanged,
   });
 
   static Future<void> show(
     BuildContext context, {
     required Future<void> Function(HoldOrderResume resume) onResume,
+    Future<void> Function(Map<String, dynamic> hold)? onExportExcel,
     VoidCallback? onListChanged,
   }) {
     final sheet = SalesHoldOrdersSheet(
       onResume: onResume,
+      onExportExcel: onExportExcel,
       onListChanged: onListChanged,
     );
     if (isDesktopPosLayout) {
@@ -51,8 +58,9 @@ class SalesHoldOrdersSheet extends StatefulWidget {
 class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
   List<Map<String, dynamic>> _holds = [];
   bool _loading = true;
-  int? _printingOrderId;
-  bool _printingAny = false;
+  int? _busyOrderId;
+  bool _busyAny = false;
+  _HoldOutputAction? _busyAction;
 
   @override
   void initState() {
@@ -339,32 +347,79 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
     );
   }
 
-  Future<void> _printPrecheck(Map<String, dynamic> h) async {
-    if (_printingAny) return;
+  Future<_HoldOutputAction?> _askPrintDestination() {
+    return showDialog<_HoldOutputAction>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Chop etish'),
+        content: const Text('Chekni qayerga yubormoqchisiz?'),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.pop(ctx, _HoldOutputAction.excel),
+            icon: const Icon(Icons.table_chart_rounded, size: 20),
+            label: const Text('Excel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, _HoldOutputAction.print),
+            icon: const Icon(Icons.print_rounded, size: 20),
+            label: const Text('Printer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showPrintChoice(Map<String, dynamic> h) async {
+    if (_busyAny) return;
+    final choice = await _askPrintDestination();
+    if (!mounted || choice == null) return;
+    if (choice == _HoldOutputAction.excel) {
+      final export = widget.onExportExcel;
+      final hold = Map<String, dynamic>.from(h);
+      if (mounted) Navigator.of(context).pop();
+      if (export != null) {
+        await export(hold);
+      } else {
+        AppNotify.warning(appNavigatorKey.currentContext, 'Excel eksport sozlanmagan');
+      }
+      return;
+    }
+    await _printPrecheck(h);
+  }
+
+  Future<void> _runHoldOutput({
+    required Map<String, dynamic> h,
+    required _HoldOutputAction action,
+    required String loadingText,
+    required Future<({bool ok, String message, bool cancelled})> Function() task,
+  }) async {
+    if (_busyAny) return;
     final orderId = HoldOrdersResponse.resolveOrderId(h);
     setState(() {
-      _printingAny = true;
-      _printingOrderId = orderId;
+      _busyAny = true;
+      _busyOrderId = orderId;
+      _busyAction = action;
     });
 
     if (mounted) {
       showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => const PopScope(
+        builder: (_) => PopScope(
           canPop: false,
           child: Center(
             child: Card(
               child: Padding(
-                padding: EdgeInsets.all(28),
+                padding: const EdgeInsets.all(28),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(color: AppTheme.primary),
-                    SizedBox(height: 16),
+                    const CircularProgressIndicator(color: AppTheme.primary),
+                    const SizedBox(height: 16),
                     Text(
-                      'Chek chop etilmoqda...',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      loadingText,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -376,46 +431,65 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
     }
 
     try {
-      final result = await HoldOrderPrecheckPrint.printHoldOrder(h);
+      final result = await task();
       if (!mounted) return;
+      if (result.cancelled) return;
       if (result.ok) {
         AppNotify.success(context, result.message);
       } else {
         AppNotify.warning(context, result.message);
       }
     } catch (e) {
-      if (mounted) AppNotify.error(context, 'Chop etish xatosi: $e');
+      if (mounted) {
+        final label = action == _HoldOutputAction.excel ? 'Yuklab olish' : 'Chop etish';
+        AppNotify.error(context, '$label xatosi: $e');
+      }
     } finally {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         setState(() {
-          _printingAny = false;
-          _printingOrderId = null;
+          _busyAny = false;
+          _busyOrderId = null;
+          _busyAction = null;
         });
       }
     }
   }
 
+  Future<void> _printPrecheck(Map<String, dynamic> h) => _runHoldOutput(
+        h: h,
+        action: _HoldOutputAction.print,
+        loadingText: 'Chek chop etilmoqda...',
+        task: () async {
+          final result = await HoldOrderPrecheckPrint.printHoldOrder(h);
+          return (ok: result.ok, message: result.message, cancelled: false);
+        },
+      );
+
   Widget _printButton(Map<String, dynamic> h, {bool compact = false}) {
     final orderId = HoldOrdersResponse.resolveOrderId(h);
-    final busy = _printingAny && _printingOrderId == orderId;
-    return IconButton(
-      tooltip: 'Chop etish (oldindan chek)',
-      onPressed: busy ? null : () => _printPrecheck(h),
-      padding: compact ? EdgeInsets.zero : null,
-      visualDensity: compact ? VisualDensity.compact : null,
-      constraints: compact ? const BoxConstraints(minWidth: 30, minHeight: 30) : null,
-      style: IconButton.styleFrom(
-        backgroundColor: const Color(0xFFE3F2FD),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? 4 : 6)),
+    final busy = _busyAny && _busyOrderId == orderId;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: busy ? null : () => _showPrintChoice(h),
+      child: IconButton(
+        tooltip: 'Chop etish',
+        onPressed: busy ? null : () => _showPrintChoice(h),
+        padding: compact ? EdgeInsets.zero : null,
+        visualDensity: compact ? VisualDensity.compact : null,
+        constraints: compact ? const BoxConstraints(minWidth: 30, minHeight: 30) : null,
+        style: IconButton.styleFrom(
+          backgroundColor: const Color(0xFFE3F2FD),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? 4 : 6)),
+        ),
+        icon: busy
+            ? SizedBox(
+                width: compact ? 14 : 18,
+                height: compact ? 14 : 18,
+                child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
+              )
+            : Icon(Icons.print_rounded, color: const Color(0xFF1565C0), size: compact ? 16 : 22),
       ),
-      icon: busy
-          ? SizedBox(
-              width: compact ? 14 : 18,
-              height: compact ? 14 : 18,
-              child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
-            )
-          : Icon(Icons.print_rounded, color: const Color(0xFF1565C0), size: compact ? 16 : 22),
     );
   }
 

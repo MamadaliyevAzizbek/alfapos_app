@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,7 @@ import '../core/api_sync_throttle.dart';
 import '../core/auth_storage.dart';
 import '../services/api_service.dart';
 import '../core/api_client.dart';
+import '../utils/category_image_storage.dart';
 
 class CategoriesProvider extends ChangeNotifier {
   CategoriesProvider._() {
@@ -17,6 +19,7 @@ class CategoriesProvider extends ChangeNotifier {
 
   List<String> _items = [];
   List<Map<String, dynamic>> _rawList = [];
+  Map<String, String> _localImages = {};
   Map<String, dynamic>? _lastRawResponse;
   final _controller = StreamController<List<String>>.broadcast();
   bool _loaded = false;
@@ -40,7 +43,11 @@ class CategoriesProvider extends ChangeNotifier {
                 e['text'] as String? ??
                 '')
             .trim();
-        return {'id': id, 'name': name.isNotEmpty ? name : id};
+        return {
+          'id': id,
+          'name': name.isNotEmpty ? name : id,
+          'imageUrl': categoryImageUrl(id),
+        };
       })
       .where((e) => (e['id'] as String).isNotEmpty)
       .toList();
@@ -77,10 +84,57 @@ class CategoriesProvider extends ChangeNotifier {
     _boundCompanyId = null;
     _items = [];
     _rawList = [];
+    _localImages = {};
     _loaded = false;
     _loadError = null;
     _controller.add(items);
     notifyListeners();
+  }
+
+  Future<void> _refreshLocalImages() async {
+    _localImages = await CategoryImageStorage.loadMap();
+  }
+
+  String? _imageFromRaw(Map<String, dynamic> row) {
+    for (final key in ['image', 'imageUrl', 'imageURL', 'image_url', 'photo', 'thumbnail']) {
+      final value = row[key]?.toString().trim();
+      if (value != null && value.isNotEmpty && value != 'null') return value;
+    }
+    return null;
+  }
+
+  /// Restoran POS va katalog ro‘yxati uchun rasm yo‘li / URL.
+  String? categoryImageUrl(String? categoryId) {
+    final id = categoryId?.trim();
+    if (id == null || id.isEmpty) return null;
+
+    final local = _localImages[id];
+    if (local != null && local.isNotEmpty) {
+      final file = File(local);
+      if (file.existsSync()) return local;
+    }
+
+    for (final row in _rawList) {
+      if (row['id']?.toString() == id) return _imageFromRaw(row);
+    }
+    return null;
+  }
+
+  Future<void> setCategoryImage(
+    String categoryId, {
+    String? localPath,
+    bool remove = false,
+  }) async {
+    final id = categoryId.trim();
+    if (id.isEmpty) return;
+    if (remove) {
+      await CategoryImageStorage.removeImage(id);
+    } else if (localPath != null && localPath.trim().isNotEmpty) {
+      await CategoryImageStorage.setImage(id, localPath);
+    }
+    await _refreshLocalImages();
+    notifyListeners();
+    _controller.add(items);
   }
 
   Future<void> _persistCache() async {
@@ -93,6 +147,7 @@ class CategoriesProvider extends ChangeNotifier {
   }
 
   Future<void> _loadCache() async {
+    await _refreshLocalImages();
     _boundCompanyId = (await getCompanyId())?.trim();
     final prefs = await SharedPreferences.getInstance();
     final key = await _cacheKey();
@@ -164,6 +219,7 @@ class CategoriesProvider extends ChangeNotifier {
 
   Future<void> loadFromApi() async {
     _loadError = null;
+    await _refreshLocalImages();
     try {
       final res = await CategoriesApi.getCategories();
       _lastRawResponse = res;
@@ -263,7 +319,12 @@ class CategoriesProvider extends ChangeNotifier {
 
   List<Map<String, dynamic>> get rawList => List.unmodifiable(_rawList);
 
-  Future<void> updateCategory(String oldName, String newName) async {
+  Future<void> updateCategory(
+    String oldName,
+    String newName, {
+    String? imagePath,
+    bool removeImage = false,
+  }) async {
     final trimmed = newName.trim();
     if (trimmed.isEmpty) return;
     final i = _items.indexWhere((c) => c == oldName);
@@ -273,10 +334,27 @@ class CategoriesProvider extends ChangeNotifier {
       final list = catList['data'] as List<dynamic>? ?? catList['categories'] as List<dynamic>? ?? [];
       final id = _findCategoryId(list, oldName);
       if (id != null) {
-        await CategoriesApi.updateCategory(id, trimmed);
-        _items[i] = trimmed;
+        if (trimmed != oldName) {
+          await CategoriesApi.updateCategory(id, trimmed);
+        }
+        if (removeImage) {
+          await setCategoryImage(id.toString(), remove: true);
+        } else if (imagePath != null && imagePath.trim().isNotEmpty) {
+          await setCategoryImage(id.toString(), localPath: imagePath);
+        }
+        if (trimmed != oldName) {
+          _items[i] = trimmed;
+          for (final row in _rawList) {
+            final name = (row['name'] as String? ?? row['title'] as String? ?? '').trim();
+            if (name == oldName) {
+              row['name'] = trimmed;
+              break;
+            }
+          }
+        }
         _controller.add(items);
         notifyListeners();
+        unawaited(_persistCache());
       }
     } catch (_) {
       rethrow;
@@ -290,9 +368,15 @@ class CategoriesProvider extends ChangeNotifier {
       final id = _findCategoryId(list, name);
       if (id != null) {
         await CategoriesApi.deleteCategory(id);
+        await setCategoryImage(id.toString(), remove: true);
         _items.removeWhere((c) => c == name);
+        _rawList.removeWhere((e) {
+          final n = (e['name'] as String? ?? e['title'] as String? ?? '').trim();
+          return n == name;
+        });
         _controller.add(items);
         notifyListeners();
+        unawaited(_persistCache());
       }
     } catch (_) {
       rethrow;

@@ -44,56 +44,34 @@ class SalesFilterDialog extends StatefulWidget {
   }
 
   static Future<bool?> _showMobileSheet(BuildContext context) {
-    return showModalBottomSheet<bool>(
+    return IosStyleModals.showDraggableSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      builder: (ctx) {
-        final bottom = MediaQuery.paddingOf(ctx).bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottom),
-          child: DraggableScrollableSheet(
-            initialChildSize: 0.82,
-            minChildSize: 0.45,
-            maxChildSize: 0.92,
-            expand: false,
-            builder: (_, scrollController) {
-              return ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                child: Material(
-                  color: Colors.white,
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 10),
-                      IosStyleModals.grabber(),
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 4, 12, 0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Filtr',
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: SalesFilterDialog(
-                          compactActions: true,
-                          scrollController: scrollController,
-                        ),
-                      ),
-                    ],
+      initialChildSize: 0.72,
+      minChildSize: 0.4,
+      maxChildSize: 0.88,
+      header: Column(
+        children: [
+          const SizedBox(height: 10),
+          IosStyleModals.grabber(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 12, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Filtr',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                 ),
-              );
-            },
+              ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
+      builder: (_, scrollController) => SalesFilterDialog(
+        compactActions: true,
+        scrollController: scrollController,
+      ),
     );
   }
 
@@ -129,7 +107,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     _sellAtPurchase = _sales.sellAtPurchasePrice;
     _showPurchasePrice = _sales.showPurchasePrice;
     _showUsdEquivalent = _sales.showUsdEquivalent;
-    if (_sales.categories.isEmpty || _sales.brands.isEmpty) {
+    if (isDesktopPosLayout && (_sales.categories.isEmpty || _sales.brands.isEmpty)) {
       unawaited(_reloadLists());
     }
   }
@@ -158,9 +136,11 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   }
 
   void _apply() {
+    final cat = isDesktopPosLayout ? _categoryId : null;
+    final brand = isDesktopPosLayout ? _brandId : null;
     _sales.applySalesFilters(
-      category: _categoryId,
-      brand: _brandId,
+      category: cat,
+      brand: brand,
       hideZero: _hideZeroStock,
       sellWholesale: _sellAtWholesale,
       sellPurchase: _sellAtPurchase,
@@ -171,9 +151,11 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   }
 
   void _applyLive() {
+    final cat = isDesktopPosLayout ? _categoryId : null;
+    final brand = isDesktopPosLayout ? _brandId : null;
     _sales.applySalesFilters(
-      category: _categoryId,
-      brand: _brandId,
+      category: cat,
+      brand: brand,
       hideZero: _hideZeroStock,
       sellWholesale: _sellAtWholesale,
       sellPurchase: _sellAtPurchase,
@@ -286,47 +268,8 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
                 ),
               ),
-            )
-          else if (!isDesktopPosLayout) ...[
-            if (_sales.categories.isEmpty && _sales.brands.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: TextButton.icon(
-                  onPressed: _reloadLists,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Kategoriya va brendlarni yuklash'),
-                ),
-              ),
-            _FilterSection(
-              desktop: !widget.compactActions,
-              child: Column(
-                children: [
-                  SalesFilterDropdownField(
-                    label: 'Kategoriya',
-                    value: _categoryId,
-                    options: _sales.categories,
-                    size: SalesFilterDropdownSize.normal,
-                    onChanged: (v) => setState(() {
-                      _categoryId = v;
-                      if (!widget.compactActions) _applyLive();
-                    }),
-                  ),
-                  const SizedBox(height: 14),
-                  SalesFilterDropdownField(
-                    label: 'Brend',
-                    value: _brandId,
-                    options: _sales.brands,
-                    size: SalesFilterDropdownSize.normal,
-                    onChanged: (v) => setState(() {
-                      _brandId = v;
-                      if (!widget.compactActions) _applyLive();
-                    }),
-                  ),
-                ],
-              ),
             ),
-            const SizedBox(height: 14),
-          ] else ...[
+          if (isDesktopPosLayout) ...[
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
               child: Text(
@@ -446,33 +389,22 @@ class _FilterToggle extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: desktop ? 22 : 15,
+              fontSize: desktop ? 22 : 16,
               color: AppTheme.textPrimary,
-              fontWeight: desktop ? FontWeight.w500 : FontWeight.normal,
+              fontWeight: desktop ? FontWeight.w500 : FontWeight.w400,
             ),
           ),
         ),
-        if (desktop)
-          Transform.scale(
-            scale: 1.28,
-            child: CupertinoSwitch(
-              value: value,
-              onChanged: onChanged,
-              activeTrackColor: AppTheme.primary,
-            ),
-          )
-        else
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppTheme.primary,
-          ),
+        CupertinoSwitch(
+          value: value,
+          onChanged: onChanged,
+        ),
       ],
     );
 
     if (!desktop) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: row,
       );
     }
@@ -485,7 +417,27 @@ class _FilterToggle extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: row,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 22,
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Transform.scale(
+            scale: 1.28,
+            child: CupertinoSwitch(
+              value: value,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
