@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/receipt_design_config.dart';
+import '../services/receipt_font_settings.dart';
 import '../utils/receipt_strikethrough_text.dart';
+import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 
 /// Termal printer chiqishi — logo + matn qatorlari (sozlamalar va ko‘rinish).
@@ -11,12 +13,16 @@ class ThermalReceiptPreview extends StatelessWidget {
   final List<String> lines;
   final ReceiptDesignConfig design;
   final double width;
+  final bool forPrint;
+  final ReceiptFontId? fontOverride;
 
   const ThermalReceiptPreview({
     super.key,
     required this.lines,
     required this.design,
     this.width = 302,
+    this.forPrint = false,
+    this.fontOverride,
   });
 
   bool get _showLogo {
@@ -36,14 +42,28 @@ class ThermalReceiptPreview extends StatelessWidget {
       );
     }
 
+    if (fontOverride != null) {
+      return _buildBody(fontOverride!);
+    }
+
+    return ValueListenableBuilder<ReceiptFontId>(
+      valueListenable: ReceiptFontSettings.notifier,
+      builder: (context, font, _) => _buildBody(font),
+    );
+  }
+
+  Widget _buildBody(ReceiptFontId font) {
     return Container(
       width: width,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      color: forPrint ? Colors.white : null,
+      decoration: forPrint
+          ? null
+          : BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(8),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -62,24 +82,36 @@ class ThermalReceiptPreview extends StatelessWidget {
             if (line.isEmpty)
               const SizedBox(height: 6)
             else
-              _line(line),
+              _line(line, font),
         ],
       ),
     );
   }
 
-  Widget _line(String line) {
+  Widget _line(String line, ReceiptFontId font) {
+    if (ThermalReceiptCompactText.isCompactLine(line)) {
+      final text = ThermalReceiptCompactText.unwrap(line);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: ReceiptStrikethroughText.richLine(
+          text,
+          style: ReceiptFontSettings.style(font: font, fontSize: 11),
+          textAlign: TextAlign.start,
+        ),
+      );
+    }
+
     if (ThermalReceiptLargeText.isLargeLine(line)) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Text(
           ThermalReceiptLargeText.unwrap(line),
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 36,
-            fontWeight: FontWeight.w800,
+          style: ReceiptFontSettings.style(
+            font: font,
+            fontSize: ThermalReceiptLargeText.previewFontSize,
+            fontWeight: FontWeight.w700,
             height: 1.1,
-            color: Colors.black,
           ),
         ),
       );
@@ -95,7 +127,11 @@ class ThermalReceiptPreview extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 12, color: Colors.black54),
+          style: ReceiptFontSettings.style(
+            font: font,
+            fontSize: 12,
+            color: Colors.black54,
+          ),
         ),
       );
     }
@@ -104,11 +140,10 @@ class ThermalReceiptPreview extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: ReceiptStrikethroughText.richLine(
         text,
-        style: TextStyle(
-          fontSize: isTotal ? 14 : 13,
+        style: ReceiptFontSettings.style(
+          font: font,
+          fontSize: isTotal ? 14 : 12,
           fontWeight: isTotal || centered ? FontWeight.w700 : FontWeight.w500,
-          color: Colors.black,
-          height: 1.35,
         ),
         textAlign: centered ? TextAlign.center : TextAlign.start,
         bold: isTotal || centered,

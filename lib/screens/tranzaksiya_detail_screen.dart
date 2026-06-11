@@ -42,6 +42,7 @@ import '../services/printer_settings.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/restaurant_queue_number.dart';
 import '../utils/sales_payment_types.dart';
+import '../utils/tolovsiz_payment.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
 import '../utils/sale_store_validation.dart';
@@ -100,6 +101,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   String? _completedClientName;
   int? _completedQueueNumber;
   String _sellerDisplayName = '';
+  String? _cachedSellerPhone;
   ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.defaults;
   String? _desktopSelectedPaymentKey;
   final _desktopPayAmountController = TextEditingController();
@@ -195,6 +197,19 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return b.round();
   }
 
+  int get _clientDueAmountUzs {
+    if (_client == null) return 0;
+    return (_client!.dueAmount ?? 0).toDouble().round();
+  }
+
+  bool get _tolovsizContextActive {
+    final cid = _client != null ? int.tryParse(_client!.id) : null;
+    return TolovsizPayment.isContext(
+      featureEnabled: SalesSessionProvider.instance.salesTolovsizPaymentEnabled,
+      customerId: cid,
+    );
+  }
+
   static String _paymentNameLower(Map<String, dynamic> e) =>
       (e['name'] ?? e['title'] ?? e['payment_method'] ?? '').toString().toLowerCase();
 
@@ -218,17 +233,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return name.contains('qarz') || type == 'credit' || type == 'debt' || type == 'qarz';
   }
 
-  /// «To'lovsiz» — faqat mijoz tanlanganida (bepul sotuv mijozga bog'langan).
-  static bool _isFreePaymentType(Map<String, dynamic> e) {
+  /// To'lovsiz — balans + qarz avtomatik taqsimot (type: tolovsiz).
+  static bool _isTolovsizPaymentType(Map<String, dynamic> e) {
     if (_isSupplierBalancePayment(e)) return false;
-    final name = _paymentNameLower(e);
-    final type = _paymentTypeLower(e);
-    final compact = name.replaceAll(RegExp(r"[\s'’`\-_]"), '');
-    return compact.contains('tolovsiz') ||
-        name.contains('to\'lovsiz') ||
-        type == 'free' ||
-        type == 'no_payment' ||
-        type == 'without_payment';
+    return TolovsizPayment.isPaymentType(e);
   }
 
   static bool _isClientBalancePaymentType(Map<String, dynamic> e) {
@@ -241,12 +249,17 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   static bool _isCustomerRelatedPayment(Map<String, dynamic> e) =>
-      _isQarzPayment(e) || _isClientBalancePaymentType(e) || _isFreePaymentType(e);
+      _isQarzPayment(e) || _isClientBalancePaymentType(e) || _isTolovsizPaymentType(e);
 
   bool _shouldShowPaymentType(Map<String, dynamic> e) {
     if (_isSupplierBalancePayment(e)) return false;
+    if (TolovsizPayment.isHiddenInSales(e)) return false;
+    if (_isTolovsizPaymentType(e)) return _tolovsizContextActive;
+    if (_tolovsizContextActive && (_isQarzPayment(e) || _isClientBalancePaymentType(e))) {
+      return false;
+    }
     if (widget.isReturnCheckout && _isClientBalancePaymentType(e)) return false;
-    if (_isFreePaymentType(e)) return _client != null;
+    if (widget.isReturnCheckout && _isQarzPayment(e)) return _client != null;
     if (_isQarzPayment(e)) return _client != null;
     if (_isClientBalancePaymentType(e)) return _client != null && _clientBalanceUzs > 0;
     return true;
@@ -268,6 +281,22 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return false;
   }
 
+  bool _isTolovsizPaymentById(String paymentId) {
+    for (final e in _apiPaymentTypes) {
+      final id = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0).toString();
+      if (id == paymentId) return _isTolovsizPaymentType(e);
+    }
+    return false;
+  }
+
+  Map<String, dynamic>? _paymentMetaById(String paymentId) {
+    for (final e in _apiPaymentTypes) {
+      final id = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0).toString();
+      if (id == paymentId) return e;
+    }
+    return null;
+  }
+
   bool _isCashPaymentById(String paymentId) {
     for (final e in _paymentList) {
       if (e.key != paymentId) continue;
@@ -284,9 +313,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return null;
   }
 
-  /// Chek/API: avval mijoz balansi, keyin boshqa turlar, naqd, oxirida qarz.
+  /// Chek/API: avval mijoz balansi, keyin boshqa turlar, naqd, to'lovsiz, oxirida qarz.
   int _paymentAllocationPriority(String key) {
     if (_isClientBalancePaymentById(key)) return 0;
+    if (_isTolovsizPaymentById(key)) return 2;
     if (_isQarzPaymentById(key)) return 3;
     for (final e in _paymentList) {
       if (e.key != key) continue;
@@ -318,14 +348,16 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       final entered = _paymentAmounts[k] ?? 0;
       if (entered <= 0 || remaining <= 0) continue;
       var take = entered > remaining ? remaining : entered;
-      if (_isClientBalancePaymentById(k) && take > _clientBalanceUzs) {
+      if (_isClientBalancePaymentById(k) && !_isTolovsizPaymentById(k) && take > _clientBalanceUzs) {
         take = _clientBalanceUzs;
       }
       if (take <= 0) continue;
       remaining -= take;
     }
     var max = remaining.clamp(0, 0x7FFFFFFF);
-    if (_isClientBalancePaymentById(key) && max > _clientBalanceUzs) {
+    if (_isClientBalancePaymentById(key) &&
+        !_isTolovsizPaymentById(key) &&
+        max > _clientBalanceUzs) {
       max = _clientBalanceUzs;
     }
     return max;
@@ -359,6 +391,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   /// Aralash to'lov o'chiq: bitta tur uchun kiritiladigan summa (balans chegarasi bilan).
   int _singlePaymentAmountForKey(String key) {
+    if (_isTolovsizPaymentById(key)) return _totalAfterDiscount;
     if (_isClientBalancePaymentById(key)) {
       if (_client == null || _clientBalanceUzs <= 0) return 0;
       return _clientBalanceUzs < _totalAfterDiscount ? _clientBalanceUzs : _totalAfterDiscount;
@@ -471,11 +504,23 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (ok) Navigator.pop(context, 'held');
   }
 
+  Future<void> _preloadPaymentResources() async {
+    await Future.wait([
+      PrinterSettings.preload(),
+      _loadReceiptDesign(),
+      _cacheSellerPhone(),
+    ]);
+  }
+
+  Future<void> _cacheSellerPhone() async {
+    _cachedSellerPhone = await getSellerPhone();
+  }
+
   Future<void> _printPrecheckReceipt() async {
     if (_printingPrecheck || _printingReceipt || widget.items.isEmpty) return;
     setState(() => _printingPrecheck = true);
     try {
-      final sellerPhone = await getSellerPhone();
+      final sellerPhone = _cachedSellerPhone ?? await getSellerPhone();
       final receiptWidget = _buildPrecheckReceiptWidget(
         DateTime.now(),
         sellerPhone: sellerPhone,
@@ -484,6 +529,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       final result = await ThermalReceiptPrinter.printLocalReceipt(
         receiptWidget.toThermalPrintLines(),
         directOnly: directOnly,
+        openCashDrawer: false,
       );
       if (!mounted) return;
       if (result.ok) {
@@ -503,7 +549,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (rid == null || _printingReceipt) return;
     setState(() => _printingReceipt = true);
     try {
-      final sellerPhone = await getSellerPhone();
+      final sellerPhone = _cachedSellerPhone ?? await getSellerPhone();
       final receiptWidget = _buildReceiptWidget(
         DateTime.now(),
         sellerName: _completedSellerName.isNotEmpty ? _completedSellerName : _sellerDisplayName,
@@ -542,40 +588,42 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   Future<void> _loadPaymentTypes() async {
-    final cached = normalizeSalesPaymentTypes(SalesSessionProvider.instance.paymentTypes);
+    final sess = SalesSessionProvider.instance;
+    sess.applyTolovsizFallbackFromPaymentTypes();
+    final cached = normalizeSalesPaymentTypes(sess.paymentTypes);
     if (cached.isNotEmpty) {
       _applyPaymentTypes(cached);
-      unawaited(_refreshPaymentTypesFromApi());
+      unawaited(_refreshPaymentTypesInBackground());
       return;
     }
 
     if (mounted) setState(() => _paymentTypesLoading = true);
-    await _refreshPaymentTypesFromApi();
+    await _refreshPaymentTypesInBackground();
   }
 
-  Future<void> _refreshPaymentTypesFromApi() async {
+  Future<void> _refreshPaymentTypesInBackground() async {
     try {
-      final res = await SalesApi.getPaymentTypes();
-      final list = parseSalesPaymentTypesResponse(res);
-      if (list.isNotEmpty) {
-        SalesSessionProvider.instance.paymentTypes =
-            list.map((e) => Map<String, dynamic>.from(e)).toList();
-      }
+      await SalesSessionProvider.instance.ensureTolovsizPaymentReady();
       if (!mounted) return;
-      if (list.isNotEmpty) {
-        _applyPaymentTypes(list);
-      } else {
-        setState(() => _paymentTypesLoading = false);
+      final fresh = normalizeSalesPaymentTypes(SalesSessionProvider.instance.paymentTypes);
+      if (fresh.isEmpty) {
+        if (mounted) setState(() => _paymentTypesLoading = false);
+        return;
+      }
+      setState(() {
+        _apiPaymentTypes = fresh;
+        _paymentTypesLoading = false;
+        _pruneHiddenPaymentAmounts();
+      });
+      if (!_mixedPayment) {
+        _syncSinglePaymentSelection();
       }
     } catch (_) {
-      if (mounted && _apiPaymentTypes.isEmpty) {
-        setState(() {
-          _apiPaymentTypes = [];
-          _paymentTypesLoading = false;
-        });
-      } else if (mounted) {
-        setState(() => _paymentTypesLoading = false);
-      }
+      if (!mounted) return;
+      setState(() {
+        if (_apiPaymentTypes.isEmpty) _apiPaymentTypes = [];
+        _paymentTypesLoading = false;
+      });
     }
   }
 
@@ -586,10 +634,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _client = widget.initialClient;
     _loadPaymentTypes();
     _loadSellerDisplayName();
-    unawaited(_loadReceiptDesign());
-    if (widget.useDesktopFullscreenLayout) {
-      unawaited(ThermalReceiptPrinter.warmup());
-    }
+    unawaited(_preloadPaymentResources());
   }
 
   Future<void> _loadReceiptDesign() async {
@@ -678,7 +723,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       if (amount > _maxMixedPaymentForKey(key)) {
         amount = _maxMixedPaymentForKey(key);
       }
-    } else if (_isClientBalancePaymentById(key) && amount > _clientBalanceUzs) {
+    } else if (_isClientBalancePaymentById(key) &&
+        !_isTolovsizPaymentById(key) &&
+        amount > _clientBalanceUzs) {
       amount = _clientBalanceUzs;
     }
     setState(() {
@@ -692,6 +739,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   int _desktopDebtAmount() {
     final allocated = _getAllocatedPaymentAmounts();
+    final salePreview = _tolovsizSalePreview(allocated);
+    if (salePreview != null) return salePreview.creditPart.round();
     return _getQarzAmountFromAllocated(allocated);
   }
 
@@ -723,7 +772,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       final entered = _paymentAmounts[key] ?? 0;
       if (entered <= 0 || remaining <= 0) continue;
       var take = entered > remaining ? remaining : entered;
-      if (_isClientBalancePaymentById(key) && take > _clientBalanceUzs) {
+      if (_isClientBalancePaymentById(key) &&
+          !_isTolovsizPaymentById(key) &&
+          take > _clientBalanceUzs) {
         take = _clientBalanceUzs;
       }
       if (take <= 0) continue;
@@ -731,6 +782,91 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       remaining -= take;
     }
     return out;
+  }
+
+  int _otherPaidExcludingTolovsiz(Map<String, int> allocated) {
+    var sum = 0;
+    for (final e in allocated.entries) {
+      if (_isTolovsizPaymentById(e.key)) continue;
+      sum += e.value;
+    }
+    return sum;
+  }
+
+  TolovsizPreview? _tolovsizSalePreview(Map<String, int> allocated) {
+    if (!_tolovsizContextActive || widget.isReturnCheckout) return null;
+    var tolovsizAmount = 0;
+    for (final e in allocated.entries) {
+      if (_isTolovsizPaymentById(e.key)) tolovsizAmount += e.value;
+    }
+    if (tolovsizAmount <= 0) return null;
+    final remaining = (_totalAfterDiscount - _otherPaidExcludingTolovsiz(allocated))
+        .clamp(0, 0x7FFFFFFF)
+        .toDouble();
+    return TolovsizPayment.previewSale(
+      remaining: remaining,
+      customerBalance: (_client?.balance ?? 0).toDouble(),
+      alreadyUsedBalance: _getClientBalanceAmountFromAllocated(allocated).toDouble(),
+    );
+  }
+
+  TolovsizReturnPreview? _tolovsizReturnPreview(Map<String, int> allocated) {
+    if (!_tolovsizContextActive || !widget.isReturnCheckout) return null;
+    var tolovsizAmount = 0;
+    for (final e in allocated.entries) {
+      if (_isTolovsizPaymentById(e.key)) tolovsizAmount += e.value;
+    }
+    if (tolovsizAmount <= 0) return null;
+    return TolovsizPayment.previewReturn(
+      returnAbs: tolovsizAmount.toDouble(),
+      customerDueAmount: _clientDueAmountUzs.toDouble(),
+      otherRefundsAbs: 0,
+    );
+  }
+
+  String? _resolveInvoiceReturnId() {
+    final raw = widget.initialInvoiceId?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.toUpperCase().startsWith('POS')) return raw;
+    return 'POS$raw';
+  }
+
+  bool _usesTolovsizInAllocated(Map<String, int> allocated) =>
+      TolovsizPayment.usesTolovsizInAllocated(allocated, _isTolovsizPaymentById);
+
+  List<String> _invoiceReturnIdsForStore() {
+    final id = _resolveInvoiceReturnId();
+    if (id == null) return const [];
+    return [id];
+  }
+
+  String? _validateTolovsizBeforePay(Map<String, int> allocated) {
+    if (!_tolovsizContextActive) return null;
+    var usesTolovsiz = false;
+    for (final e in allocated.entries) {
+      if (_isTolovsizPaymentById(e.key) && e.value > 0) {
+        usesTolovsiz = true;
+        break;
+      }
+    }
+    if (!usesTolovsiz) return null;
+    if (_client == null) {
+      return "To'lovsiz to'lov uchun mijoz tanlanishi kerak.";
+    }
+    if (!widget.isReturnCheckout && TolovsizPayment.isBlacklisted(_client!.debtLimit)) {
+      return 'Bu mijoz qora ro\'yxatda. Qarzga narsa sotib bo\'lmaydi.';
+    }
+    final salePreview = _tolovsizSalePreview(allocated);
+    if (salePreview != null &&
+        salePreview.creditPart > 0 &&
+        !TolovsizPayment.debtLimitOk(
+          currentDebt: (_client!.dueAmount ?? 0).toDouble(),
+          debtLimit: _client!.debtLimit,
+          creditPart: salePreview.creditPart,
+        )) {
+      return 'Qarz limiti oshib ketdi';
+    }
+    return null;
   }
 
   static String _fmt(int n) => formatThousands(n);
@@ -814,9 +950,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           isReturnCheckout: widget.isReturnCheckout,
           returnRefundDue: widget.isReturnCheckout ? _totalAfterDiscount : 0,
           returnCreditUsesGeneralDebt: widget.isReturnCheckout &&
+              !_usesTolovsizInAllocated(allocated) &&
               SalesReturnCheckout.usesGeneralDebtCredit(
-                hasCreditPayment: _desktopDebtAmount() > 0,
+                hasCreditPayment: _getQarzAmountFromAllocated(allocated) > 0,
+                invoiceReturnIds: _invoiceReturnIdsForStore(),
               ),
+          tolovsizPreviewBalancePart: _tolovsizSalePreview(allocated)?.balancePart.round() ?? 0,
+          tolovsizPreviewCreditPart: _tolovsizSalePreview(allocated)?.creditPart.round() ?? 0,
+          tolovsizReturnDebtPart: _tolovsizReturnPreview(allocated)?.debtPart.round() ?? 0,
+          tolovsizReturnBalancePart: _tolovsizReturnPreview(allocated)?.balanceRefundPart.round() ?? 0,
             ),
           ),
         ),
@@ -1244,9 +1386,57 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     );
   }
 
+  Widget _buildTolovsizPreviewBanner() {
+    final allocated = _getAllocatedPaymentAmounts();
+    if (widget.isReturnCheckout) {
+      final preview = _tolovsizReturnPreview(allocated);
+      if (preview == null) return const SizedBox.shrink();
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE3F2FD),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF64B5F6)),
+        ),
+        child: Text(
+          "To'lovsiz qaytarish: qarzdan ${_fmt(preview.debtPart.round())} UZS, "
+          "balansga ${_fmt(preview.balanceRefundPart.round())} UZS",
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1565C0),
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+    final preview = _tolovsizSalePreview(allocated);
+    if (preview == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF81C784)),
+      ),
+      child: Text(
+        "To'lovsiz: balansdan ${_fmt(preview.balancePart.round())} UZS, "
+        "qarzga ${_fmt(preview.creditPart.round())} UZS",
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF2E7D32),
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMobileSinglePaymentHint() {
     final key = _activeSinglePaymentKey;
-    if (key == null || !_isClientBalancePaymentById(key)) {
+    if (key == null || !_isClientBalancePaymentById(key) || _isTolovsizPaymentById(key)) {
       return const SizedBox.shrink();
     }
     final amount = _paymentAmounts[key] ?? 0;
@@ -1362,6 +1552,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           ),
         ),
         if (!_mixedPayment) ...[
+          _buildTolovsizPreviewBanner(),
+          const SizedBox(height: 8),
           _buildMobileSinglePaymentHint(),
           const SizedBox(height: 12),
         ],
@@ -1753,6 +1945,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   String? _paymentTypeForApi(Map<String, dynamic> e) {
+    if (_isTolovsizPaymentType(e)) return 'tolovsiz';
     if (_isQarzPayment(e)) return 'credit';
     if (_isClientBalancePaymentType(e)) return 'customer_balance';
     final name = _paymentNameLower(e);
@@ -1786,24 +1979,30 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return sum;
   }
 
-  int _computeStoreDueAmount(Map<String, int> allocated) => computeStoreDueAmount(
-        grandTotal: _totalAfterDiscount,
-        paymentTypes: _apiPaymentTypes,
-        allocated: allocated,
-        isQarzPayment: _isQarzPayment,
-      );
+  int _computeStoreDueAmount(Map<String, int> allocated) {
+    final salePreview = _tolovsizSalePreview(allocated);
+    if (salePreview != null) return salePreview.creditPart.round();
+    return computeStoreDueAmount(
+      grandTotal: _totalAfterDiscount,
+      paymentTypes: _apiPaymentTypes,
+      allocated: allocated,
+      isQarzPayment: _isQarzPayment,
+    );
+  }
 
   List<Map<String, dynamic>> _buildPaymentsForStore(Map<String, int> allocated) {
     return allocated.entries.map((entry) {
       final id = int.tryParse(entry.key) ?? 1;
-      final meta = _apiPaymentTypes.cast<Map<String, dynamic>?>().firstWhere(
-        (e) {
-          if (e == null) return false;
-          final pid = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0).toString();
-          return pid == entry.key;
-        },
-        orElse: () => null,
-      );
+      final meta = _paymentMetaById(entry.key);
+      if (meta != null && _isTolovsizPaymentType(meta)) {
+        final name = (meta['name'] ?? meta['title'] ?? "To'lovsiz").toString();
+        return TolovsizPayment.buildStorePaymentRow(
+          paymentTypeId: id,
+          paymentName: name,
+          amount: entry.value,
+          isReturn: widget.isReturnCheckout,
+        );
+      }
       final row = <String, dynamic>{
         'paymentID': id,
         'paid': entry.value,
@@ -1812,6 +2011,45 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       if (pt != null) row['paymentType'] = pt;
       return row;
     }).toList();
+  }
+
+  bool _canUseClientWithoutResolve(Client client) {
+    if (!ClientsProvider.isPlausibleServerCustomerId(client.id)) return false;
+    if (!_tolovsizContextActive) return true;
+    return client.balance != null || client.dueAmount != null || client.debtLimit != null;
+  }
+
+  Future<void> _afterPaymentBackground({
+    required String sellerName,
+    String? clientName,
+    required String receiptId,
+  }) async {
+    int? queueNumber;
+    if (await DesktopSalesLayoutSettings.getMode() == DesktopSalesLayoutMode.restaurant) {
+      queueNumber = await RestaurantQueueNumberService.nextForToday();
+      if (mounted) {
+        setState(() => _completedQueueNumber = queueNumber);
+      }
+    }
+    if (widget.useDesktopFullscreenLayout) {
+      final autoPrint = await PrinterSettings.isAutoPrintEnabled();
+      final ready = await PrinterSettings.isPrinterReady();
+      if (autoPrint && ready && mounted) {
+        await _printThermalReceipt(silent: true);
+      }
+    }
+  }
+
+  Map<String, dynamic>? _customerPayloadForStore(Client customer) {
+    final id = int.tryParse(customer.id);
+    if (id == null) return null;
+    final payload = <String, dynamic>{'id': id};
+    if (_tolovsizContextActive || widget.isReturnCheckout) {
+      payload['balance'] = (customer.balance ?? 0).toDouble();
+      payload['due_amount'] = (customer.dueAmount ?? 0).toDouble();
+      if (customer.debtLimit != null) payload['debt_limit'] = customer.debtLimit;
+    }
+    return payload;
   }
 
   /// Sotuvdan keyin: katalog yangilash. Balans va qarz /sales/store + payments orqali serverda.
@@ -1860,6 +2098,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }
     final allocated = _getAllocatedPaymentAmounts();
     if (allocated.isEmpty) return;
+    final tolovsizError = _validateTolovsizBeforePay(allocated);
+    if (tolovsizError != null) {
+      if (mounted) AppNotify.error(context, tolovsizError);
+      return;
+    }
     if (widget.isReturnCheckout) {
       for (final e in allocated.entries) {
         if (_isClientBalancePaymentById(e.key) && e.value > 0) {
@@ -1879,21 +2122,26 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     try {
       SaleStoreValidation.validateCart(widget.items);
       SaleStoreValidation.validateCashShift();
-      await SaleStoreValidation.ensureBranchOnServer();
     } on ApiException catch (e) {
       if (mounted) AppNotify.error(context, e.message);
       return;
     }
     Client? saleCustomer;
+    final branchFuture = SaleStoreValidation.ensureBranchOnServer();
     if (_client != null) {
-      try {
-        saleCustomer = await ClientsProvider.instance.resolveClientForSales(_client!);
-        if (mounted) setState(() => _client = saleCustomer);
-      } on ApiException catch (e) {
-        if (mounted) AppNotify.error(context, e.message);
-        return;
+      if (_canUseClientWithoutResolve(_client!)) {
+        saleCustomer = _client;
+      } else {
+        try {
+          saleCustomer = await ClientsProvider.instance.resolveClientForSales(_client!);
+          if (mounted) setState(() => _client = saleCustomer);
+        } on ApiException catch (e) {
+          if (mounted) AppNotify.error(context, e.message);
+          return;
+        }
       }
     }
+    await branchFuture;
     final qarzAmount = widget.isReturnCheckout ? 0 : _computeStoreDueAmount(allocated);
     int totalCostUzs = 0;
     for (final item in widget.items) {
@@ -1941,9 +2189,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       'profit': _totalAfterDiscount - totalCostUzs,
       'cart': cart,
       'payments': paymentsApi,
-      'customer': saleCustomer != null
-          ? {'id': int.parse(saleCustomer.id)}
-          : null,
+      'customer': saleCustomer != null ? _customerPayloadForStore(saleCustomer) : null,
     };
     final sess = SalesSessionProvider.instance;
     sess.syncFromShift();
@@ -1960,9 +2206,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       body['invoice_id'] = widget.initialInvoiceId;
     }
     if (widget.isReturnCheckout) {
-      body = SalesReturnCheckout.applyInlineReturnToStoreBody(
+      body = SalesReturnCheckout.applyReturnToStoreBody(
         body,
         creditPaymentUsed: _getQarzAmountFromAllocated(allocated) > 0,
+        invoiceReturnId: _resolveInvoiceReturnId(),
+        returnSourceOrderId: widget.initialOrderId,
+        invoiceReturnIds: _invoiceReturnIdsForStore(),
       );
     }
     Map<String, dynamic>? storeRes;
@@ -2007,34 +2256,28 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     paySucceeded = true;
     final orderId = ThermalReceiptPrinter.orderIdFromStoreResponse(storeRes);
     CartProvider.instance.clear();
-    final sellerName = await getSellerName();
+    final sellerName =
+        _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi';
     final clientName = _client?.name;
-    int? queueNumber;
-    if (await DesktopSalesLayoutSettings.getMode() ==
-        DesktopSalesLayoutMode.restaurant) {
-      queueNumber = await RestaurantQueueNumberService.nextForToday();
-    }
     if (!mounted) return;
     setState(() {
       _completedReceiptId = rid;
       _completedOrderId = orderId;
       _completedSellerName = sellerName;
       _completedClientName = clientName;
-      _completedQueueNumber = queueNumber;
       if (widget.useDesktopFullscreenLayout) {
         _desktopPaymentComplete = true;
         _submittingPay = false;
       }
     });
-    if (widget.useDesktopFullscreenLayout) {
-      final autoPrint = await PrinterSettings.isAutoPrintEnabled();
-      final ready = await PrinterSettings.isPrinterReady();
-      if (autoPrint && ready && mounted) {
-        await _printThermalReceipt(silent: true);
-      }
+    if (!widget.useDesktopFullscreenLayout) {
+      _showSuccessDialog(sellerName: sellerName, clientName: clientName, receiptId: rid);
     }
-    if (!mounted) return;
-    _showSuccessDialog(sellerName: sellerName, clientName: clientName, receiptId: rid);
+    unawaited(_afterPaymentBackground(
+      sellerName: sellerName,
+      clientName: clientName,
+      receiptId: rid,
+    ));
     unawaited(_postSaleSideEffects());
     final resumedHoldId = widget.initialOrderId;
     if (resumedHoldId != null) {

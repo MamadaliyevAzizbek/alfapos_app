@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import '../utils/receipt_store_title.dart';
+import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 
@@ -232,9 +233,12 @@ class ReceiptWidget extends StatelessWidget {
               child: Text(
                 '$queueNumber',
                 style: TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w800,
-                  height: 1.1,
+                  fontSize: ThermalReceiptLargeText.onScreenFontSize,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Courier',
+                  fontFamilyFallback: const ['monospace'],
+                  height: 1.15,
+                  letterSpacing: 1,
                   color: Colors.grey.shade900,
                 ),
               ),

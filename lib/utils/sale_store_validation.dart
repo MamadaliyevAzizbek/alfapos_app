@@ -34,13 +34,21 @@ class SaleStoreValidation {
     }
   }
 
+  static int? _syncedBranchId;
+
   /// Filial server sessiyasida tanlangan bo‘lishi kerak.
   static Future<void> ensureBranchOnServer() async {
     final sess = SalesSessionProvider.instance;
     final bid = sess.branchId;
     if (bid == null) return;
+    if (_syncedBranchId == bid) return;
     try {
       await SalesApi.setBranch(branchID: bid, orderType: 'sales');
+      _syncedBranchId = bid;
     } catch (_) {}
   }
+
+  static void markBranchSynced(int branchId) => _syncedBranchId = branchId;
+
+  static void resetBranchSyncCache() => _syncedBranchId = null;
 }

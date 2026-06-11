@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import '../models/receipt_design_config.dart';
 import '../utils/escpos_text_codec.dart';
 import '../utils/receipt_strikethrough_text.dart';
+import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 
@@ -36,9 +37,11 @@ class EscPosReceiptBuilder {
     required List<String> lines,
     ReceiptDesignConfig? design,
     PaperSize paperSize = PaperSize.mm80,
+    bool openCashDrawer = false,
+    PosDrawer cashDrawerPin = PosDrawer.pin2,
   }) async {
     final profile = await _profile();
-    final g = Generator(paperSize, profile);
+    final g = Generator(paperSize, profile, spaceBetweenRows: 6);
     final bytes = <int>[];
 
     final maxWidth = paperSize == PaperSize.mm58
@@ -51,6 +54,10 @@ class EscPosReceiptBuilder {
 
     bytes.addAll(g.reset());
     bytes.addAll(g.setGlobalCodeTable(codeTable));
+
+    if (openCashDrawer) {
+      bytes.addAll(g.drawer(pin: cashDrawerPin));
+    }
 
     if (cfg.showLogo && cfg.logoFilePath != null && cfg.logoFilePath!.isNotEmpty) {
       final logoBytes = await _loadLogoBytes(cfg.logoFilePath!);
@@ -72,8 +79,47 @@ class EscPosReceiptBuilder {
         bytes.addAll(g.feed(1));
         continue;
       }
+      if (ThermalReceiptCompactText.isCompactLine(line)) {
+        final text = ThermalReceiptCompactText.unwrap(line);
+        final compactMax = paperSize == PaperSize.mm58
+            ? ThermalReceiptCompactText.chars58mm
+            : ThermalReceiptCompactText.chars80mm;
+        if (ReceiptStrikethroughText.containsMarker(text)) {
+          bytes.addAll(
+            _printMarkedLine(
+              g,
+              text,
+              codeTable: codeTable,
+              codePage: codePage,
+              maxWidth: compactMax,
+              fontType: PosFontType.fontB,
+            ),
+          );
+        } else {
+          bytes.addAll(
+            g.textEncoded(
+              EscPosTextCodec.encodeSync(text, codePage: codePage),
+              styles: PosStyles(
+                codeTable: codeTable,
+                fontType: PosFontType.fontB,
+                align: PosAlign.left,
+              ),
+              maxCharsPerLine: compactMax,
+            ),
+          );
+        }
+        continue;
+      }
+
       if (ThermalReceiptLargeText.isLargeLine(line)) {
         final text = ThermalReceiptLargeText.unwrap(line);
+        final compactPaper = paperSize == PaperSize.mm58;
+        final queueSize = _queueTextSize(
+          compactPaper
+              ? ThermalReceiptLargeText.printerSize58mm
+              : ThermalReceiptLargeText.printerSize80mm,
+        );
+        bytes.addAll(g.feed(1));
         bytes.addAll(
           g.textEncoded(
             EscPosTextCodec.encodeSync(text, codePage: codePage),
@@ -82,12 +128,13 @@ class EscPosReceiptBuilder {
               fontType: PosFontType.fontA,
               align: PosAlign.center,
               bold: true,
-              height: PosTextSize.size2,
-              width: PosTextSize.size2,
+              height: queueSize,
+              width: queueSize,
             ),
-            maxCharsPerLine: maxWidth,
+            maxCharsPerLine: compactPaper ? 16 : 24,
           ),
         );
+        bytes.addAll(g.feed(1));
         continue;
       }
 
@@ -151,6 +198,7 @@ class EscPosReceiptBuilder {
     required String codePage,
     required int maxWidth,
     bool bold = false,
+    PosFontType fontType = PosFontType.fontA,
   }) {
     final bytes = <int>[];
     for (final seg in ReceiptStrikethroughText.parseSegments(text)) {
@@ -160,7 +208,7 @@ class EscPosReceiptBuilder {
           enc,
           styles: PosStyles(
             codeTable: codeTable,
-            fontType: PosFontType.fontA,
+            fontType: fontType,
             bold: bold,
             underline: seg.strike,
           ),
@@ -169,6 +217,29 @@ class EscPosReceiptBuilder {
       );
     }
     return bytes;
+  }
+
+  static PosTextSize _queueTextSize(int level) {
+    switch (level.clamp(1, 8)) {
+      case 1:
+        return PosTextSize.size1;
+      case 2:
+        return PosTextSize.size2;
+      case 3:
+        return PosTextSize.size3;
+      case 4:
+        return PosTextSize.size4;
+      case 5:
+        return PosTextSize.size5;
+      case 6:
+        return PosTextSize.size6;
+      case 7:
+        return PosTextSize.size7;
+      case 8:
+        return PosTextSize.size8;
+      default:
+        return PosTextSize.size4;
+    }
   }
 
   static String _codeTableId(String page) {

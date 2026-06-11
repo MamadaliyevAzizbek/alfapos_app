@@ -13,6 +13,7 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
   final List<Map<String, dynamic>> brands;
   final ValueChanged<String?> onCategoryChanged;
   final ValueChanged<String?> onBrandChanged;
+  final bool expand;
 
   const SalesNavCategoryBrandFilters({
     super.key,
@@ -22,6 +23,7 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
     required this.brands,
     required this.onCategoryChanged,
     required this.onBrandChanged,
+    this.expand = false,
   });
 
   bool get _hasActiveFilter =>
@@ -33,40 +35,43 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
     onBrandChanged(null);
   }
 
+  Widget _categoryField() => SalesFilterDropdownField(
+        label: 'Kategoriya',
+        value: categoryId,
+        options: categories,
+        onChanged: onCategoryChanged,
+        size: SalesFilterDropdownSize.navbar,
+      );
+
+  Widget _brandField() => SalesFilterDropdownField(
+        label: 'Brend',
+        value: brandId,
+        options: brands,
+        onChanged: onBrandChanged,
+        size: SalesFilterDropdownSize.navbar,
+      );
+
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(
-          width: 220,
-          child: SalesFilterDropdownField(
-            label: 'Kategoriya',
-            value: categoryId,
-            options: categories,
-            onChanged: onCategoryChanged,
-            size: SalesFilterDropdownSize.navbar,
-          ),
-        ),
-        const SizedBox(width: 14),
-        SizedBox(
-          width: 200,
-          child: SalesFilterDropdownField(
-            label: 'Brend',
-            value: brandId,
-            options: brands,
-            onChanged: onBrandChanged,
-            size: SalesFilterDropdownSize.navbar,
-          ),
-        ),
+        if (expand) ...[
+          Expanded(child: _categoryField()),
+          const SizedBox(width: 16),
+          Expanded(child: _brandField()),
+        ] else ...[
+          SizedBox(width: 180, child: _categoryField()),
+          const SizedBox(width: 14),
+          SizedBox(width: 170, child: _brandField()),
+        ],
         if (_hasActiveFilter) ...[
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           IconButton(
             onPressed: _clearFilters,
-            icon: const Icon(Icons.close_rounded, size: 22, color: Color(0xFF64748B)),
+            icon: const Icon(Icons.close_rounded, size: 24, color: Color(0xFF64748B)),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             tooltip: 'Kategoriya va brendni tozalash',
           ),
         ],
@@ -108,7 +113,7 @@ class SalesFilterDropdownField extends StatelessWidget {
     };
     final padV = switch (size) {
       SalesFilterDropdownSize.compact => 10.0,
-      SalesFilterDropdownSize.navbar => 18.0,
+      SalesFilterDropdownSize.navbar => 16.0,
       SalesFilterDropdownSize.normal => 14.0,
     };
     final padH = switch (size) {

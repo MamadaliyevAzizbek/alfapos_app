@@ -1,8 +1,15 @@
 /// Sotuv to'lov turlari — GET /sales/payment-types
 List<Map<String, dynamic>> parseSalesPaymentTypesResponse(dynamic res) {
   final list = <Map<String, dynamic>>[];
-  if (res is! Map) return list;
-  final data = res['payment_types'] ?? res['data'] ?? res;
+  dynamic data;
+  if (res is List) {
+    data = res;
+  } else if (res is Map) {
+    data = res['payment_types'] ?? res['paymentTypes'] ?? res['data'] ?? res;
+    if (data is Map) {
+      data = data['payment_types'] ?? data['paymentTypes'] ?? data['data'];
+    }
+  }
   if (data is! List) return list;
   for (final e in data) {
     if (e is! Map) continue;
@@ -19,6 +26,8 @@ Map<String, dynamic>? normalizeSalesPaymentType(Map<String, dynamic> m) {
     'id': id,
     'name': m['name'] ?? m['title'] ?? m['payment_method'] ?? '$id',
     'type': m['type'] ?? m['payment_type'],
+    'hide_in_sales': m['hide_in_sales'] ?? m['hideInSales'],
+    'status': m['status'],
   };
 }
 

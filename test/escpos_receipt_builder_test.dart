@@ -1,6 +1,10 @@
+import 'package:alfapos_app/models/receipt_design_config.dart';
 import 'package:alfapos_app/services/escpos_receipt_builder.dart';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:alfapos_app/utils/receipt_strikethrough_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
+import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -35,5 +39,81 @@ void main() {
     final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines);
     expect(bytes, isNotEmpty);
     expect(bytes.length, greaterThan(20));
+  });
+
+  test('restaurant queue receipt builds with readable large number', () async {
+    final config = ReceiptDesignConfig.defaults.copyWith(
+      showRestaurantQueueNumber: true,
+      restaurantQueueLabel: 'Navbat raqami',
+      restaurantQueueHint: 'Navbatingizni kuzating',
+    );
+    final lines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: "Do'kon alfapos",
+        dateTime: DateTime(2026, 6, 10, 14, 30),
+        receiptNumber: 'POS99',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Latte',
+            quantity: '2 dona',
+            unitPrice: '25,000',
+            lineTotal: '50,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '50,000'),
+        ],
+        discountAmount: '0',
+        totalAmount: '50,000',
+        queueNumber: 42,
+      ),
+      config: config,
+    );
+
+    expect(lines.any(ThermalReceiptLargeText.isLargeLine), isTrue);
+
+    final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines, design: config);
+    expect(bytes, isNotEmpty);
+    expect(bytes.length, greaterThan(40));
+    // GS ! — matn kattalashtirish buyrug'i (navbat raqami uchun).
+    expect(bytes.contains(29), isTrue);
+  });
+
+  test('cash drawer pulse is sent when enabled', () async {
+    final withDrawer = await EscPosReceiptBuilder.buildReceipt(
+      lines: const ['AlfaPOS', 'Test'],
+      openCashDrawer: true,
+      cashDrawerPin: PosDrawer.pin2,
+    );
+    final withoutDrawer = await EscPosReceiptBuilder.buildReceipt(
+      lines: const ['AlfaPOS', 'Test'],
+      openCashDrawer: false,
+    );
+
+    expect(withDrawer.contains(0x1B), isTrue);
+    expect(withDrawer.contains(0x70), isTrue);
+    expect(withDrawer.length, greaterThan(withoutDrawer.length));
+  });
+
+  test('compact auto-scale lines build for printer', () async {
+    final lines = [
+      ThermalReceiptCompactText.line(
+        '25 dona x 1,250,000 so\'m              31,250,000 so\'m',
+      ),
+    ];
+    final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines);
+    expect(bytes, isNotEmpty);
+  });
+
+  test('uzbek latin receipt lines build without error', () async {
+    final lines = [
+      "^Do'kon alfapos",
+      'Chek raqami: POS100',
+      '1. Non 1 dona x 4,000 = 4,000 so\'m',
+      'Umumiy summa: 4,000 so\'m',
+    ];
+    final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines);
+    expect(bytes, isNotEmpty);
   });
 }

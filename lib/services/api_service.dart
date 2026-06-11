@@ -695,6 +695,11 @@ class SalesApi {
     return ApiClient.get('/sales/payment-types');
   }
 
+  /// GET /support/sales-settings — salesTolovsizPaymentEnabled va boshqa sozlamalar.
+  static Future<Map<String, dynamic>> getSalesSettings() async {
+    return ApiClient.get('/support/sales-settings');
+  }
+
   static Future<Map<String, dynamic>> getBranches() async {
     return ApiClient.get('/sales/branches');
   }
@@ -792,6 +797,13 @@ class SalesApi {
 
   static Future<Map<String, dynamic>> continueSale(int orderId) async {
     return ApiClient.post('/sales/continue-sale', body: {'orderID': orderId});
+  }
+
+  /// POST /sales/returns-type-set — server qaytarish rejimini yoqish.
+  static Future<Map<String, dynamic>> setReturnsType({String salesOrReturnType = 'returns'}) async {
+    return ApiClient.post('/sales/returns-type-set', body: {
+      'salesOrReturnType': salesOrReturnType,
+    });
   }
 
   /// POST /sales/return-full-order — chekni to'liq qaytarish (web bilan bir xil).

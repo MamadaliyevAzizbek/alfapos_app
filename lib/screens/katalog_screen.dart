@@ -7,6 +7,9 @@ import '../core/theme.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
 import '../providers/categories_provider.dart';
+import '../providers/sales_session_provider.dart';
+import '../services/category_order_storage.dart';
+import '../utils/category_order_sort.dart';
 import '../widgets/product_tile.dart';
 import 'yangi_tovar_screen.dart';
 import 'mahsulot_detail_screen.dart';
@@ -47,6 +50,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   final _categories = CategoriesProvider.instance;
   late TabController _tabController;
   bool _syncing = false;
+  List<String> _categoryOrderIds = [];
 
   Future<void> _syncAllData() async {
     if (_syncing || AppDataSync.isRunning) return;
@@ -74,9 +78,46 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
       if (mounted) setState(() {});
     });
     _categoriesSub = _categories.stream.listen((_) {
-      if (mounted) setState(() {});
+      if (mounted) unawaited(_reloadCategoryOrder());
     });
     _products.loadFromStorage();
+    unawaited(_reloadCategoryOrder());
+  }
+
+  Future<void> _reloadCategoryOrder() async {
+    final ids = _categories.rawList
+        .map((e) => e['id']?.toString().trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList();
+    _categoryOrderIds = await CategoryOrderStorage.mergeWithCategoryIds(ids);
+    final sales = SalesSessionProvider.instance;
+    if (sales.categories.isNotEmpty) {
+      sales.categories = CategoryOrderSort.apply(sales.categories, _categoryOrderIds);
+    }
+    if (mounted) setState(() {});
+  }
+
+  List<Map<String, dynamic>> get _sortedCategoryRows {
+    final raw = _categories.rawList
+        .where((e) => e['id'] != null)
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    return CategoryOrderSort.apply(raw, _categoryOrderIds);
+  }
+
+  Future<void> _onCategoriesReordered(int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex--;
+    final rows = [..._sortedCategoryRows];
+    final item = rows.removeAt(oldIndex);
+    rows.insert(newIndex, item);
+    final ids = rows.map((e) => e['id']!.toString()).toList();
+    await CategoryOrderStorage.saveOrderedIds(ids);
+    _categoryOrderIds = ids;
+    final sales = SalesSessionProvider.instance;
+    if (sales.categories.isNotEmpty) {
+      sales.categories = CategoryOrderSort.apply(sales.categories, ids);
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -405,7 +446,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   }
 
   Widget _buildCategoriesTab() {
-    final list = _categories.rawList;
+    final list = _sortedCategoryRows;
     final loadError = _categories.loadError;
     return Column(
       children: [
@@ -416,6 +457,22 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
               children: [
                 Expanded(child: Text(loadError, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.error))),
                 TextButton(onPressed: () => _categories.loadFromApi(), child: const Text('Qayta yuklash')),
+              ],
+            ),
+          ),
+        if (list.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Icon(Icons.drag_handle_rounded, size: 16, color: AppTheme.textSecondary),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Tartibni o‘zgartirish: chap tomondan ushlab sudrang',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.3),
+                  ),
+                ),
               ],
             ),
           ),
@@ -486,20 +543,24 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                       ),
                     ),
                   )
-                : ListView.builder(
+                : ReorderableListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                    buildDefaultDragHandles: false,
                     itemCount: list.length,
+                    onReorder: _onCategoriesReordered,
                     itemBuilder: (context, index) {
                       final row = list[index];
+                      final id = row['id']?.toString() ?? '$index';
                       final name = (row['name'] as String? ??
                               row['title'] as String? ??
                               row['category_name'] as String? ??
                               '')
                           .trim();
-                      if (name.isEmpty) return const SizedBox.shrink();
+                      if (name.isEmpty) return SizedBox(key: ValueKey('empty-$id'));
                       final imageUrl = _categories.categoryImageUrl(row['id']?.toString());
                       return Card(
+                        key: ValueKey('cat-$id'),
                         margin: const EdgeInsets.only(bottom: 12),
                         child: InkWell(
                           onTap: () => EditCategorySheet.show(context, categoryName: name),
@@ -508,6 +569,13 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                             padding: const EdgeInsets.all(12),
                             child: Row(
                               children: [
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: const Padding(
+                                    padding: EdgeInsets.only(right: 8),
+                                    child: Icon(Icons.drag_handle_rounded, color: AppTheme.textSecondary),
+                                  ),
+                                ),
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: CategoryImageCover.build(
@@ -537,7 +605,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                         ),
                       );
                     },
-                ),
+                  ),
           ),
         ),
       ],

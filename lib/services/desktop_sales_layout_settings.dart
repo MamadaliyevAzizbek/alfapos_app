@@ -1,6 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Desktop sotuv bo‘limi ko‘rinishi: oddiy yoki restoran.
+/// Desktop sotuv bo‘limi ko‘rinishi: do‘kon yoki restoran.
 enum DesktopSalesLayoutMode {
   standard,
   restaurant,
@@ -29,7 +29,7 @@ class DesktopSalesLayoutSettings {
   static String modeLabel(DesktopSalesLayoutMode mode) {
     switch (mode) {
       case DesktopSalesLayoutMode.standard:
-        return 'Oddiy';
+        return "Do'kon";
       case DesktopSalesLayoutMode.restaurant:
         return 'Restoran';
     }

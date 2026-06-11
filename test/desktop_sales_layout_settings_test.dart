@@ -13,6 +13,17 @@ void main() {
     expect(await DesktopSalesLayoutSettings.getMode(), DesktopSalesLayoutMode.standard);
   });
 
+  test('mode labels', () {
+    expect(
+      DesktopSalesLayoutSettings.modeLabel(DesktopSalesLayoutMode.standard),
+      "Do'kon",
+    );
+    expect(
+      DesktopSalesLayoutSettings.modeLabel(DesktopSalesLayoutMode.restaurant),
+      'Restoran',
+    );
+  });
+
   test('restaurant mode persists', () async {
     await DesktopSalesLayoutSettings.setMode(DesktopSalesLayoutMode.restaurant);
     expect(await DesktopSalesLayoutSettings.getMode(), DesktopSalesLayoutMode.restaurant);

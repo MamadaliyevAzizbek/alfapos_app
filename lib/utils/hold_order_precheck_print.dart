@@ -69,6 +69,7 @@ class HoldOrderPrecheckPrint {
     return ThermalReceiptPrinter.printLocalReceipt(
       widget.toThermalPrintLines(),
       directOnly: directOnly,
+      openCashDrawer: false,
     );
   }
 

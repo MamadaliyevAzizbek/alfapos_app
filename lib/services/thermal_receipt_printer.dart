@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
@@ -10,6 +12,9 @@ import '../utils/api_receipt_html_parser.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
 import 'escpos_receipt_builder.dart';
+import 'printer_settings.dart';
+import 'receipt_font_settings.dart';
+import 'thermal_receipt_image_builder.dart';
 import 'receipt_design_storage.dart';
 import 'raw_printer_send.dart';
 
@@ -18,14 +23,20 @@ class ThermalReceiptPrinter {
   ThermalReceiptPrinter._();
 
   static const _prefsPrinterKey = 'thermal_printer_name_v1';
+  static String? _cachedPrinterName;
 
   static Future<String?> savedPrinterName() async {
+    final cached = _cachedPrinterName?.trim();
+    if (cached != null && cached.isNotEmpty) return cached;
     final prefs = await SharedPreferences.getInstance();
     final s = prefs.getString(_prefsPrinterKey)?.trim();
-    return (s == null || s.isEmpty) ? null : s;
+    if (s == null || s.isEmpty) return null;
+    _cachedPrinterName = s;
+    return s;
   }
 
   static Future<void> clearSavedPrinter() async {
+    _cachedPrinterName = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefsPrinterKey);
   }
@@ -43,6 +54,7 @@ class ThermalReceiptPrinter {
   static Future<ThermalPrintResult> printLocalReceipt(
     List<String> lines, {
     bool directOnly = false,
+    bool? openCashDrawer,
   }) async {
     if (lines.isEmpty) {
       return ThermalPrintResult.fail('Chek matni bo\'sh');
@@ -52,15 +64,24 @@ class ThermalReceiptPrinter {
         'Termal chop etish faqat Windows yoki macOS desktop ilovasida',
       );
     }
-    return _printEscPosLines(lines, directOnly: directOnly);
+    return _printEscPosLines(
+      lines,
+      directOnly: directOnly,
+      openCashDrawer: openCashDrawer,
+    );
   }
 
   /// Sotuv / oldindan chek — faqat mahalliy qatorlar (server API ishlatilmaydi).
   static Future<ThermalPrintResult> printSaleReceipt({
     required List<String> localLines,
     bool directOnly = false,
+    bool? openCashDrawer,
   }) =>
-      printLocalReceipt(localLines, directOnly: directOnly);
+      printLocalReceipt(
+        localLines,
+        directOnly: directOnly,
+        openCashDrawer: openCashDrawer,
+      );
 
   /// Eski API HTML chek (faqat maxsus holatlar / debug; sotuvda ishlatilmaydi).
   static Future<ThermalPrintResult> printFromApiOrder(
@@ -98,18 +119,21 @@ class ThermalReceiptPrinter {
   static Future<void> warmup() async {
     await Future.wait([
       ReceiptDesignStorage.load(),
+      ReceiptFontSettings.preload(),
       EscPosReceiptBuilder.warmup(),
+      ThermalReceiptImageBuilder.warmup(),
+      savedPrinterName(),
     ]);
   }
 
   static Future<ThermalPrintResult> _printEscPosLines(
     List<String> lines, {
     bool directOnly = false,
+    bool? openCashDrawer,
   }) async {
-    final design = await ReceiptDesignStorage.load();
-    final bytes = await EscPosReceiptBuilder.buildReceipt(
-      lines: lines,
-      design: design,
+    final bytes = await _buildEscPosBytes(
+      lines,
+      openCashDrawer: openCashDrawer,
     );
     final printer =
         await savedPrinterName() ?? await _resolveSystemPrinterName();
@@ -299,14 +323,50 @@ class ThermalReceiptPrinter {
     return names;
   }
 
+  static Future<List<int>> _buildEscPosBytes(
+    List<String> lines, {
+    bool? openCashDrawer,
+  }) async {
+    final design = await ReceiptDesignStorage.load();
+    final drawerEnabled =
+        openCashDrawer ?? await PrinterSettings.isCashDrawerOpenOnPrintEnabled();
+    final drawerPin = await PrinterSettings.cashDrawerPin();
+    final posPin =
+        drawerPin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
+
+    try {
+      return await ThermalReceiptImageBuilder.buildReceipt(
+        lines: lines,
+        design: design,
+        openCashDrawer: drawerEnabled,
+        cashDrawerPin: posPin,
+      );
+    } catch (e, st) {
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('[ThermalReceiptPrinter] Tanlangan shrift chop etish: $e\n$st');
+      }
+    }
+
+    return EscPosReceiptBuilder.buildReceipt(
+      lines: lines,
+      design: design,
+      openCashDrawer: drawerEnabled,
+      cashDrawerPin: posPin,
+    );
+  }
+
   static Future<ThermalPrintResult> printTestReceipt() async {
     return _printEscPosLines(
       [
-        'AlfaPOS',
-        'Printer testi',
+        '^AlfaPOS',
+        'Shrift testi',
+        'Do\'kon — O\'zbekiston noni',
+        'Jami: 125 000 so\'m',
         DateTime.now().toString().substring(0, 19),
       ],
       directOnly: true,
+      openCashDrawer: false,
     );
   }
 
@@ -332,8 +392,10 @@ class ThermalReceiptPrinter {
   }
 
   static Future<void> rememberPrinterName(String name) async {
+    final trimmed = name.trim();
+    _cachedPrinterName = trimmed.isEmpty ? null : trimmed;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefsPrinterKey, name);
+    await prefs.setString(_prefsPrinterKey, trimmed);
   }
 
   /// API javobidan termal chek HTML (sozlamalar ko‘rinishi uchun ham).

@@ -32,7 +32,6 @@ class _DesktopShellState extends State<DesktopShell> {
   final Set<int> _built = {0};
   int _syncGeneration = 0;
   bool _syncing = false;
-  bool _salesSidebarVisible = false;
 
   static const _sectionTitles = [
     'Statistika',
@@ -55,9 +54,6 @@ class _DesktopShellState extends State<DesktopShell> {
   void _go(int i) => setState(() {
         _built.add(i);
         _index = i;
-        if (i != salesSectionIndex) {
-          _salesSidebarVisible = false;
-        }
       });
 
   Future<void> _onGlobalSync() async {
@@ -89,6 +85,8 @@ class _DesktopShellState extends State<DesktopShell> {
           isTabActive: _index == 3,
           onLogout: widget.onLogout,
           onNavigateToTransactions: () => _go(6),
+          onOpenSectionMenu: _openSectionMenu,
+          onGlobalSync: _onGlobalSync,
         );
       case 4:
         return const KirimlarScreen();
@@ -107,9 +105,7 @@ class _DesktopShellState extends State<DesktopShell> {
 
   static const int salesSectionIndex = 3;
 
-  bool get _isSalesSection => _index == salesSectionIndex;
-
-  bool get _hideSidebar => _isSalesSection && !_salesSidebarVisible;
+  bool get _salesFullscreen => _index == salesSectionIndex;
 
   void _openSectionMenu() {
     showGeneralDialog<void>(
@@ -152,8 +148,8 @@ class _DesktopShellState extends State<DesktopShell> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              width: _hideSidebar ? 0 : _DesktopSidebar.width,
-              child: _hideSidebar
+              width: _salesFullscreen ? 0 : _DesktopSidebar.width,
+              child: _salesFullscreen
                   ? const SizedBox.shrink()
                   : _DesktopSidebar(
                       selectedIndex: _index,
@@ -166,7 +162,7 @@ class _DesktopShellState extends State<DesktopShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (!_isSalesSection)
+                if (!_salesFullscreen)
                   _DesktopTopBar(
                     title: _sectionTitles[_index],
                     syncing: _syncing,
@@ -176,12 +172,6 @@ class _DesktopShellState extends State<DesktopShell> {
                   child: DesktopShellScope(
                     syncGeneration: _syncGeneration,
                     syncing: _syncing,
-                    onOpenSectionMenu: _isSalesSection ? _openSectionMenu : null,
-                    onGlobalSync: _onGlobalSync,
-                    onToggleSalesSidebar: _isSalesSection
-                        ? () => setState(() => _salesSidebarVisible = !_salesSidebarVisible)
-                        : null,
-                    salesSidebarVisible: _salesSidebarVisible,
                     child: IndexedStack(
                       index: _index,
                       children: List.generate(9, _page),

@@ -53,6 +53,10 @@ class EscPosTextCodec {
         .replaceAll('’', "'")
         .replaceAll('ʻ', "'")
         .replaceAll('ʼ', "'")
+        .replaceAll('oʻ', "o'")
+        .replaceAll('Oʻ', "O'")
+        .replaceAll('gʻ', "g'")
+        .replaceAll('Gʻ', "G'")
         .replaceAll('“', '"')
         .replaceAll('”', '"')
         .replaceAll('—', '-')
@@ -60,6 +64,7 @@ class EscPosTextCodec {
         .replaceAll('…', '...')
         .replaceAll('₽', 'sum')
         .replaceAll('×', 'x')
-        .replaceAll('§', '');
+        .replaceAll('§', '')
+        .replaceAll('\u00A0', ' ');
   }
 }

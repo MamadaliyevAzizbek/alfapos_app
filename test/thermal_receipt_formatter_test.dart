@@ -1,6 +1,7 @@
 import 'package:alfapos_app/models/receipt_design_config.dart';
 import 'package:alfapos_app/utils/api_receipt_html_parser.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
+import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -77,6 +78,36 @@ void main() {
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
     expect(lines.any((l) => l.startsWith('1) aaaaaa')), isTrue);
     expect(lines.any((l) => l.contains('38,000') && l.contains('so')), isTrue);
+  });
+
+  test('long product and price rows keep structure with auto scale', () {
+    final lines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: 'Do\'kon',
+        dateTime: DateTime(2026, 6, 10, 14, 30),
+        receiptNumber: 'POS100',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Juda uzun mahsulot nomi restoran menyusi uchun maxsus taom',
+            quantity: '99 dona',
+            unitPrice: '1,250,000',
+            lineTotal: '123,750,000',
+          ),
+        ],
+        totalAmount: '123,750,000',
+      ),
+    );
+    final productIdx = lines.indexWhere((l) => l.contains('Juda uzun mahsulot'));
+    expect(productIdx, greaterThanOrEqualTo(0));
+    expect(lines.any((l) => l.contains('99 dona x 1,250,000')), isTrue);
+    expect(
+      lines.any(
+        (l) => l.contains('123,750,000') &&
+            (ThermalReceiptCompactText.isCompactLine(l) || l.contains('so\'m')),
+      ),
+      isTrue,
+    );
   });
 
   test('restaurant queue number prints large after title', () {

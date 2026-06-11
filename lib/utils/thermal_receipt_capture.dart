@@ -12,11 +12,22 @@ Future<Uint8List> captureReceiptForThermal(
 }) async {
   final controller = ScreenshotController();
   final ratio = thermalReceiptCapturePixelRatio();
+  final wrapped = Directionality(
+    textDirection: TextDirection.ltr,
+    child: MediaQuery(
+      data: const MediaQueryData(),
+      child: Material(
+        color: Colors.white,
+        child: receiptWidget,
+      ),
+    ),
+  );
+
   final png = await controller.captureFromWidget(
-    receiptWidget,
+    wrapped,
     context: context,
     pixelRatio: ratio,
-    delay: const Duration(milliseconds: 120),
+    delay: const Duration(milliseconds: 150),
   );
   return prepareThermalBitmap(png);
 }

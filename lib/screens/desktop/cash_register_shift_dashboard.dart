@@ -21,10 +21,11 @@ Future<void> openCashRegisterShiftDashboard(BuildContext context) async {
   }
   if (!context.mounted) return;
   if (isDesktopPosLayout) {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const CashRegisterShiftDashboardDialog(),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const CashRegisterShiftDashboardFullscreen(),
+      ),
     );
   } else {
     await Navigator.of(context).push<void>(
@@ -33,17 +34,16 @@ Future<void> openCashRegisterShiftDashboard(BuildContext context) async {
   }
 }
 
-class CashRegisterShiftDashboardDialog extends StatelessWidget {
-  const CashRegisterShiftDashboardDialog({super.key});
+/// Desktop: to‘liq ekran (Navigator route — Dialog.fullscreen ba’zi platformalarda ko‘rinmasligi mumkin).
+class CashRegisterShiftDashboardFullscreen extends StatelessWidget {
+  const CashRegisterShiftDashboardFullscreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      child: PosEditableFocusScope(
-        child: SizedBox(
-          width: MediaQuery.sizeOf(context).width * 0.92,
-          height: MediaQuery.sizeOf(context).height * 0.9,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F2F5),
+      body: SafeArea(
+        child: PosEditableFocusScope(
           child: CashRegisterShiftDashboardBody(
             compact: false,
             onRequestClose: () => Navigator.pop(context),
@@ -205,6 +205,7 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       paymentTypes: paymentTypes,
       ordersCount: '${analytics['shift_orders_count'] ?? 0}',
       scrollable: widget.compact,
+      large: !widget.compact,
     );
     final outcomePanel = _OutcomePanel(
       cashBalance: _cashFromAnalytics(analytics),
@@ -213,6 +214,7 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       expenses: formatShiftMoney(analytics['total_expenses']),
       avgCheck: formatShiftMoney(analytics['shift_avg_check']),
       scrollable: widget.compact,
+      large: !widget.compact,
     );
     final actionPanel = _ActionPanel(
       compact: widget.compact,
@@ -230,16 +232,31 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       onClose: _shift.canCloseFromInfo ? _closeShift : null,
     );
 
-    final chips = Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _infoChip('Kassir tomonidan ochilgan', (info['opened_by_name'] ?? '—').toString(), fullWidth: widget.compact),
-        _infoChip('Kassa terminali', (info['cash_register_title'] ?? _shift.cashRegisterTitle).toString(), fullWidth: widget.compact),
-        _infoChip('Ochilish vaqti', formatShiftDateTime(log['opening_time']), fullWidth: widget.compact),
-        _infoChip('Holat', statusLabel, fullWidth: widget.compact),
-      ],
-    );
+    final chips = widget.compact
+        ? Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _infoChip('Kassir tomonidan ochilgan', (info['opened_by_name'] ?? '—').toString(), fullWidth: true),
+              _infoChip('Kassa terminali', (info['cash_register_title'] ?? _shift.cashRegisterTitle).toString(), fullWidth: true),
+              _infoChip('Ochilish vaqti', formatShiftDateTime(log['opening_time']), fullWidth: true),
+              _infoChip('Holat', statusLabel, fullWidth: true),
+            ],
+          )
+        : IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _infoChip('Kassir tomonidan ochilgan', (info['opened_by_name'] ?? '—').toString(), large: true)),
+                const SizedBox(width: 16),
+                Expanded(child: _infoChip('Kassa terminali', (info['cash_register_title'] ?? _shift.cashRegisterTitle).toString(), large: true)),
+                const SizedBox(width: 16),
+                Expanded(child: _infoChip('Ochilish vaqti', formatShiftDateTime(log['opening_time']), large: true)),
+                const SizedBox(width: 16),
+                Expanded(child: _infoChip('Holat', statusLabel, large: true)),
+              ],
+            ),
+          );
 
     final staffLine = (info['shift_staff_names'] ?? '').toString();
     final contentLoading = _shift.detailLoading && _shift.shiftAnalytics == null;
@@ -279,46 +296,65 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+          padding: const EdgeInsets.fromLTRB(24, 20, 20, 12),
           child: Row(
             children: [
-              const Text('Kassa smenalari', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+              const Text('Kassa smenalari', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
               const Spacer(),
-              IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh_rounded)),
+              IconButton(
+                tooltip: 'Yangilash',
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh_rounded, size: 28),
+              ),
               if (widget.onRequestClose != null)
-                IconButton(onPressed: widget.onRequestClose, icon: const Icon(Icons.close_rounded)),
+                IconButton(
+                  tooltip: 'Yopish',
+                  onPressed: widget.onRequestClose,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    fixedSize: const Size(48, 48),
+                  ),
+                  icon: const Icon(Icons.close_rounded, size: 30),
+                ),
             ],
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: chips,
         ),
         if (staffLine.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.divider),
+              ),
               child: Text(
                 'SMENADA ISHLAYOTGANLAR: $staffLine',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
               ),
             ),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Expanded(
           child: contentLoading
               ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
               : Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(flex: 3, child: incomePanel),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 16),
                       Expanded(flex: 3, child: outcomePanel),
-                      const SizedBox(width: 12),
-                      SizedBox(width: 200, child: actionPanel),
+                      const SizedBox(width: 16),
+                      Expanded(flex: 2, child: actionPanel),
                     ],
                   ),
                 ),
@@ -338,21 +374,35 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
     return formatShiftMoney(analytics['total_current_amount']);
   }
 
-  static Widget _infoChip(String label, String value, {bool fullWidth = false}) {
+  static Widget _infoChip(String label, String value, {bool fullWidth = false, bool large = false}) {
     return Container(
-      width: fullWidth ? double.infinity : 220,
-      padding: const EdgeInsets.all(12),
+      width: fullWidth ? double.infinity : null,
+      padding: EdgeInsets.all(large ? 20 : 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(large ? 12 : 8),
         border: Border.all(color: AppTheme.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: large ? 14 : 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          SizedBox(height: large ? 10 : 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: large ? 20 : 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
+          ),
         ],
       ),
     );
@@ -364,54 +414,70 @@ class _IncomePanel extends StatelessWidget {
   final List<Map<String, dynamic>> paymentTypes;
   final String ordersCount;
   final bool scrollable;
+  final bool large;
 
   const _IncomePanel({
     required this.totalSales,
     required this.paymentTypes,
     required this.ordersCount,
     this.scrollable = false,
+    this.large = false,
   });
 
   List<Widget> get _detailRows => [
         ...paymentTypes.map((p) => _row(
               (p['payment_method'] ?? p['name'] ?? '—').toString(),
               formatShiftMoney(p['total_amount'] ?? p['amount']),
+              large: large,
             )),
         const Divider(),
-        _row('Sotilgan cheklar soni', ordersCount),
+        _row('Sotilgan cheklar soni', ordersCount, large: large),
       ];
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(large ? 24 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(large ? 12 : 8),
         border: Border.all(color: AppTheme.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: scrollable ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          const Text('DAROMAD', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-          const SizedBox(height: 12),
+          Text(
+            'DAROMAD',
+            style: TextStyle(
+              fontSize: large ? 18 : 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+          SizedBox(height: large ? 16 : 12),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(large ? 22 : 16),
             decoration: BoxDecoration(
               color: const Color(0xFFE8F4FC),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(large ? 12 : 8),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('JAMI SAVDO', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Text(totalSales, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                Text(
+                  'JAMI SAVDO',
+                  style: TextStyle(fontSize: large ? 15 : 12, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: large ? 12 : 8),
+                Text(
+                  totalSales,
+                  style: TextStyle(fontSize: large ? 36 : 28, fontWeight: FontWeight.w800),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: large ? 16 : 12),
           if (scrollable)
             ..._detailRows
           else
@@ -421,13 +487,18 @@ class _IncomePanel extends StatelessWidget {
     );
   }
 
-  static Widget _row(String label, String value) {
+  static Widget _row(String label, String value, {bool large = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: EdgeInsets.symmetric(vertical: large ? 10 : 6),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Text(label, style: TextStyle(fontSize: large ? 16 : 13)),
+          ),
+          Text(
+            value,
+            style: TextStyle(fontSize: large ? 16 : 13, fontWeight: FontWeight.w700),
+          ),
         ],
       ),
     );
@@ -441,6 +512,7 @@ class _OutcomePanel extends StatelessWidget {
   final String expenses;
   final String avgCheck;
   final bool scrollable;
+  final bool large;
 
   const _OutcomePanel({
     required this.cashBalance,
@@ -449,46 +521,60 @@ class _OutcomePanel extends StatelessWidget {
     required this.expenses,
     required this.avgCheck,
     this.scrollable = false,
+    this.large = false,
   });
 
   List<Widget> get _detailRows => [
-        _IncomePanel._row('Qaytarishlar', returns),
-        _IncomePanel._row('Kassa kirim', incomes),
-        _IncomePanel._row('Kassa chiqim', expenses),
-        _IncomePanel._row('O‘rtacha chek summasi', avgCheck),
+        _IncomePanel._row('Qaytarishlar', returns, large: large),
+        _IncomePanel._row('Kassa kirim', incomes, large: large),
+        _IncomePanel._row('Kassa chiqim', expenses, large: large),
+        _IncomePanel._row('O‘rtacha chek summasi', avgCheck, large: large),
       ];
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(large ? 24 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(large ? 12 : 8),
         border: Border.all(color: AppTheme.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: scrollable ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          const Text('CHIQIM / QAYTIM', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-          const SizedBox(height: 12),
+          Text(
+            'CHIQIM / QAYTIM',
+            style: TextStyle(
+              fontSize: large ? 18 : 14,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+          SizedBox(height: large ? 16 : 12),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(large ? 22 : 16),
             decoration: BoxDecoration(
               color: const Color(0xFFDCFCE7),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(large ? 12 : 8),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('KASSA NAQD QOLDIG‘I', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Text(cashBalance, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                Text(
+                  'KASSA NAQD QOLDIG‘I',
+                  style: TextStyle(fontSize: large ? 15 : 12, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: large ? 12 : 8),
+                Text(
+                  cashBalance,
+                  style: TextStyle(fontSize: large ? 36 : 28, fontWeight: FontWeight.w800),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: large ? 16 : 12),
           if (scrollable) ..._detailRows else Expanded(child: ListView(children: _detailRows)),
         ],
       ),
@@ -545,34 +631,47 @@ class _ActionPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < buttons.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
-          buttons[i],
-        ],
+        for (var i = 0; i < buttons.length; i++)
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(top: i > 0 ? 14 : 0),
+              child: buttons[i],
+            ),
+          ),
       ],
     );
   }
 
   Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap) {
+    final large = !compact;
     return Material(
       color: color,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(large ? 12 : 8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-          child: Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+        borderRadius: BorderRadius.circular(large ? 12 : 8),
+        child: SizedBox.expand(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              vertical: large ? 20 : 14,
+              horizontal: large ? 20 : 12,
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white, size: large ? 32 : 22),
+                SizedBox(width: large ? 16 : 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: large ? 18 : 13,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

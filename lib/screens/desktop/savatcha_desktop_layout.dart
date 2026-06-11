@@ -7,9 +7,9 @@ import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
 import '../../widgets/product_tile.dart';
-import '../../widgets/category_image_cover.dart';
+import '../../widgets/reorderable_category_grid.dart';
 import '../../services/desktop_sales_layout_settings.dart';
-import 'desktop_shell_scope.dart';
+import 'sales_nav_filters.dart';
 
 /// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
 class SavatchaDesktopLayout extends StatelessWidget {
@@ -45,6 +45,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>>? onCashRegisterSelected;
   final bool showPurchasePriceOnCards;
   final bool showUsdEquivalentOnCards;
+  final bool showSkuInProductTitle;
   /// `purchase` | `wholesale` — katalog kartochkasidagi asosiy narx.
   final String? catalogSellPriceType;
   final VoidCallback onClearCart;
@@ -81,6 +82,10 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final ValueChanged<String?> onRestaurantCategorySelected;
   final VoidCallback onRestaurantCategoryBack;
   final int Function(String categoryId)? restaurantCategoryProductCount;
+  final Future<void> Function(List<Map<String, dynamic>> reordered)? onRestaurantCategoriesReordered;
+  final VoidCallback? onOpenSectionMenu;
+  final VoidCallback? onGlobalSync;
+  final bool globalSyncing;
 
   const SavatchaDesktopLayout({
     super.key,
@@ -112,6 +117,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.onCashRegisterSelected,
     this.showPurchasePriceOnCards = false,
     this.showUsdEquivalentOnCards = false,
+    this.showSkuInProductTitle = false,
     this.catalogSellPriceType,
     required this.onClearCart,
     required this.onProductTap,
@@ -147,6 +153,10 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required this.onRestaurantCategorySelected,
     required this.onRestaurantCategoryBack,
     this.restaurantCategoryProductCount,
+    this.onRestaurantCategoriesReordered,
+    this.onOpenSectionMenu,
+    this.onGlobalSync,
+    this.globalSyncing = false,
   });
 
   int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
@@ -190,97 +200,151 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   ButtonStyle get _navLinkStyle => TextButton.styleFrom(
         foregroundColor: _navInactive,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
       );
 
   Widget _buildTopBar(BuildContext context) {
-    final scope = DesktopShellScope.maybeOf(context);
-
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: AppTheme.divider)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          if (scope?.onOpenSectionMenu != null)
-            IconButton(
-              tooltip: "Bo'limlar",
-              onPressed: scope!.onOpenSectionMenu,
-              icon: const Icon(Icons.menu_rounded, size: 26, color: _navBlue),
-            ),
-          if (onReturnModeChanged != null) ...[
-            _buildPosModeNavCards(),
-            const SizedBox(width: 12),
-          ],
-          if (onSalesList != null)
-            TextButton.icon(
-              onPressed: onSalesList,
-              style: _navLinkStyle,
-              icon: const Icon(Icons.list_alt_rounded, size: 20, color: _navInactive),
-              label: const Text("Sotish ro'yxati"),
-            ),
-          const SizedBox(width: 12),
-          _buildTopBarCashRegister(),
-          const Spacer(),
-          if (scope?.onToggleSalesSidebar != null)
-            IconButton(
-              tooltip: scope!.salesSidebarVisible ? 'To\'liq ekran' : 'Yon panelni ko\'rsatish',
-              onPressed: scope.onToggleSalesSidebar,
-              icon: Icon(
-                scope.salesSidebarVisible ? Icons.fullscreen_rounded : Icons.fullscreen_exit_rounded,
-                size: 24,
-                color: _navInactive,
-              ),
-            ),
-          IconButton(
-            tooltip: 'Sinxronlash',
-            onPressed: (scope?.syncing ?? false) ? null : scope?.onGlobalSync,
-            icon: (scope?.syncing ?? false)
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: _navBlue),
-                  )
-                : const Icon(Icons.refresh_rounded, size: 24, color: _navInactive),
-          ),
-          if (onLogout != null) ...[
-            const SizedBox(width: 4),
-            PopupMenuButton<String>(
-              tooltip: 'Hisob',
-              offset: const Offset(0, 44),
-              color: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              onSelected: (value) {
-                if (value == 'logout') onLogout!();
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem<String>(
-                  value: 'logout',
-                  child: Row(
-                    children: [
-                      Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
-                      SizedBox(width: 10),
-                      Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
-                    ],
-                  ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 1280;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildTopBarLeading(compact: compact),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SalesNavCategoryBrandFilters(
+                  categoryId: categoryFilterId,
+                  brandId: brandFilterId,
+                  categories: filterCategories,
+                  brands: filterBrands,
+                  onCategoryChanged: onCategoryFilterChanged,
+                  onBrandChanged: onBrandFilterChanged,
+                  expand: true,
                 ),
-              ],
-              child: const CircleAvatar(
-                radius: 18,
-                backgroundColor: _navBlue,
-                child: Icon(Icons.person_rounded, color: Colors.white, size: 20),
               ),
-            ),
-          ],
-        ],
+              const SizedBox(width: 12),
+              _buildTopBarActions(compact: compact),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildPosModeNavCards() {
+  Widget _buildTopBarLeading({required bool compact}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onOpenSectionMenu != null) ...[
+          IconButton(
+            tooltip: 'Bo\'limlar',
+            onPressed: onOpenSectionMenu,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.menu_rounded, size: compact ? 24 : 26, color: AppTheme.textPrimary),
+          ),
+          SizedBox(width: compact ? 4 : 8),
+        ],
+        Text(
+          "Sotuv bo'limi",
+          style: TextStyle(
+            fontSize: compact ? 16 : 18,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        SizedBox(width: compact ? 12 : 16),
+        Icon(Icons.point_of_sale_rounded, color: _navBlue, size: compact ? 20 : 22),
+        const SizedBox(width: 6),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: compact ? 110 : 140),
+          child: Text(
+            cashRegisterLabel,
+            style: TextStyle(
+              fontSize: compact ? 14 : 15,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopBarActions({required bool compact}) {
+    final linkStyle = compact
+        ? _navLinkStyle.copyWith(
+            padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
+            textStyle: WidgetStateProperty.all(const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          )
+        : _navLinkStyle;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onReturnModeChanged != null) _buildPosModeNavCards(compact: compact),
+        if (onOpenShiftDashboard != null)
+          TextButton.icon(
+            onPressed: onOpenShiftDashboard,
+            style: linkStyle,
+            icon: Icon(Icons.account_balance_wallet_outlined, size: compact ? 20 : 22, color: _navInactive),
+            label: const Text('Kassa smenasi'),
+          ),
+        if (onSalesList != null)
+          TextButton.icon(
+            onPressed: onSalesList,
+            style: linkStyle,
+            icon: Icon(Icons.list_alt_rounded, size: compact ? 20 : 22, color: _navInactive),
+            label: const Text("Sotish ro'yxati"),
+          ),
+        if (onGlobalSync != null)
+          IconButton(
+            tooltip: 'Sinxronlash',
+            onPressed: globalSyncing ? null : onGlobalSync,
+            icon: globalSyncing
+                ? SizedBox(
+                    width: compact ? 20 : 22,
+                    height: compact ? 20 : 22,
+                    child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                  )
+                : Icon(Icons.sync_rounded, size: compact ? 22 : 24, color: const Color(0xFF2563EB)),
+          ),
+        if (onLogout != null)
+          PopupMenuButton<String>(
+            tooltip: 'Hisob',
+            offset: const Offset(0, 48),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            icon: Icon(Icons.person_outline_rounded, color: _navBlue, size: compact ? 24 : 26),
+            onSelected: (value) {
+              if (value == 'logout') onLogout!();
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
+                    SizedBox(width: 10),
+                    Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPosModeNavCards({bool compact = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -289,13 +353,15 @@ class SavatchaDesktopLayout extends StatelessWidget {
           icon: Icons.shopping_cart_outlined,
           selected: !isReturnMode,
           onTap: () => onReturnModeChanged?.call(false),
+          compact: compact,
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: compact ? 8 : 12),
         _navModeCard(
           label: 'Qaytarishlar',
           icon: Icons.replay_rounded,
           selected: isReturnMode,
           onTap: () => onReturnModeChanged?.call(true),
+          compact: compact,
         ),
       ],
     );
@@ -306,6 +372,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required IconData icon,
     required bool selected,
     required VoidCallback onTap,
+    bool compact = false,
   }) {
     if (selected) {
       return Material(
@@ -317,16 +384,16 @@ class SavatchaDesktopLayout extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 16, vertical: compact ? 9 : 10),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
+                Icon(icon, color: Colors.white, size: compact ? 18 : 20),
+                SizedBox(width: compact ? 6 : 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    fontSize: 14,
+                  style: TextStyle(
+                    fontSize: compact ? 14 : 15,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
@@ -340,9 +407,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
     return TextButton.icon(
       onPressed: onTap,
-      style: _navLinkStyle,
-      icon: Icon(icon, size: 20, color: _navInactive),
-      label: Text(label),
+      style: compact
+          ? _navLinkStyle.copyWith(
+              padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
+            )
+          : _navLinkStyle,
+      icon: Icon(icon, size: compact ? 20 : 22, color: _navInactive),
+      label: Text(label, style: TextStyle(fontSize: compact ? 14 : 15)),
     );
   }
 
@@ -417,6 +488,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              _buildCatalogRegisterSelector(),
               const SizedBox(width: 8),
               _buildCatalogFilterButton(),
             ],
@@ -496,6 +569,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                                   catalogSellPriceType: catalogSellPriceType,
                                   showPurchasePrice: showPurchasePriceOnCards,
                                   showUsdEquivalent: showUsdEquivalentOnCards,
+                                  showSkuInTitle: showSkuInProductTitle,
                                   onTap: () => onProductTap(catalogProducts[i]),
                                 ),
                               ),
@@ -523,66 +597,65 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
-  String _cashRegisterTitle() {
+  Widget _buildCatalogRegisterSelector() {
     final register = _selectedRegister();
-    if (register != null) {
-      return (register['name'] ?? register['title'] ?? cashRegisterLabel).toString();
-    }
-    return cashRegisterLabel;
-  }
-
-  Widget _buildTopBarCashRegister() {
-    final title = _cashRegisterTitle().toUpperCase();
+    final label = register != null
+        ? (register['name'] ?? register['title'] ?? cashRegisterLabel).toString()
+        : cashRegisterLabel;
 
     if (cashRegisters.length > 1 && onCashRegisterSelected != null) {
-      return PopupMenuButton<Map<String, dynamic>>(
-        tooltip: 'Kassa tanlash',
-        offset: const Offset(0, 44),
-        color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        onSelected: onCashRegisterSelected,
-        itemBuilder: (context) => cashRegisters
-            .map(
-              (r) => PopupMenuItem(
-                value: r,
-                child: Text((r['name'] ?? r['title'] ?? 'Kassa').toString()),
-              ),
-            )
-            .toList(),
-        child: _cashRegisterChip(title: title, showMenuIcon: true),
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 140, maxWidth: 200),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppTheme.divider),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<Map<String, dynamic>>(
+              isExpanded: true,
+              value: register,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textSecondary),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+              items: cashRegisters
+                  .map(
+                    (r) => DropdownMenuItem(
+                      value: r,
+                      child: Text(
+                        (r['name'] ?? r['title'] ?? 'Kassa').toString(),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (r) {
+                if (r != null) onCashRegisterSelected!(r);
+              },
+            ),
+          ),
+        ),
       );
     }
 
-    return _cashRegisterChip(title: title, showMenuIcon: false);
-  }
-
-  Widget _cashRegisterChip({required String title, required bool showMenuIcon}) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.divider),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.point_of_sale_outlined, size: 18, color: _navInactive),
-          const SizedBox(width: 8),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 180),
-            child: Text(
-              title,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
-            ),
-          ),
-          if (showMenuIcon) ...[
-            const SizedBox(width: 4),
-            const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppTheme.textSecondary),
-          ],
-        ],
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 140, maxWidth: 200),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.divider),
+        ),
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
@@ -620,37 +693,14 @@ class SavatchaDesktopLayout extends StatelessWidget {
       return count == null || count > 0;
     }).toList();
 
-    if (visible.isEmpty) {
-      return const Center(
-        child: Text(
-          'Kategoriya topilmadi',
-          style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-        ),
-      );
-    }
-
-    return GridView.builder(
-      key: const ValueKey('restaurant-categories'),
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.05,
-      ),
-      itemCount: visible.length,
-      itemBuilder: (context, i) {
-        final cat = visible[i];
-        final id = cat['id']!.toString();
-        final name = cat['name']?.toString().trim() ?? 'Kategoriya';
-        final count = restaurantCategoryProductCount?.call(id);
-        return _DesktopCategoryCard(
-          key: ValueKey('cat-$id'),
-          name: name,
-          imageUrl: cat['imageUrl']?.toString(),
-          productCount: count,
-          onTap: () => onRestaurantCategorySelected(id),
-        );
+    return ReorderableCategoryGrid(
+      categories: visible,
+      productCount: restaurantCategoryProductCount,
+      onCategorySelected: onRestaurantCategorySelected,
+      onOrderChanged: (reordered) async {
+        if (onRestaurantCategoriesReordered != null) {
+          await onRestaurantCategoriesReordered!(reordered);
+        }
       },
     );
   }
@@ -935,82 +985,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 }
 
-class _DesktopCategoryCard extends StatelessWidget {
-  final String name;
-  final String? imageUrl;
-  final int? productCount;
-  final VoidCallback onTap;
-
-  const _DesktopCategoryCard({
-    super.key,
-    required this.name,
-    this.imageUrl,
-    this.productCount,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: AppTheme.divider),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return CategoryImageCover.build(
-                    imageUrl,
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    fallbackIcon: Icons.restaurant_menu_rounded,
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-              child: Column(
-                children: [
-                  Text(
-                    name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                  ),
-                  if (productCount != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '$productCount ta',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _DesktopProductCard extends StatelessWidget {
   final Product product;
   final double usdRate;
   final String? catalogSellPriceType;
   final bool showPurchasePrice;
   final bool showUsdEquivalent;
+  final bool showSkuInTitle;
   final VoidCallback onTap;
 
   const _DesktopProductCard({
@@ -1020,6 +1001,7 @@ class _DesktopProductCard extends StatelessWidget {
     this.catalogSellPriceType,
     this.showPurchasePrice = false,
     this.showUsdEquivalent = false,
+    this.showSkuInTitle = false,
     required this.onTap,
   });
 
@@ -1071,7 +1053,7 @@ class _DesktopProductCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          product.nameWithSku,
+                          showSkuInTitle ? product.nameWithSku : product.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),

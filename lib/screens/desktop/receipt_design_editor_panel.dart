@@ -371,7 +371,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
             }
             final previewDesign = _readFromControllers();
             final standardPreview = _previewBox(
-              title: 'Oddiy sotuv cheki',
+              title: "Do'kon sotuv cheki",
               lines: _previewLines,
               design: previewDesign,
             );

@@ -13,6 +13,10 @@ import '../models/product.dart';
 import '../providers/clients_provider.dart';
 import '../services/api_service.dart';
 import '../providers/categories_provider.dart';
+import '../services/category_order_storage.dart';
+import '../services/product_catalog_sort_settings.dart';
+import '../utils/category_order_sort.dart';
+import '../utils/product_catalog_sort.dart';
 import '../providers/products_provider.dart';
 import '../utils/filter_options_parser.dart';
 import '../utils/product_search.dart';
@@ -22,7 +26,9 @@ import '../utils/product_catalog_filter.dart';
 import '../utils/sales_products.dart';
 import '../utils/sales_products_request_body.dart';
 import '../utils/hold_orders_response.dart';
+import '../utils/sale_store_validation.dart';
 import '../utils/sales_payment_types.dart';
+import '../utils/tolovsiz_payment.dart';
 import '../utils/sales_store_body.dart';
 import '../utils/cash_register_utils.dart';
 import 'cash_register_shift_provider.dart';
@@ -46,6 +52,8 @@ class SalesSessionProvider extends ChangeNotifier {
   List<Map<String, dynamic>> categories = [];
   List<Map<String, dynamic>> brands = [];
   List<Map<String, dynamic>> paymentTypes = [];
+  /// GET /support/sales-settings — "1" bo'lsa to'lovsiz yoqilgan.
+  bool salesTolovsizPaymentEnabled = false;
   double usdRate = 1;
 
   String? categoryId;
@@ -131,6 +139,10 @@ class SalesSessionProvider extends ChangeNotifier {
     if (pt is List) {
       paymentTypes = pt.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     }
+    salesTolovsizPaymentEnabled = TolovsizPayment.isEnabled(
+      meta['salesTolovsizPaymentEnabled'],
+    );
+    _applyTolovsizFallbackFromPaymentTypes();
     final cat = meta['categories'];
     if (cat is List) {
       categories = cat.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -150,6 +162,7 @@ class SalesSessionProvider extends ChangeNotifier {
       'branchName': branchName,
       'usdRate': usdRate,
       'paymentTypes': paymentTypes,
+      'salesTolovsizPaymentEnabled': salesTolovsizPaymentEnabled ? '1' : '0',
       'categories': categories,
       'brands': brands,
     });
@@ -194,6 +207,8 @@ class SalesSessionProvider extends ChangeNotifier {
     await ApiPacing.staggerPause();
     await _loadPaymentTypes();
     await ApiPacing.staggerPause();
+    await _loadSalesSettings();
+    await ApiPacing.staggerPause();
     await _loadCurrencies();
     await ApiPacing.staggerPause();
     await _loadFilterLists(force: true);
@@ -235,6 +250,7 @@ class SalesSessionProvider extends ChangeNotifier {
     branchId = parsed.$1;
     branchName = parsed.$2;
     await SalesApi.setBranch(branchID: branchId!, orderType: 'sales');
+    SaleStoreValidation.markBranchSynced(branchId!);
   }
 
   /// GET /sales/branches — `{ text, value }` yoki `{ id, name }`.
@@ -260,6 +276,46 @@ class SalesSessionProvider extends ChangeNotifier {
   Future<void> _loadPaymentTypes() async {
     final res = await SalesApi.getPaymentTypes();
     paymentTypes = parseSalesPaymentTypesResponse(res);
+  }
+
+  Future<void> _loadSalesSettings() async {
+    try {
+      final res = await SalesApi.getSalesSettings();
+      salesTolovsizPaymentEnabled = TolovsizPayment.parseEnabledFromSettingsResponse(res);
+    } catch (_) {}
+  }
+
+  DateTime? _paymentMetaLastRefresh;
+
+  /// To'lov oynasi: sozlama + to'lov turlarini serverdan yangilash (to'lovsiz uchun).
+  Future<void> ensureTolovsizPaymentReady({bool force = false}) async {
+    final now = DateTime.now();
+    if (!force &&
+        _paymentMetaLastRefresh != null &&
+        now.difference(_paymentMetaLastRefresh!) < const Duration(minutes: 5)) {
+      return;
+    }
+    await Future.wait([
+      _loadSalesSettings(),
+      _loadPaymentTypes(),
+    ]);
+    _applyTolovsizFallbackFromPaymentTypes();
+    _paymentMetaLastRefresh = now;
+    await _persistSessionSnapshot();
+    notifyListeners();
+  }
+
+  /// Sozlamalar API ishlamasa — payment-types dagi `tolovsiz` turidan xulosa.
+  void applyTolovsizFallbackFromPaymentTypes() => _applyTolovsizFallbackFromPaymentTypes();
+
+  void _applyTolovsizFallbackFromPaymentTypes() {
+    if (salesTolovsizPaymentEnabled) return;
+    for (final pt in paymentTypes) {
+      if (TolovsizPayment.isPaymentType(pt)) {
+        salesTolovsizPaymentEnabled = true;
+        return;
+      }
+    }
   }
 
   /// To'lov oynasi ochilishidan oldin — sessiyada kesh bo'lsa API chaqirilmaydi.
@@ -340,7 +396,12 @@ class SalesSessionProvider extends ChangeNotifier {
         list = _filterIdNameByCompany(CategoriesProvider.instance.idNameOptions, cid);
       } catch (_) {}
     }
-    return list;
+    final ids = list
+        .map((e) => e['id']?.toString().trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final order = await CategoryOrderStorage.mergeWithCategoryIds(ids);
+    return CategoryOrderSort.apply(list, order);
   }
 
   List<Map<String, dynamic>> _filterIdNameByCompany(
@@ -399,7 +460,11 @@ class SalesSessionProvider extends ChangeNotifier {
     if (hideZeroStock) {
       list = list.where((p) => p.hasStock).toList();
     }
-    return list;
+    return ProductCatalogSort.apply(
+      list,
+      mode: ProductCatalogSortSettings.sortMode.value,
+      usdRate: usdRate > 0 ? usdRate : 12600,
+    );
   }
 
   Future<void> _loadCashRegisters() async {

@@ -307,15 +307,17 @@ class ThermalReceiptFormatter {
     var n = 0;
     for (final p in d.products) {
       n++;
-      if (config.numberedProducts) {
-        left('$n) ${p.name}');
-      } else {
-        left(p.name);
+      for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
+        p.name,
+        numbered: config.numberedProducts,
+        index: n,
+      )) {
+        left(nameLine);
       }
       final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
       final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
-      lines.add(
-        ThermalReceiptLineWrap.formatTwoColumns(
+      lines.addAll(
+        ThermalReceiptLineWrap.formatTwoColumnRows(
           qtyPart,
           sumPart,
           rightWidth: kReceiptAmountColumnWidth,
@@ -328,8 +330,8 @@ class ThermalReceiptFormatter {
 
     if (!d.isPrecheck) {
       for (final pay in d.payments) {
-        lines.add(
-          ThermalReceiptLineWrap.formatTwoColumns(
+        lines.addAll(
+          ThermalReceiptLineWrap.formatTwoColumnRows(
             pay.method,
             som(formatAmountForReceipt(pay.amount)),
             rightWidth: kReceiptAmountColumnWidth,
@@ -340,8 +342,8 @@ class ThermalReceiptFormatter {
 
     final discountValue = formatAmountForReceipt(d.discountAmount);
     if (discountValue != '0' && discountValue.isNotEmpty) {
-      lines.add(
-        ThermalReceiptLineWrap.formatTwoColumns(
+      lines.addAll(
+        ThermalReceiptLineWrap.formatTwoColumnRows(
           config.discountLabel,
           som(discountValue),
           rightWidth: kReceiptAmountColumnWidth,
@@ -353,8 +355,8 @@ class ThermalReceiptFormatter {
     } else if (config.showItemSeparator) {
       lines.add(sep);
     }
-    lines.add(
-      ThermalReceiptLineWrap.formatTwoColumns(
+    lines.addAll(
+      ThermalReceiptLineWrap.formatTwoColumnRows(
         config.totalLabel,
         som(formatAmountForReceipt(d.totalAmount)),
         rightWidth: kReceiptAmountColumnWidth,

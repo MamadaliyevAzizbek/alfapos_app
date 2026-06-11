@@ -43,7 +43,12 @@ import '../utils/catalog_product_price_label.dart';
 import '../utils/hold_order_cart.dart';
 import '../utils/hold_order_precheck_excel_export.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../services/category_order_storage.dart';
 import '../services/desktop_sales_layout_settings.dart';
+import '../services/product_catalog_sort_settings.dart';
+import '../services/product_display_settings.dart';
+import '../utils/category_order_sort.dart';
+import '../utils/product_catalog_sort.dart';
 import '../utils/hold_cart_action.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 import '../widgets/sales_customer_search.dart';
@@ -57,12 +62,16 @@ class SavatchaScreen extends StatefulWidget {
   final VoidCallback? onNavigateToTransactions;
   /// Desktop IndexedStack: boshqa tabda bo‘lsa katalog autofokus ishlamasin.
   final bool isTabActive;
+  final VoidCallback? onOpenSectionMenu;
+  final VoidCallback? onGlobalSync;
 
   const SavatchaScreen({
     super.key,
     this.onLogout,
     this.onNavigateToTransactions,
     this.isTabActive = true,
+    this.onOpenSectionMenu,
+    this.onGlobalSync,
   });
 
   @override
@@ -94,6 +103,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   bool _isReturnMode = false;
   DesktopSalesLayoutMode _desktopSalesLayoutMode = DesktopSalesLayoutMode.standard;
   String? _restaurantCategoryId;
+  List<String> _categoryOrderIds = [];
 
   Future<void> _onRefresh() async {
     if (isDesktopPosLayout) {
@@ -111,9 +121,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   /// Mahsulotlar (Katalog) bilan bir xil manba — to'liq mahalliy katalog.
   List<Product> _catalogProductsForSearch() {
     final catalog = ProductsProvider.instance.withCatalogStockAll(_products.items);
-    if (catalog.isNotEmpty) return catalog;
+    if (catalog.isNotEmpty) return _sortCatalogProducts(catalog);
     if (_sales.salesProducts.isNotEmpty) {
-      return ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts);
+      return _sortCatalogProducts(
+        ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts),
+      );
     }
     return catalog;
   }
@@ -169,16 +181,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   List<Product> get _restaurantCategoryProducts {
     final catId = _restaurantCategoryId;
     if (catId == null) return [];
-    return ProductCatalogFilter.apply(
-      _desktopBrowseProducts,
-      categoryId: catId,
-      categories: _sales.categories,
+    return _sortCatalogProducts(
+      ProductCatalogFilter.apply(
+        _desktopBrowseProducts,
+        categoryId: catId,
+        categories: _sales.categories,
+      ),
     );
   }
 
   List<Map<String, dynamic>> get _restaurantCategoriesWithImages {
     final cats = CategoriesProvider.instance;
-    return _sales.categories
+    final base = _sales.categories
         .map((c) {
           final id = c['id']?.toString();
           return {
@@ -187,6 +201,28 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           };
         })
         .toList();
+    return CategoryOrderSort.apply(base, _categoryOrderIds);
+  }
+
+  Future<void> _reloadCategoryOrder() async {
+    final ids = _sales.categories
+        .map((c) => c['id']?.toString().trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList();
+    _categoryOrderIds = await CategoryOrderStorage.mergeWithCategoryIds(ids);
+    _sales.categories = CategoryOrderSort.apply(_sales.categories, _categoryOrderIds);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _onRestaurantCategoriesReordered(List<Map<String, dynamic>> reordered) async {
+    final ids = reordered
+        .map((c) => c['id']?.toString().trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList();
+    await CategoryOrderStorage.saveOrderedIds(ids);
+    _categoryOrderIds = ids;
+    _sales.categories = CategoryOrderSort.apply(_sales.categories, ids);
+    if (mounted) setState(() {});
   }
 
   void _onCashShiftChanged() {
@@ -196,9 +232,29 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
   }
 
+  void _onProductDisplayChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onProductCatalogSortChanged() {
+    if (mounted) setState(() {});
+  }
+
+  List<Product> _sortCatalogProducts(List<Product> list) {
+    return ProductCatalogSort.apply(
+      list,
+      mode: ProductCatalogSortSettings.sortMode.value,
+      usdRate: _sales.usdRate > 0 ? _sales.usdRate : 12600,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    ProductDisplaySettings.showSkuInTitle.addListener(_onProductDisplayChanged);
+    ProductCatalogSortSettings.sortMode.addListener(_onProductCatalogSortChanged);
+    unawaited(ProductDisplaySettings.load());
+    unawaited(ProductCatalogSortSettings.load());
     _cartSub = _cart.stream.listen((_) {
       if (mounted) setState(() {});
     });
@@ -211,7 +267,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (isDesktopPosLayout) {
       FocusManager.instance.addListener(_onDesktopFocusChanged);
       _categoriesSub = CategoriesProvider.instance.stream.listen((_) {
-        if (mounted) setState(() {});
+        if (mounted) {
+          unawaited(_reloadCategoryOrder());
+        }
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -226,6 +284,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         unawaited(CategoriesProvider.instance.loadFromStorage(refreshInBackground: false));
         unawaited(_refreshSavedOrdersCount());
         unawaited(ThermalReceiptPrinter.warmup());
+        unawaited(_reloadCategoryOrder());
       } else {
         final shift = CashRegisterShiftProvider.instance;
         await shift.ensureCurrentUserId();
@@ -311,6 +370,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   void _onSalesSessionChanged() {
     _syncDiscountPercentField();
+    unawaited(_reloadCategoryOrder());
     if (mounted) setState(() {});
     if (_barcodeSearchInFlight) return;
     final pending = _sales.takePendingBarcodeProduct();
@@ -322,6 +382,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   @override
   void dispose() {
+    ProductDisplaySettings.showSkuInTitle.removeListener(_onProductDisplayChanged);
+    ProductCatalogSortSettings.sortMode.removeListener(_onProductCatalogSortChanged);
     _cartSub?.cancel();
     _productsSub?.cancel();
     _categoriesSub?.cancel();
@@ -454,14 +516,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (_sales.hideZeroStock) {
         list = list.where((p) => p.hasStock).toList();
       }
-      return list;
+      return _sortCatalogProducts(list);
     }
     if (_products.items.isNotEmpty) {
       var list = ProductsProvider.instance.withCatalogStockAll(_products.items);
       if (_sales.hideZeroStock) {
         list = list.where((p) => p.hasStock).toList();
       }
-      return list;
+      return _sortCatalogProducts(list);
     }
     return _sales.catalogProductsVisible;
   }
@@ -647,7 +709,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                                 final sellType = _sales.activeSellPriceType;
                                 return ProductTile(
                                   product: p,
-                                  showSkuInTitle: true,
+                                  showSkuInTitle: ProductDisplaySettings.showSkuInTitle.value,
                                   primaryPriceLabel: CatalogProductPriceLabel.primary(
                                     p,
                                     sellType: sellType,
@@ -975,6 +1037,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         },
         showPurchasePriceOnCards: _sales.showPurchasePrice,
         showUsdEquivalentOnCards: _sales.showUsdEquivalent,
+        showSkuInProductTitle: ProductDisplaySettings.showSkuInTitle.value,
         catalogSellPriceType: _sales.activeSellPriceType,
         sellerName: _sellerName.isNotEmpty ? _sellerName : 'Sotuvchi',
         cartGrandTotal: _cartGrandTotal,
@@ -1091,6 +1154,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           setState(() => _restaurantCategoryId = null);
         },
         restaurantCategoryProductCount: _restaurantCategoryProductCount,
+        onRestaurantCategoriesReordered: _onRestaurantCategoriesReordered,
+        onOpenSectionMenu: widget.onOpenSectionMenu,
+        onGlobalSync: widget.onGlobalSync,
+        globalSyncing: DesktopShellScope.maybeOf(context)?.syncing ?? false,
         ),
       ),
     );
@@ -1117,6 +1184,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (_isReturnMode == returnMode) return;
     if (_cart.items.isNotEmpty) _clearCart();
     setState(() => _isReturnMode = returnMode);
+    if (returnMode) {
+      unawaited(() async {
+        try {
+          await SalesApi.setReturnsType();
+        } catch (_) {}
+      }());
+    }
   }
 
   Future<void> _onCustomerSelected(Client? client) async {
@@ -1568,9 +1642,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void _openPayment(BuildContext context) {
     final items = _cart.items;
     if (items.isEmpty) return;
-    if (isDesktopPosLayout) {
-      unawaited(SalesSessionProvider.instance.ensurePaymentTypesLoaded());
-    }
     final orderId = _activeHoldOrderId;
     final invoiceId = _activeHoldInvoiceId;
     final client = _selectedClient;

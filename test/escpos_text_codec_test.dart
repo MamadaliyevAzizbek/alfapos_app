@@ -34,4 +34,21 @@ void main() {
     const text = 'Test \u{1F600} price';
     expect(() => EscPosTextCodec.encodeSync(text), returnsNormally);
   });
+
+  test('uzbek latin apostrophes normalize and encode', () {
+    const text = "So'm, o'g'il, g'isht, Naqd pul";
+    final bytes = EscPosTextCodec.encodeSync(text);
+    final decoded = cp866.decode(bytes);
+    expect(decoded, contains("So'm"));
+    expect(decoded, contains("o'g'il"));
+    expect(decoded, contains("g'isht"));
+  });
+
+  test('curly uzbek apostrophes normalize to ascii apostrophe', () {
+    const text = 'oʻtkazildi Gʻalla';
+    final bytes = EscPosTextCodec.encodeSync(text);
+    final decoded = cp866.decode(bytes);
+    expect(decoded, contains("o'"));
+    expect(decoded, contains("G'"));
+  });
 }

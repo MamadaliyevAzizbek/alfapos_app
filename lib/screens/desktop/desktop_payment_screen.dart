@@ -107,6 +107,10 @@ class DesktopPaymentLayout extends StatefulWidget {
   final bool isReturnCheckout;
   final int returnRefundDue;
   final bool returnCreditUsesGeneralDebt;
+  final int tolovsizPreviewBalancePart;
+  final int tolovsizPreviewCreditPart;
+  final int tolovsizReturnDebtPart;
+  final int tolovsizReturnBalancePart;
 
   const DesktopPaymentLayout({
     super.key,
@@ -147,6 +151,10 @@ class DesktopPaymentLayout extends StatefulWidget {
     this.isReturnCheckout = false,
     this.returnRefundDue = 0,
     this.returnCreditUsesGeneralDebt = false,
+    this.tolovsizPreviewBalancePart = 0,
+    this.tolovsizPreviewCreditPart = 0,
+    this.tolovsizReturnDebtPart = 0,
+    this.tolovsizReturnBalancePart = 0,
   });
 
   @override
@@ -366,6 +374,40 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (widget.tolovsizPreviewBalancePart > 0 ||
+                          widget.tolovsizPreviewCreditPart > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF81C784)),
+                          ),
+                          child: Text(
+                            "To'lovsiz: balansdan ${formatThousands(widget.tolovsizPreviewBalancePart)} UZS, "
+                            "qarzga ${formatThousands(widget.tolovsizPreviewCreditPart)} UZS",
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (widget.tolovsizReturnDebtPart > 0 ||
+                          widget.tolovsizReturnBalancePart > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE3F2FD),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF64B5F6)),
+                          ),
+                          child: Text(
+                            "To'lovsiz qaytarish: qarzdan ${formatThousands(widget.tolovsizReturnDebtPart)} UZS, "
+                            "balansga ${formatThousands(widget.tolovsizReturnBalancePart)} UZS",
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       if (widget.isReturnCheckout) ...[
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -374,9 +416,11 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: const Color(0xFFFFB74D)),
                           ),
-                          child: const Text(
-                            'Ichki qaytarish: to\'lov summalari mijozga qaytariladi. Mijoz balansi bu rejimda ishlatilmaydi.',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          child: Text(
+                            widget.tolovsizReturnDebtPart > 0 || widget.tolovsizReturnBalancePart > 0
+                                ? "Ichki qaytarish: to'lovsiz tanlangan — avval qarz kamayadi, qolgani balansga qo'shiladi."
+                                : "Ichki qaytarish: to'lov summalari mijozga qaytariladi. Mijoz balansi bu rejimda ishlatilmaydi.",
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                           ),
                         ),
                         if (widget.returnCreditUsesGeneralDebt) ...[
