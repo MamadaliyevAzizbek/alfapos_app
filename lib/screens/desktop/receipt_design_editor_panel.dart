@@ -9,6 +9,7 @@ import '../../models/receipt_design_config.dart';
 import '../../services/local_receipt_sample.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../widgets/receipt_lines_preview.dart';
+import '../../widgets/receipt_logo_image.dart';
 
 /// Sozlamalar: chek matnlari, logo va ko‘rinish tahriri.
 class ReceiptDesignEditorPanel extends StatefulWidget {
@@ -126,8 +127,11 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      var c = await ReceiptDesignStorage.load();
-      if (c.showLogo && !await ReceiptDesignStorage.logoFileExists(c.logoFilePath)) {
+      ReceiptDesignStorage.invalidateCache();
+      var c = await ReceiptDesignStorage.reload();
+      final hasCustomPath =
+          c.logoFilePath != null && c.logoFilePath!.trim().isNotEmpty;
+      if (c.showLogo && !hasCustomPath) {
         final path = await ReceiptDesignStorage.copyBundledDefaultLogoIfNeeded();
         if (path != null) {
           c = c.copyWith(logoFilePath: path);
@@ -196,14 +200,29 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
     final path = result.files.single.path;
     if (path == null || path.isEmpty) return;
     try {
-      var c = await ReceiptDesignStorage.saveLogoFromPath(_readFromControllers(), path);
-      await ReceiptDesignStorage.save(c);
+      final picked = result.files.single;
+      final ReceiptDesignConfig c;
+      if (path != null && path.isNotEmpty) {
+        c = await ReceiptDesignStorage.saveLogoFromPath(
+          _readFromControllers(),
+          path,
+        );
+      } else if (picked.bytes != null && picked.bytes!.isNotEmpty) {
+        c = await ReceiptDesignStorage.saveLogoFromBytes(
+          _readFromControllers(),
+          picked.bytes!,
+          extension: '.png',
+        );
+      } else {
+        throw StateError('Logo faylini o\'qib bo\'lmadi');
+      }
       if (!mounted) return;
       setState(() => _config = c);
       AppNotify.success(context, 'Logo saqlandi');
       await _refreshPreview();
+      widget.onSaved?.call();
     } catch (e) {
-      if (mounted) AppNotify.error(context, 'Logo: $e');
+      if (mounted) AppNotify.error(context, 'Logo saqlanmadi: $e');
     }
   }
 
@@ -213,6 +232,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
     if (!mounted) return;
     setState(() => _config = c);
     await _refreshPreview();
+    widget.onSaved?.call();
   }
 
   void _applyLocal(ReceiptDesignConfig c) {
@@ -450,7 +470,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
           ),
           clipBehavior: Clip.antiAlias,
           child: _config.showLogo && hasFile
-              ? Image.file(File(path), fit: BoxFit.contain)
+              ? ReceiptLogoImage(path: path, fit: BoxFit.contain)
               : Icon(Icons.image_outlined, size: 40, color: Colors.grey.shade400),
         ),
         const SizedBox(width: 16),

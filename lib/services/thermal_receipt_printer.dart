@@ -327,7 +327,7 @@ class ThermalReceiptPrinter {
     List<String> lines, {
     bool? openCashDrawer,
   }) async {
-    final design = await ReceiptDesignStorage.load();
+    final design = await ReceiptDesignStorage.reload();
     final drawerEnabled =
         openCashDrawer ?? await PrinterSettings.isCashDrawerOpenOnPrintEnabled();
     final drawerPin = await PrinterSettings.cashDrawerPin();

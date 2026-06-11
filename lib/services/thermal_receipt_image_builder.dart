@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/receipt_design_config.dart';
+import '../services/receipt_design_storage.dart';
 import '../services/receipt_font_settings.dart';
 import '../utils/thermal_receipt_capture.dart';
 import '../widgets/receipt_lines_preview.dart';
@@ -35,7 +36,7 @@ class ThermalReceiptImageBuilder {
       throw StateError('Chek matni bo\'sh');
     }
 
-    final cfg = design ?? ReceiptDesignConfig.defaults;
+    final cfg = design ?? await ReceiptDesignStorage.reload();
     final font = await ReceiptFontSettings.getSelectedFont();
     await ReceiptFontSettings.ensureFontLoaded(font);
     final png = await captureReceiptForThermal(

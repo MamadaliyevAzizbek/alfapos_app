@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/receipt_design_config.dart';
 import '../services/receipt_font_settings.dart';
+import 'receipt_logo_image.dart';
 import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
@@ -54,6 +55,7 @@ class ThermalReceiptPreview extends StatelessWidget {
 
   Widget _buildBody(ReceiptFontId font) {
     return Container(
+      key: ValueKey('receipt_preview_${design.logoFilePath}_${design.showLogo}'),
       width: width,
       padding: const EdgeInsets.all(12),
       color: forPrint ? Colors.white : null,
@@ -70,10 +72,11 @@ class ThermalReceiptPreview extends StatelessWidget {
         children: [
           if (_showLogo) ...[
             Center(
-              child: Image.file(
-                File(design.logoFilePath!),
+              child: ReceiptLogoImage(
+                path: design.logoFilePath!,
                 height: 56,
                 fit: BoxFit.contain,
+                forceSync: forPrint,
               ),
             ),
             const SizedBox(height: 8),

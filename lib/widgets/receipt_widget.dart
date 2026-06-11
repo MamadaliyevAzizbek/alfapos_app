@@ -8,6 +8,7 @@ import '../utils/receipt_store_title.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
+import 'receipt_logo_image.dart';
 
 /// Bir qator chek qatori: mahsulot, miqdor, narx, summa
 class ReceiptRow {
@@ -164,8 +165,8 @@ class ReceiptWidget extends StatelessWidget {
               design.logoFilePath!.isNotEmpty &&
               File(design.logoFilePath!).existsSync()) ...[
             Center(
-              child: Image.file(
-                File(design.logoFilePath!),
+              child: ReceiptLogoImage(
+                path: design.logoFilePath!,
                 height: 56,
                 fit: BoxFit.contain,
               ),

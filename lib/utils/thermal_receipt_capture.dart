@@ -27,7 +27,7 @@ Future<Uint8List> captureReceiptForThermal(
     wrapped,
     context: context,
     pixelRatio: ratio,
-    delay: const Duration(milliseconds: 150),
+    delay: const Duration(milliseconds: 320),
   );
   return prepareThermalBitmap(png);
 }

@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/receipt_design_config.dart';
+import '../widgets/receipt_logo_image.dart';
 
 /// Chek dizayni va logo faylini saqlash.
 class ReceiptDesignStorage {
@@ -18,6 +20,11 @@ class ReceiptDesignStorage {
 
   static Future<ReceiptDesignConfig> load() async {
     if (_cache != null) return _cache!;
+    return reload();
+  }
+
+  /// Keshsiz — chop etish va sozlamalar preview uchun.
+  static Future<ReceiptDesignConfig> reload() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
     if (raw == null || raw.isEmpty) {
@@ -53,25 +60,67 @@ class ReceiptDesignStorage {
     return '${await logoDirectory()}/$_logoFileName';
   }
 
-  /// Tanlangan fayldan logo nusxalash.
+  /// Tanlangan fayldan logo saqlash (har safar yangi fayl).
   static Future<ReceiptDesignConfig> saveLogoFromPath(
     ReceiptDesignConfig current,
     String sourcePath,
   ) async {
     final src = File(sourcePath);
-    if (!await src.exists()) return current;
-    final dest = await defaultLogoPath();
-    await src.copy(dest);
-    return current.copyWith(showLogo: true, logoFilePath: dest);
+    if (!await src.exists()) {
+      throw StateError('Logo fayli topilmadi: $sourcePath');
+    }
+    final bytes = await src.readAsBytes();
+    if (bytes.isEmpty) {
+      throw StateError('Logo fayli bo\'sh');
+    }
+    return saveLogoFromBytes(
+      current,
+      bytes,
+      extension: _logoExtension(sourcePath),
+    );
+  }
+
+  static Future<ReceiptDesignConfig> saveLogoFromBytes(
+    ReceiptDesignConfig current,
+    Uint8List bytes, {
+    required String extension,
+  }) async {
+    if (bytes.isEmpty) {
+      throw StateError('Logo fayli bo\'sh');
+    }
+
+    final previousPath = current.logoFilePath;
+    final ext = extension.startsWith('.') ? extension : '.$extension';
+    final dest =
+        '${await logoDirectory()}/receipt_logo_${DateTime.now().millisecondsSinceEpoch}$ext';
+    await File(dest).writeAsBytes(bytes, flush: true);
+    await _deleteLogoFileIfNeeded(previousPath);
+
+    ReceiptLogoImage.evictCache();
+    invalidateCache();
+    final updated = current.copyWith(showLogo: true, logoFilePath: dest);
+    await save(updated);
+    return updated;
   }
 
   static Future<ReceiptDesignConfig> removeLogo(ReceiptDesignConfig current) async {
-    final path = current.logoFilePath;
-    if (path != null && path.isNotEmpty) {
-      final f = File(path);
-      if (await f.exists()) await f.delete();
-    }
+    await _deleteLogoFileIfNeeded(current.logoFilePath);
+    ReceiptLogoImage.evictCache();
     return current.copyWith(showLogo: false, clearLogoPath: true);
+  }
+
+  static String _logoExtension(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot <= 0 || dot >= path.length - 1) return '.png';
+    final ext = path.substring(dot).toLowerCase();
+    const allowed = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'};
+    return allowed.contains(ext) ? ext : '.png';
+  }
+
+  static Future<void> _deleteLogoFileIfNeeded(String? path) async {
+    if (path == null || path.isEmpty) return;
+    final f = File(path);
+    if (await f.exists()) await f.delete();
   }
 
   static Future<String?> copyBundledDefaultLogoIfNeeded() async {

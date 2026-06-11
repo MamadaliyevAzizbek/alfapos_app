@@ -126,7 +126,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   Future<void> _loadLocalReceiptPreview() async {
     setState(() => _previewLoading = true);
     try {
-      final design = await ReceiptDesignStorage.load();
+      ReceiptDesignStorage.invalidateCache();
+      final design = await ReceiptDesignStorage.reload();
       final lines = await LocalReceiptSample.sampleSalePrintLines(design: design);
       final restaurantLines =
           await LocalReceiptSample.sampleRestaurantSalePrintLines(design: design);

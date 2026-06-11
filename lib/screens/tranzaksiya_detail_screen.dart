@@ -520,6 +520,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (_printingPrecheck || _printingReceipt || widget.items.isEmpty) return;
     setState(() => _printingPrecheck = true);
     try {
+      await _loadReceiptDesign();
       final sellerPhone = _cachedSellerPhone ?? await getSellerPhone();
       final receiptWidget = _buildPrecheckReceiptWidget(
         DateTime.now(),
@@ -549,6 +550,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (rid == null || _printingReceipt) return;
     setState(() => _printingReceipt = true);
     try {
+      await _loadReceiptDesign();
       final sellerPhone = _cachedSellerPhone ?? await getSellerPhone();
       final receiptWidget = _buildReceiptWidget(
         DateTime.now(),
@@ -638,7 +640,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   Future<void> _loadReceiptDesign() async {
-    final d = await ReceiptDesignStorage.load();
+    ReceiptDesignStorage.invalidateCache();
+    final d = await ReceiptDesignStorage.reload();
     if (mounted) setState(() => _receiptDesign = d);
   }
 
