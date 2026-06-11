@@ -66,6 +66,7 @@ class ReceiptWidget extends StatelessWidget {
   final int totalSum;
   final String barcodeData;
   final bool isPrecheck;
+  final int? queueNumber;
   final ReceiptDesignConfig design;
 
   const ReceiptWidget({
@@ -85,6 +86,7 @@ class ReceiptWidget extends StatelessWidget {
     required this.totalSum,
     this.barcodeData = '',
     this.isPrecheck = false,
+    this.queueNumber,
     this.design = ReceiptDesignConfig.defaults,
   });
 
@@ -126,6 +128,7 @@ class ReceiptWidget extends StatelessWidget {
             .toList(),
         discountAmount: _fmt(discount),
         totalAmount: _fmt(totalSum),
+        queueNumber: queueNumber,
       ),
       config: design,
     );
@@ -208,6 +211,46 @@ class ReceiptWidget extends StatelessWidget {
                 style: textStyle,
               ),
             ),
+          ],
+          if (!isPrecheck &&
+              queueNumber != null &&
+              queueNumber! > 0 &&
+              design.showRestaurantQueueNumber) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                design.restaurantQueueLabel,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                '$queueNumber',
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w800,
+                  height: 1.1,
+                  color: Colors.grey.shade900,
+                ),
+              ),
+            ),
+            if (design.restaurantQueueHint.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  design.restaurantQueueHint.trim(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 8),
           Text(

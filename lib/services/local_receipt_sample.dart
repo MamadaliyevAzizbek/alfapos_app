@@ -46,4 +46,41 @@ class LocalReceiptSample {
     );
     return widget.toThermalPrintLines();
   }
+
+  /// Restoran rejimi — katta navbat raqami bilan namuna chek.
+  static Future<List<String>> sampleRestaurantSalePrintLines({
+    ReceiptDesignConfig? design,
+    int queueNumber = 42,
+  }) async {
+    final sess = SalesSessionProvider.instance;
+    final branchName = sess.branchName.trim();
+    final seller = await getSellerName();
+    final phone = await getSellerPhone();
+    final cfg = design ?? await ReceiptDesignStorage.load();
+
+    final widget = ReceiptWidget(
+      dateTime: DateTime.now(),
+      receiptNumber: 'POS12345',
+      sellerName: seller,
+      sellerPhone: phone,
+      branchName: branchName,
+      productRows: const [
+        ReceiptRow(
+          productName: 'Latte',
+          quantityStr: '2 dona',
+          price: 25000,
+          sum: 50000,
+        ),
+      ],
+      paymentRows: const [
+        ReceiptPaymentRow(methodName: 'Naqd pul', sum: 50000),
+      ],
+      discount: 0,
+      totalSum: 50000,
+      barcodeData: 'POS12345',
+      queueNumber: queueNumber,
+      design: cfg,
+    );
+    return widget.toThermalPrintLines();
+  }
 }

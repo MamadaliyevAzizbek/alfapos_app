@@ -1,21 +1,35 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../models/receipt_design_config.dart';
 import '../utils/receipt_strikethrough_text.dart';
+import '../utils/thermal_receipt_large_text.dart';
 
-/// Mahalliy chek qatorlari — printer ko‘rinishi (sozlamalar).
-class ReceiptLinesPreview extends StatelessWidget {
+/// Termal printer chiqishi — logo + matn qatorlari (sozlamalar va ko‘rinish).
+class ThermalReceiptPreview extends StatelessWidget {
   final List<String> lines;
+  final ReceiptDesignConfig design;
   final double width;
 
-  const ReceiptLinesPreview({
+  const ThermalReceiptPreview({
     super.key,
     required this.lines,
+    required this.design,
     this.width = 302,
   });
 
+  bool get _showLogo {
+    final path = design.logoFilePath;
+    return design.showLogo &&
+        path != null &&
+        path.isNotEmpty &&
+        File(path).existsSync();
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (lines.isEmpty) {
+    if (lines.isEmpty && !_showLogo) {
       return SizedBox(
         width: width,
         child: const Text('Chek bo‘sh', style: TextStyle(color: Colors.grey)),
@@ -34,6 +48,16 @@ class ReceiptLinesPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_showLogo) ...[
+            Center(
+              child: Image.file(
+                File(design.logoFilePath!),
+                height: 56,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           for (final line in lines)
             if (line.isEmpty)
               const SizedBox(height: 6)
@@ -45,6 +69,22 @@ class ReceiptLinesPreview extends StatelessWidget {
   }
 
   Widget _line(String line) {
+    if (ThermalReceiptLargeText.isLargeLine(line)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          ThermalReceiptLargeText.unwrap(line),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 36,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+            color: Colors.black,
+          ),
+        ),
+      );
+    }
+
     final centered = line.startsWith('^');
     final text = centered ? line.substring(1) : line;
     final isSep = text.startsWith('---');
@@ -73,6 +113,29 @@ class ReceiptLinesPreview extends StatelessWidget {
         textAlign: centered ? TextAlign.center : TextAlign.start,
         bold: isTotal || centered,
       ),
+    );
+  }
+}
+
+/// Mahalliy chek qatorlari — printer ko‘rinishi (logo bilan).
+class ReceiptLinesPreview extends StatelessWidget {
+  final List<String> lines;
+  final ReceiptDesignConfig? design;
+  final double width;
+
+  const ReceiptLinesPreview({
+    super.key,
+    required this.lines,
+    this.design,
+    this.width = 302,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ThermalReceiptPreview(
+      lines: lines,
+      design: design ?? ReceiptDesignConfig.defaults.copyWith(showLogo: false),
+      width: width,
     );
   }
 }

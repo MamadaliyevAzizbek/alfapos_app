@@ -32,6 +32,7 @@ class _DesktopShellState extends State<DesktopShell> {
   final Set<int> _built = {0};
   int _syncGeneration = 0;
   bool _syncing = false;
+  bool _salesSidebarVisible = false;
 
   static const _sectionTitles = [
     'Statistika',
@@ -54,6 +55,9 @@ class _DesktopShellState extends State<DesktopShell> {
   void _go(int i) => setState(() {
         _built.add(i);
         _index = i;
+        if (i != salesSectionIndex) {
+          _salesSidebarVisible = false;
+        }
       });
 
   Future<void> _onGlobalSync() async {
@@ -103,7 +107,9 @@ class _DesktopShellState extends State<DesktopShell> {
 
   static const int salesSectionIndex = 3;
 
-  bool get _salesFullscreen => _index == salesSectionIndex;
+  bool get _isSalesSection => _index == salesSectionIndex;
+
+  bool get _hideSidebar => _isSalesSection && !_salesSidebarVisible;
 
   void _openSectionMenu() {
     showGeneralDialog<void>(
@@ -146,8 +152,8 @@ class _DesktopShellState extends State<DesktopShell> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              width: _salesFullscreen ? 0 : _DesktopSidebar.width,
-              child: _salesFullscreen
+              width: _hideSidebar ? 0 : _DesktopSidebar.width,
+              child: _hideSidebar
                   ? const SizedBox.shrink()
                   : _DesktopSidebar(
                       selectedIndex: _index,
@@ -160,17 +166,22 @@ class _DesktopShellState extends State<DesktopShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _DesktopTopBar(
-                  title: _sectionTitles[_index],
-                  syncing: _syncing,
-                  onSync: _onGlobalSync,
-                  showSectionMenu: _salesFullscreen,
-                  onOpenSectionMenu: _openSectionMenu,
-                ),
+                if (!_isSalesSection)
+                  _DesktopTopBar(
+                    title: _sectionTitles[_index],
+                    syncing: _syncing,
+                    onSync: _onGlobalSync,
+                  ),
                 Expanded(
                   child: DesktopShellScope(
                     syncGeneration: _syncGeneration,
                     syncing: _syncing,
+                    onOpenSectionMenu: _isSalesSection ? _openSectionMenu : null,
+                    onGlobalSync: _onGlobalSync,
+                    onToggleSalesSidebar: _isSalesSection
+                        ? () => setState(() => _salesSidebarVisible = !_salesSidebarVisible)
+                        : null,
+                    salesSidebarVisible: _salesSidebarVisible,
                     child: IndexedStack(
                       index: _index,
                       children: List.generate(9, _page),
@@ -190,15 +201,11 @@ class _DesktopTopBar extends StatelessWidget {
   final String title;
   final bool syncing;
   final VoidCallback onSync;
-  final bool showSectionMenu;
-  final VoidCallback? onOpenSectionMenu;
 
   const _DesktopTopBar({
     required this.title,
     required this.syncing,
     required this.onSync,
-    this.showSectionMenu = false,
-    this.onOpenSectionMenu,
   });
 
   @override
@@ -215,15 +222,6 @@ class _DesktopTopBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           child: Row(
             children: [
-              if (showSectionMenu && onOpenSectionMenu != null) ...[
-                IconButton(
-                  tooltip: 'Bo\'limlar',
-                  onPressed: onOpenSectionMenu,
-                  icon: const Icon(Icons.menu_rounded, size: 26),
-                  color: AppTheme.textPrimary,
-                ),
-                const SizedBox(width: 4),
-              ],
               Expanded(
                 child: Text(
                   title,

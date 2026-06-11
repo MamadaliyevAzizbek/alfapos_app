@@ -1,7 +1,7 @@
 name: alfapos_app
 description: Alfapos - POS tizimi (Flutter).
 publish_to: none
-version: 1.0.15+31
+version: 1.0.16+32
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -44,6 +44,13 @@ flutter_launcher_icons:
   image_path: assets/icons/alfapos_launcher.png
   # SVG qirralari kesilib qolmasligi uchun
   min_sdk_android: 21
+  macos:
+    generate: true
+    image_path: assets/icons/alfapos_launcher.png
+  windows:
+    generate: true
+    image_path: assets/icons/alfapos_launcher.png
+    icon_size: 256
 
 flutter:
   uses-material-design: true

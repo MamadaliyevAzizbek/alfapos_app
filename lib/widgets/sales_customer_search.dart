@@ -13,6 +13,8 @@ class SalesCustomerSearch extends StatefulWidget {
   final VoidCallback onAddNew;
   /// Desktop tezkor kirim/chiqim: kattaroq qator balandligi va tugmalar.
   final bool largeButtons;
+  /// POS savatcha: faqat «+» tugmasi (matnsiz).
+  final bool iconOnlyAddButton;
 
   const SalesCustomerSearch({
     super.key,
@@ -20,6 +22,7 @@ class SalesCustomerSearch extends StatefulWidget {
     required this.onSelected,
     required this.onAddNew,
     this.largeButtons = false,
+    this.iconOnlyAddButton = false,
   });
 
   @override
@@ -177,23 +180,35 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
             const SizedBox(width: 8),
             SizedBox(
               height: _fieldHeight,
-              child: FilledButton.icon(
-                onPressed: widget.onAddNew,
-                icon: Icon(Icons.person_add_alt_1_rounded, size: widget.largeButtons ? 22 : 20),
-                label: Text(
-                  'Yangi mijoz',
-                  style: TextStyle(
-                    fontSize: widget.largeButtons ? 15 : 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: FilledButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: widget.largeButtons ? 18 : 14),
-                  minimumSize: widget.largeButtons ? const Size(0, 52) : null,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 0,
-                ),
-              ),
+              width: widget.iconOnlyAddButton ? _fieldHeight : null,
+              child: widget.iconOnlyAddButton
+                  ? FilledButton(
+                      onPressed: widget.onAddNew,
+                      style: FilledButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size(_fieldHeight, _fieldHeight),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                      child: Icon(Icons.person_add_alt_1_rounded, size: widget.largeButtons ? 22 : 20),
+                    )
+                  : FilledButton.icon(
+                      onPressed: widget.onAddNew,
+                      icon: Icon(Icons.person_add_alt_1_rounded, size: widget.largeButtons ? 22 : 20),
+                      label: Text(
+                        'Yangi mijoz',
+                        style: TextStyle(
+                          fontSize: widget.largeButtons ? 15 : 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        padding: EdgeInsets.symmetric(horizontal: widget.largeButtons ? 18 : 14),
+                        minimumSize: widget.largeButtons ? const Size(0, 52) : null,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                    ),
             ),
           ],
         ),

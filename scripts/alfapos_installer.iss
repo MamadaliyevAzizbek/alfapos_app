@@ -12,6 +12,7 @@
 #define MyOutputDir "..\release\alfapos-windows-release"
 
 [Setup]
+SetupIconFile=..\windows\runner\resources\app_icon.ico
 AppId={{A7B3C4D5-E6F7-4890-ABCD-EF1234567890}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}

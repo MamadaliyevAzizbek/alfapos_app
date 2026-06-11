@@ -27,6 +27,10 @@ class ReceiptDesignConfig {
   final String itemSeparator;
   final bool showItemSeparator;
   final bool numberedProducts;
+  /// Restoran chekida katta navbat raqami.
+  final bool showRestaurantQueueNumber;
+  final String restaurantQueueLabel;
+  final String restaurantQueueHint;
   /// Termal printer matn kodi: CP866 (rus) yoki CP1251.
   final String printerCodePage;
 
@@ -56,6 +60,9 @@ class ReceiptDesignConfig {
     this.itemSeparator = '-',
     this.showItemSeparator = true,
     this.numberedProducts = true,
+    this.showRestaurantQueueNumber = true,
+    this.restaurantQueueLabel = 'Navbat raqami',
+    this.restaurantQueueHint = 'Navbatingizni kuzating',
     this.printerCodePage = 'CP866',
   });
 
@@ -88,6 +95,9 @@ class ReceiptDesignConfig {
     String? itemSeparator,
     bool? showItemSeparator,
     bool? numberedProducts,
+    bool? showRestaurantQueueNumber,
+    String? restaurantQueueLabel,
+    String? restaurantQueueHint,
     String? printerCodePage,
   }) {
     return ReceiptDesignConfig(
@@ -116,6 +126,10 @@ class ReceiptDesignConfig {
       itemSeparator: itemSeparator ?? this.itemSeparator,
       showItemSeparator: showItemSeparator ?? this.showItemSeparator,
       numberedProducts: numberedProducts ?? this.numberedProducts,
+      showRestaurantQueueNumber:
+          showRestaurantQueueNumber ?? this.showRestaurantQueueNumber,
+      restaurantQueueLabel: restaurantQueueLabel ?? this.restaurantQueueLabel,
+      restaurantQueueHint: restaurantQueueHint ?? this.restaurantQueueHint,
       printerCodePage: printerCodePage ?? this.printerCodePage,
     );
   }
@@ -146,6 +160,9 @@ class ReceiptDesignConfig {
         'itemSeparator': itemSeparator,
         'showItemSeparator': showItemSeparator,
         'numberedProducts': numberedProducts,
+        'showRestaurantQueueNumber': showRestaurantQueueNumber,
+        'restaurantQueueLabel': restaurantQueueLabel,
+        'restaurantQueueHint': restaurantQueueHint,
         'printerCodePage': printerCodePage,
       };
 
@@ -176,6 +193,9 @@ class ReceiptDesignConfig {
       itemSeparator: json['itemSeparator'] as String? ?? '-',
       showItemSeparator: json['showItemSeparator'] as bool? ?? true,
       numberedProducts: json['numberedProducts'] as bool? ?? true,
+      showRestaurantQueueNumber: json['showRestaurantQueueNumber'] as bool? ?? true,
+      restaurantQueueLabel: json['restaurantQueueLabel'] as String? ?? 'Navbat raqami',
+      restaurantQueueHint: json['restaurantQueueHint'] as String? ?? 'Navbatingizni kuzating',
       printerCodePage: json['printerCodePage'] as String? ?? 'CP866',
     );
   }

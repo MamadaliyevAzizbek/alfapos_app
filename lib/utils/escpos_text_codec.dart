@@ -11,7 +11,25 @@ class EscPosTextCodec {
   static Uint8List encodeSync(String text, {String codePage = 'CP866'}) {
     final normalized = _normalize(text);
     final enc = _encodingFor(codePage);
-    return Uint8List.fromList(enc.encode(normalized));
+    return Uint8List.fromList(_encodeLossy(enc, normalized));
+  }
+
+  /// CP866/CP1251 da bo‘lmagan belgilar chekni buzmasligi uchun almashtiriladi.
+  static List<int> _encodeLossy(Encoding enc, String text) {
+    try {
+      return enc.encode(text);
+    } on FormatException {
+      final out = <int>[];
+      for (final rune in text.runes) {
+        final ch = String.fromCharCode(rune);
+        try {
+          out.addAll(enc.encode(ch));
+        } on FormatException {
+          out.addAll(enc.encode('?'));
+        }
+      }
+      return out;
+    }
   }
 
   static Future<Uint8List> encode(String text, {String codePage = 'CP866'}) async =>
@@ -33,11 +51,15 @@ class EscPosTextCodec {
     return s
         .replaceAll('‘', "'")
         .replaceAll('’', "'")
+        .replaceAll('ʻ', "'")
+        .replaceAll('ʼ', "'")
         .replaceAll('“', '"')
         .replaceAll('”', '"')
         .replaceAll('—', '-')
+        .replaceAll('–', '-')
         .replaceAll('…', '...')
         .replaceAll('₽', 'sum')
-        .replaceAll('×', 'x');
+        .replaceAll('×', 'x')
+        .replaceAll('§', '');
   }
 }

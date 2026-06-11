@@ -1003,6 +1003,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             selected: _selectedClient,
             onSelected: _onCustomerSelected,
             onAddNew: () => _addCustomer(context),
+            iconOnlyAddButton: true,
           ),
         ),
         onOpenSavedOrders: () => _runWithSuspendedCatalogSearchRefocus(

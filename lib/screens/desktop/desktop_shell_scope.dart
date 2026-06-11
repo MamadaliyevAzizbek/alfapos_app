@@ -6,11 +6,19 @@ import '../../services/app_data_sync.dart';
 class DesktopShellScope extends InheritedWidget {
   final int syncGeneration;
   final bool syncing;
+  final VoidCallback? onOpenSectionMenu;
+  final VoidCallback? onGlobalSync;
+  final VoidCallback? onToggleSalesSidebar;
+  final bool salesSidebarVisible;
 
   const DesktopShellScope({
     super.key,
     required this.syncGeneration,
     required this.syncing,
+    this.onOpenSectionMenu,
+    this.onGlobalSync,
+    this.onToggleSalesSidebar,
+    this.salesSidebarVisible = false,
     required super.child,
   });
 
@@ -20,7 +28,12 @@ class DesktopShellScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(DesktopShellScope oldWidget) {
-    return syncGeneration != oldWidget.syncGeneration || syncing != oldWidget.syncing;
+    return syncGeneration != oldWidget.syncGeneration ||
+        syncing != oldWidget.syncing ||
+        salesSidebarVisible != oldWidget.salesSidebarVisible ||
+        onOpenSectionMenu != oldWidget.onOpenSectionMenu ||
+        onGlobalSync != oldWidget.onGlobalSync ||
+        onToggleSalesSidebar != oldWidget.onToggleSalesSidebar;
   }
 }
 

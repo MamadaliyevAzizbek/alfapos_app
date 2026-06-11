@@ -25,6 +25,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
   bool _loading = true;
   bool _saving = false;
   List<String> _previewLines = [];
+  List<String> _restaurantPreviewLines = [];
   bool _previewLoading = false;
 
   late final TextEditingController _storeTitle;
@@ -40,6 +41,8 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
   late final TextEditingController _precheckBanner;
   late final TextEditingController _currencySuffix;
   late final TextEditingController _itemSeparator;
+  late final TextEditingController _restaurantQueueLabel;
+  late final TextEditingController _restaurantQueueHint;
 
   @override
   void initState() {
@@ -57,6 +60,8 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
     _precheckBanner = TextEditingController();
     _currencySuffix = TextEditingController();
     _itemSeparator = TextEditingController();
+    _restaurantQueueLabel = TextEditingController();
+    _restaurantQueueHint = TextEditingController();
     _load();
   }
 
@@ -75,6 +80,8 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
     _precheckBanner.dispose();
     _currencySuffix.dispose();
     _itemSeparator.dispose();
+    _restaurantQueueLabel.dispose();
+    _restaurantQueueHint.dispose();
     super.dispose();
   }
 
@@ -92,6 +99,8 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
     _precheckBanner.text = c.precheckBanner;
     _currencySuffix.text = c.currencySuffix;
     _itemSeparator.text = c.itemSeparator;
+    _restaurantQueueLabel.text = c.restaurantQueueLabel;
+    _restaurantQueueHint.text = c.restaurantQueueHint;
   }
 
   ReceiptDesignConfig _readFromControllers() {
@@ -109,6 +118,8 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
       precheckBanner: _precheckBanner.text.trim(),
       currencySuffix: _currencySuffix.text.trim(),
       itemSeparator: _itemSeparator.text.trim(),
+      restaurantQueueLabel: _restaurantQueueLabel.text.trim(),
+      restaurantQueueHint: _restaurantQueueHint.text.trim(),
     );
   }
 
@@ -127,7 +138,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
       _config = c;
       _syncControllers(c);
       setState(() => _loading = false);
-      await _refreshPreview();
+      await _refreshPreview(showSpinner: true);
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
@@ -136,13 +147,17 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
     }
   }
 
-  Future<void> _refreshPreview() async {
-    setState(() => _previewLoading = true);
+  Future<void> _refreshPreview({bool showSpinner = false}) async {
+    if (showSpinner) setState(() => _previewLoading = true);
     try {
-      final lines = await LocalReceiptSample.sampleSalePrintLines(design: _readFromControllers());
+      final cfg = _readFromControllers();
+      final lines = await LocalReceiptSample.sampleSalePrintLines(design: cfg);
+      final restaurantLines =
+          await LocalReceiptSample.sampleRestaurantSalePrintLines(design: cfg);
       if (!mounted) return;
       setState(() {
         _previewLines = lines;
+        _restaurantPreviewLines = restaurantLines;
         _previewLoading = false;
       });
     } catch (e) {
@@ -308,32 +323,113 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
             );
           },
         ),
+        const SizedBox(height: 24),
+        const Text(
+          'Restoran cheki',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Restoran rejimida har kuni 1 dan boshlanadigan navbat raqami chekda katta ko‘rinishda chiqadi.',
+          style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        _switchRow(
+          'Navbat raqamini chekda ko‘rsatish',
+          _config.showRestaurantQueueNumber,
+          (v) => _applyLocal(_config.copyWith(showRestaurantQueueNumber: v)),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: 280,
+              child: _field(
+                'Navbat yozuvi',
+                _restaurantQueueLabel,
+                onChanged: (_) => _refreshPreview(),
+              ),
+            ),
+            SizedBox(
+              width: 280,
+              child: _field(
+                'Navbat eslatmasi',
+                _restaurantQueueHint,
+                onChanged: (_) => _refreshPreview(),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.divider),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Printer ko‘rinishi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              if (_previewLoading)
-                const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-              else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 360),
-                  child: SingleChildScrollView(
-                    child: Center(child: ReceiptLinesPreview(lines: _previewLines)),
-                  ),
-                ),
-            ],
-          ),
+        LayoutBuilder(
+          builder: (context, c) {
+            final sideBySide = c.maxWidth > 720;
+            if (_previewLoading) {
+              return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+            }
+            final previewDesign = _readFromControllers();
+            final standardPreview = _previewBox(
+              title: 'Oddiy sotuv cheki',
+              lines: _previewLines,
+              design: previewDesign,
+            );
+            final restaurantPreview = _previewBox(
+              title: 'Restoran cheki (navbat raqami)',
+              lines: _restaurantPreviewLines,
+              design: previewDesign,
+            );
+            if (sideBySide) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: standardPreview),
+                  const SizedBox(width: 16),
+                  Expanded(child: restaurantPreview),
+                ],
+              );
+            }
+            return Column(
+              children: [
+                standardPreview,
+                const SizedBox(height: 16),
+                restaurantPreview,
+              ],
+            );
+          },
         ),
       ],
+    );
+  }
+
+  Widget _previewBox({
+    required String title,
+    required List<String> lines,
+    required ReceiptDesignConfig design,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 360),
+            child: SingleChildScrollView(
+              child: Center(
+                child: ReceiptLinesPreview(lines: lines, design: design),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -366,7 +462,7 @@ class _ReceiptDesignEditorPanelState extends State<ReceiptDesignEditorPanel> {
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Chek boshida logo'),
                 value: _config.showLogo,
-                onChanged: (v) => _applyLocal(_config.copyWith(showLogo: v)),
+                onChanged: (v) => setState(() => _config = _config.copyWith(showLogo: v)),
               ),
               Wrap(
                 spacing: 8,

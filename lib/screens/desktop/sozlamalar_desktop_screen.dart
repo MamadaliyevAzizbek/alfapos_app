@@ -4,8 +4,10 @@ import '../../core/theme.dart';
 import 'dart:io' show Platform;
 
 import '../../core/desktop_runtime.dart';
+import '../../models/receipt_design_config.dart';
 import '../../services/local_receipt_sample.dart';
 import '../../services/printer_settings.dart';
+import '../../services/receipt_design_storage.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
@@ -28,6 +30,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   bool _testing = false;
 
   List<String> _sampleLines = [];
+  List<String> _restaurantSampleLines = [];
+  ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.defaults;
   bool _previewLoading = false;
   DesktopSalesLayoutMode _salesLayoutMode = DesktopSalesLayoutMode.standard;
 
@@ -84,10 +88,15 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   Future<void> _loadLocalReceiptPreview() async {
     setState(() => _previewLoading = true);
     try {
-      final lines = await LocalReceiptSample.sampleSalePrintLines();
+      final design = await ReceiptDesignStorage.load();
+      final lines = await LocalReceiptSample.sampleSalePrintLines(design: design);
+      final restaurantLines =
+          await LocalReceiptSample.sampleRestaurantSalePrintLines(design: design);
       if (!mounted) return;
       setState(() {
+        _receiptDesign = design;
         _sampleLines = lines;
+        _restaurantSampleLines = restaurantLines;
         _previewLoading = false;
       });
     } catch (e) {
@@ -274,7 +283,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
           const SizedBox(height: 8),
           const Text(
             'Desktop sotuv ekranida mahsulotlar qanday ko‘rinishini tanlang. '
-            'Restoran rejimida avval kategoriyalar, keyin mahsulotlar chiqadi.',
+            'Restoran rejimida avval kategoriyalar (grid), keyin mahsulotlar chiqadi. Chekda kunlik navbat raqami ishlatiladi.',
             style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
           ),
           const SizedBox(height: 20),
@@ -350,14 +359,51 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
               ),
             )
           else
-            _previewColumn(
-              title: 'Printerdan chiqadigan chek',
-              subtitle: 'Sotuv yakunlanganda shu ko\'rinish chop etiladi',
-              child: SingleChildScrollView(
-                child: Center(
-                  child: ReceiptLinesPreview(lines: _sampleLines),
-                ),
-              ),
+            LayoutBuilder(
+              builder: (context, c) {
+                final sideBySide = c.maxWidth > 720;
+                final standard = _previewColumn(
+                  title: 'Oddiy sotuv cheki',
+                  subtitle: 'Logo va matn printer tartibida',
+                  child: SingleChildScrollView(
+                    child: Center(
+                      child: ReceiptLinesPreview(
+                        lines: _sampleLines,
+                        design: _receiptDesign,
+                      ),
+                    ),
+                  ),
+                );
+                final restaurant = _previewColumn(
+                  title: 'Restoran cheki',
+                  subtitle: 'Navbat raqami bilan (restoran rejimi)',
+                  child: SingleChildScrollView(
+                    child: Center(
+                      child: ReceiptLinesPreview(
+                        lines: _restaurantSampleLines,
+                        design: _receiptDesign,
+                      ),
+                    ),
+                  ),
+                );
+                if (sideBySide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: standard),
+                      const SizedBox(width: 16),
+                      Expanded(child: restaurant),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    standard,
+                    const SizedBox(height: 16),
+                    restaurant,
+                  ],
+                );
+              },
             ),
         ],
       ),

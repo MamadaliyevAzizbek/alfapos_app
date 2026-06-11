@@ -39,6 +39,8 @@ import '../models/receipt_design_config.dart';
 import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/printer_settings.dart';
+import '../services/desktop_sales_layout_settings.dart';
+import '../services/restaurant_queue_number.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/sale_store_response.dart';
@@ -96,6 +98,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   int? _completedOrderId;
   String _completedSellerName = '';
   String? _completedClientName;
+  int? _completedQueueNumber;
   String _sellerDisplayName = '';
   ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.defaults;
   String? _desktopSelectedPaymentKey;
@@ -432,6 +435,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (nav.canPop()) nav.pop();
   }
 
+  void _handleDesktopPaymentEscape() {
+    if (_printingReceipt || _printingPrecheck) return;
+    if (_desktopPaymentComplete) {
+      _finishDesktopPaymentFlow();
+    } else if (!_submittingPay) {
+      _closeDesktopPayment();
+    }
+  }
+
   void _finishDesktopPaymentFlow() {
     final rid = _completedReceiptId;
     if (rid == null || !mounted) return;
@@ -735,16 +747,24 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           .map((e) => MapEntry(e.value, allocated[e.key]!))
           .toList();
       return PopScope(
-        canPop: !_submittingPay && !_printingReceipt && !_printingPrecheck,
+        canPop: (!_submittingPay || _desktopPaymentComplete) &&
+            !_printingReceipt &&
+            !_printingPrecheck,
         onPopInvokedWithResult: (didPop, _) {
-          if (didPop || _submittingPay || _printingReceipt || _printingPrecheck) return;
+          if (didPop || _printingReceipt || _printingPrecheck) return;
           if (_desktopPaymentComplete) {
             _finishDesktopPaymentFlow();
-          } else {
+          } else if (!_submittingPay) {
             _closeDesktopPayment();
           }
         },
-        child: DesktopPaymentLayout(
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): _handleDesktopPaymentEscape,
+          },
+          child: Focus(
+            autofocus: true,
+            child: DesktopPaymentLayout(
           items: widget.items,
           client: _client,
           totalRaw: _totalRaw,
@@ -797,6 +817,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
               SalesReturnCheckout.usesGeneralDebtCredit(
                 hasCreditPayment: _desktopDebtAmount() > 0,
               ),
+            ),
+          ),
         ),
       );
     }
@@ -1987,14 +2009,21 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     CartProvider.instance.clear();
     final sellerName = await getSellerName();
     final clientName = _client?.name;
+    int? queueNumber;
+    if (await DesktopSalesLayoutSettings.getMode() ==
+        DesktopSalesLayoutMode.restaurant) {
+      queueNumber = await RestaurantQueueNumberService.nextForToday();
+    }
     if (!mounted) return;
     setState(() {
+      _completedReceiptId = rid;
+      _completedOrderId = orderId;
+      _completedSellerName = sellerName;
+      _completedClientName = clientName;
+      _completedQueueNumber = queueNumber;
       if (widget.useDesktopFullscreenLayout) {
         _desktopPaymentComplete = true;
-        _completedReceiptId = rid;
-        _completedOrderId = orderId;
-        _completedSellerName = sellerName;
-        _completedClientName = clientName;
+        _submittingPay = false;
       }
     });
     if (widget.useDesktopFullscreenLayout) {
@@ -2062,6 +2091,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     String? sellerPhone,
     String? clientName,
     String? receiptId,
+    int? queueNumber,
   }) {
     final posNumber = receiptId ?? _txId;
     final productRows = ReceiptRowBuilder.fromCartItems(widget.items);
@@ -2092,6 +2122,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       discount: discountUzs,
       totalSum: _totalAfterDiscount,
       barcodeData: posNumber,
+      queueNumber: queueNumber ?? _completedQueueNumber,
       design: _receiptDesign,
     );
   }

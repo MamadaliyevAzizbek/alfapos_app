@@ -2,6 +2,7 @@ import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
+import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
 
 /// Termal chek mahsulot qatori (Alfapos.pdf ko‘rinishi).
@@ -49,6 +50,7 @@ class ThermalReceiptPrintData {
   final String discountAmount;
   final String totalAmount;
   final bool isPrecheck;
+  final int? queueNumber;
 
   const ThermalReceiptPrintData({
     required this.storeName,
@@ -64,6 +66,7 @@ class ThermalReceiptPrintData {
     this.discountAmount = '0',
     required this.totalAmount,
     this.isPrecheck = false,
+    this.queueNumber,
   });
 }
 
@@ -257,6 +260,19 @@ class ThermalReceiptFormatter {
       center(_fmtDateTime(d.dateTime));
     }
     lines.add('');
+
+    if (!d.isPrecheck &&
+        d.queueNumber != null &&
+        d.queueNumber! > 0 &&
+        config.showRestaurantQueueNumber) {
+      center(config.restaurantQueueLabel);
+      lines.add(ThermalReceiptLargeText.line('${d.queueNumber}'));
+      final hint = config.restaurantQueueHint.trim();
+      if (hint.isNotEmpty) {
+        center(hint);
+      }
+      lines.add('');
+    }
 
     if (d.isPrecheck) {
       center(config.precheckBanner);

@@ -1,5 +1,7 @@
+import 'package:alfapos_app/models/receipt_design_config.dart';
 import 'package:alfapos_app/utils/api_receipt_html_parser.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
+import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -75,5 +77,42 @@ void main() {
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
     expect(lines.any((l) => l.startsWith('1) aaaaaa')), isTrue);
     expect(lines.any((l) => l.contains('38,000') && l.contains('so')), isTrue);
+  });
+
+  test('restaurant queue number prints large after title', () {
+    final config = ReceiptDesignConfig.defaults.copyWith(
+      showRestaurantQueueNumber: true,
+      restaurantQueueLabel: 'Navbat raqami',
+      restaurantQueueHint: 'Raqamingizni kuting',
+    );
+    final lines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: 'Restoran',
+        dateTime: DateTime(2026, 6, 10, 14, 30),
+        receiptNumber: 'POS99',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Choy',
+            quantity: '1 dona',
+            unitPrice: '10,000',
+            lineTotal: '10,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '10,000'),
+        ],
+        discountAmount: '0',
+        totalAmount: '10,000',
+        queueNumber: 7,
+      ),
+      config: config,
+    );
+    final queueIdx = lines.indexWhere((l) => l.contains('Navbat raqami'));
+    final largeIdx = lines.indexWhere(ThermalReceiptLargeText.isLargeLine);
+    expect(queueIdx, greaterThanOrEqualTo(0));
+    expect(largeIdx, greaterThan(queueIdx));
+    expect(ThermalReceiptLargeText.unwrap(lines[largeIdx]), '7');
+    expect(lines.any((l) => l.contains('Raqamingizni kuting')), isTrue);
   });
 }

@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import '../models/receipt_design_config.dart';
 import '../utils/escpos_text_codec.dart';
 import '../utils/receipt_strikethrough_text.dart';
+import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 
 /// API dan parse qilingan matn qatorlarini ESC/POS ga aylantirish.
@@ -71,13 +72,31 @@ class EscPosReceiptBuilder {
         bytes.addAll(g.feed(1));
         continue;
       }
+      if (ThermalReceiptLargeText.isLargeLine(line)) {
+        final text = ThermalReceiptLargeText.unwrap(line);
+        bytes.addAll(
+          g.textEncoded(
+            EscPosTextCodec.encodeSync(text, codePage: codePage),
+            styles: PosStyles(
+              codeTable: codeTable,
+              fontType: PosFontType.fontA,
+              align: PosAlign.center,
+              bold: true,
+              height: PosTextSize.size2,
+              width: PosTextSize.size2,
+            ),
+            maxCharsPerLine: maxWidth,
+          ),
+        );
+        continue;
+      }
+
       final centered = line.startsWith('^');
       final text = centered ? line.substring(1) : line;
-      final enc = EscPosTextCodec.encodeSync(text, codePage: codePage);
       if (centered) {
         bytes.addAll(
           g.textEncoded(
-            enc,
+            EscPosTextCodec.encodeSync(text, codePage: codePage),
             styles: PosStyles(
               codeTable: codeTable,
               fontType: PosFontType.fontA,
@@ -105,7 +124,7 @@ class EscPosReceiptBuilder {
         } else {
           bytes.addAll(
             g.textEncoded(
-              enc,
+              EscPosTextCodec.encodeSync(text, codePage: codePage),
               styles: PosStyles(
                 codeTable: codeTable,
                 fontType: PosFontType.fontA,

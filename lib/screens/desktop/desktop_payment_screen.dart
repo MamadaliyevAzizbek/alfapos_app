@@ -362,7 +362,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
           child: widget.paymentTypesLoading
               ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
               : SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -397,6 +397,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                         ],
                         const SizedBox(height: 12),
                       ],
+                      const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
@@ -614,7 +615,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
 
   Widget _buildPaymentHeader({required String title}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(24, 16, 20, 4),
       child: Row(
         children: [
           Expanded(
@@ -628,9 +629,11 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             style: IconButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
+              fixedSize: const Size(48, 48),
+              minimumSize: const Size(48, 48),
               shape: const CircleBorder(),
             ),
-            icon: const Icon(Icons.close_rounded, size: 22),
+            icon: const Icon(Icons.close_rounded, size: 30),
           ),
         ],
       ),
