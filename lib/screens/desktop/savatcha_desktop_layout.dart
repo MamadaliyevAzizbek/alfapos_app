@@ -9,7 +9,9 @@ import '../../utils/catalog_product_price_label.dart';
 import '../../utils/customer_group_discount.dart';
 import '../../widgets/product_tile.dart';
 import '../../widgets/restaurant_category_chips.dart';
+import '../../widgets/sales_shortcut_key_badge.dart';
 import '../../services/desktop_sales_layout_settings.dart';
+import '../../services/sales_keyboard_shortcuts_settings.dart';
 import 'sales_nav_filters.dart';
 import 'sales_window_tabs.dart';
 
@@ -77,6 +79,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final String sellerName;
   final int cartGrandTotal;
   final int cartCatalogTotal;
+  final int cartProfitTotal;
+  final bool showCartProfit;
   final int cartDiscountPercent;
   final double usdExchangeRate;
   final bool isReturnMode;
@@ -96,6 +100,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final ValueChanged<int>? onSalesWindowSelected;
   final VoidCallback? onAddSalesWindow;
   final bool canAddSalesWindow;
+  final Map<SalesShortcutAction, String> shortcutKeys;
 
   const SavatchaDesktopLayout({
     super.key,
@@ -156,6 +161,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required this.sellerName,
     required this.cartGrandTotal,
     this.cartCatalogTotal = 0,
+    this.cartProfitTotal = 0,
+    this.showCartProfit = false,
     this.cartDiscountPercent = 0,
     this.usdExchangeRate = 12600,
     this.isReturnMode = false,
@@ -175,7 +182,11 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.onSalesWindowSelected,
     this.onAddSalesWindow,
     this.canAddSalesWindow = false,
+    this.shortcutKeys = SalesKeyboardShortcutsSettings.defaults,
   });
+
+  String _shortcutLabel(SalesShortcutAction action) =>
+      SalesKeyboardShortcutsSettings.resolveKeyLabel(shortcutKeys, action);
 
   int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
 
@@ -472,36 +483,40 @@ class SavatchaDesktopLayout extends StatelessWidget {
             children: [
               Expanded(
                 flex: 5,
-                child: TextField(
-                  controller: searchController,
-                  focusNode: catalogSearchFocus,
-                  autofocus: catalogSearchFocus != null,
-                  onChanged: onSearchChanged,
-                  onSubmitted: onSearchSubmitted,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: "Mahsulotni qidirish - yoki - Shtrix kod",
-                    filled: true,
-                    fillColor: Colors.white,
-                    prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                    suffixIcon: query.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 20),
-                            onPressed: () {
-                              searchController.clear();
-                              onSearchChanged('');
-                            },
-                          )
-                        : null,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppTheme.divider),
+                child: SalesFieldShortcutOverlay(
+                  keyLabel: _shortcutLabel(SalesShortcutAction.focusProductSearch),
+                  visible: query.isEmpty,
+                  child: TextField(
+                    controller: searchController,
+                    focusNode: catalogSearchFocus,
+                    autofocus: catalogSearchFocus != null,
+                    onChanged: onSearchChanged,
+                    onSubmitted: onSearchSubmitted,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: "Mahsulotni qidirish - yoki - Shtrix kod",
+                      filled: true,
+                      fillColor: Colors.white,
+                      prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                      suffixIcon: query.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              onPressed: () {
+                                searchController.clear();
+                                onSearchChanged('');
+                              },
+                            )
+                          : null,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppTheme.divider),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
@@ -668,10 +683,25 @@ class SavatchaDesktopLayout extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: const Color(0xFF93C5FD), width: 1.3),
           ),
-          child: const Icon(
-            Icons.tune_rounded,
-            size: 22,
-            color: Color(0xFF1D4ED8),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              const Icon(
+                Icons.tune_rounded,
+                size: 22,
+                color: Color(0xFF1D4ED8),
+              ),
+              if (!_isRestaurantMode)
+                Positioned(
+                  right: 5,
+                  bottom: 5,
+                  child: IgnorePointer(
+                    child: SalesShortcutKeyBadge(
+                      label: _shortcutLabel(SalesShortcutAction.toggleShowPurchasePrice),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -732,6 +762,16 @@ class SavatchaDesktopLayout extends StatelessWidget {
               ],
             ),
           ),
+          if (cartItems.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: SalesShortcutKeyBadge(
+                  label: _shortcutLabel(SalesShortcutAction.focusLastCartQty),
+                ),
+              ),
+            ),
           Expanded(
             child: cartItems.isEmpty
                 ? const Center(
@@ -772,9 +812,23 @@ class SavatchaDesktopLayout extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Text(
-                  isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                    if (!isReturnMode) ...[
+                      const SizedBox(width: 6),
+                      SalesShortcutKeyBadge(
+                        label: _shortcutLabel(SalesShortcutAction.toggleShowCartProfit),
+                        onDark: true,
+                      ),
+                    ],
+                  ],
                 ),
                 const Spacer(),
                 Column(
@@ -793,6 +847,17 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       formatThousands(cartGrandTotal),
                       style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700),
                     ),
+                    if (showCartProfit && !isReturnMode) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Foyda: ${formatThousands(cartProfitTotal)}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.78),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

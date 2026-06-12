@@ -9,6 +9,7 @@ enum SalesShortcutAction {
   focusProductSearch,
   focusLastCartQty,
   toggleShowPurchasePrice,
+  toggleShowCartProfit,
 }
 
 class SalesKeyboardShortcutsSettings {
@@ -21,6 +22,7 @@ class SalesKeyboardShortcutsSettings {
     SalesShortcutAction.focusProductSearch: 'f7',
     SalesShortcutAction.focusLastCartQty: 'f5',
     SalesShortcutAction.toggleShowPurchasePrice: 'f12',
+    SalesShortcutAction.toggleShowCartProfit: 'f6',
   };
 
   static const List<String> allowedKeyIds = [
@@ -46,9 +48,18 @@ class SalesKeyboardShortcutsSettings {
         SalesShortcutAction.focusProductSearch => 'Mahsulot qidirish',
         SalesShortcutAction.focusLastCartQty => 'Oxirgi mahsulot miqdori',
         SalesShortcutAction.toggleShowPurchasePrice => 'Kelish narxini ko‘rsatish',
+        SalesShortcutAction.toggleShowCartProfit => 'Savat foydasini ko‘rsatish',
       };
 
   static String formatKeyLabel(String keyId) => keyId.toUpperCase();
+
+  static String resolveKeyLabel(
+    Map<SalesShortcutAction, String> keys,
+    SalesShortcutAction action,
+  ) {
+    final raw = keys[action] ?? defaults[action]!;
+    return formatKeyLabel(raw);
+  }
 
   static Future<Map<SalesShortcutAction, String>> loadAll() async {
     final prefs = await SharedPreferences.getInstance();

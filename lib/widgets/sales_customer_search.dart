@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../providers/clients_provider.dart';
 import '../providers/sales_session_provider.dart';
 import 'customer_debt_balance_badge.dart';
+import 'sales_shortcut_key_badge.dart';
 
 /// Sotuv paneli: mijozlarni API orqali qidirish (POST /sales/customers).
 class SalesCustomerSearch extends StatefulWidget {
@@ -17,6 +18,8 @@ class SalesCustomerSearch extends StatefulWidget {
   final bool iconOnlyAddButton;
   /// Tashqi fokus (masalan F2 tezkor klavish).
   final FocusNode? searchFocusNode;
+  /// Tezkor klavish belgisi (masalan F2).
+  final String? shortcutKeyLabel;
 
   const SalesCustomerSearch({
     super.key,
@@ -26,6 +29,7 @@ class SalesCustomerSearch extends StatefulWidget {
     this.largeButtons = false,
     this.iconOnlyAddButton = false,
     this.searchFocusNode,
+    this.shortcutKeyLabel,
   });
 
   @override
@@ -133,54 +137,58 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
             Expanded(
               child: SizedBox(
                 height: _fieldHeight,
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focus,
-                  onChanged: _search,
-                  onTap: () {
-                    if (_controller.text.trim().length >= 2) _search(_controller.text);
-                  },
-                  style: const TextStyle(fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'Mijozlarni qidirish',
-                    filled: true,
-                    fillColor: const Color(0xFFF0F2F5),
-                    prefixIcon: const Icon(Icons.person_search_rounded, color: AppTheme.textSecondary, size: 22),
-                    suffixIcon: _loading
-                        ? const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : _controller.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.close_rounded, size: 20),
-                                onPressed: () {
-                                  _controller.clear();
-                                  setState(() {
-                                    _results = [];
-                                    _showList = false;
-                                  });
-                                },
-                                tooltip: 'Qidiruvni tozalash',
-                              )
-                            : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
+                child: SalesFieldShortcutOverlay(
+                  keyLabel: widget.shortcutKeyLabel,
+                  visible: !_loading && _controller.text.isEmpty,
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focus,
+                    onChanged: _search,
+                    onTap: () {
+                      if (_controller.text.trim().length >= 2) _search(_controller.text);
+                    },
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Mijozlarni qidirish',
+                      filled: true,
+                      fillColor: const Color(0xFFF0F2F5),
+                      prefixIcon: const Icon(Icons.person_search_rounded, color: AppTheme.textSecondary, size: 22),
+                      suffixIcon: _loading
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                          : _controller.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close_rounded, size: 20),
+                                  onPressed: () {
+                                    _controller.clear();
+                                    setState(() {
+                                      _results = [];
+                                      _showList = false;
+                                    });
+                                  },
+                                  tooltip: 'Qidiruvni tozalash',
+                                )
+                              : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppTheme.primary, width: 2),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
                 ),
               ),

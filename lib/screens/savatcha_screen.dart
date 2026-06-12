@@ -46,7 +46,9 @@ import '../utils/hold_order_precheck_excel_export.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/sales_keyboard_shortcuts_settings.dart';
 import '../services/sales_stock_limit_settings.dart';
+import '../services/sales_cart_profit_display_settings.dart';
 import '../utils/cart_stock_limit.dart';
+import '../utils/sales_store_body.dart';
 import '../services/category_order_storage.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/product_catalog_sort_settings.dart';
@@ -281,8 +283,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.addListener(_onShortcutSettingsChanged);
     SalesStockLimitSettings.enabled.addListener(_onStockLimitSettingsChanged);
+    SalesCartProfitDisplaySettings.visible.addListener(_onCartProfitDisplayChanged);
     unawaited(_loadShortcutKeys());
     unawaited(SalesStockLimitSettings.load());
+    unawaited(SalesCartProfitDisplaySettings.load());
     if (isDesktopPosLayout) {
       FocusManager.instance.addListener(_onDesktopFocusChanged);
       _categoriesSub = CategoriesProvider.instance.stream.listen((_) {
@@ -416,6 +420,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     CashRegisterShiftProvider.instance.removeListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.removeListener(_onShortcutSettingsChanged);
     SalesStockLimitSettings.enabled.removeListener(_onStockLimitSettingsChanged);
+    SalesCartProfitDisplaySettings.visible.removeListener(_onCartProfitDisplayChanged);
     _catalogSearchFocus.dispose();
     _customerSearchFocus.dispose();
     _searchController.dispose();
@@ -584,6 +589,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (mounted) setState(() {});
   }
 
+  void _onCartProfitDisplayChanged() {
+    if (mounted) setState(() {});
+  }
+
   bool get _enforceStockLimit => SalesStockLimitSettings.enabled.value;
 
   List<CartItem> _allCartItemsForStockCheck() {
@@ -675,8 +684,15 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           SalesShortcutAction.focusProductSearch => const _FocusCatalogSearchIntent(),
           SalesShortcutAction.focusLastCartQty => const _FocusLastCartQtyIntent(),
           SalesShortcutAction.toggleShowPurchasePrice => const _ToggleShowPurchasePriceIntent(),
+          SalesShortcutAction.toggleShowCartProfit => const _ToggleShowCartProfitIntent(),
         },
     };
+  }
+
+  Future<void> _toggleCartProfitDisplay() async {
+    if (!isDesktopPosLayout) return;
+    await SalesCartProfitDisplaySettings.toggle();
+    if (mounted) setState(() {});
   }
 
   void _toggleShowPurchasePriceOnCards() {
@@ -824,6 +840,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   int get _cartCatalogTotal => CartDiscountPercent.catalogLinesTotal(_cart.items);
 
   int get _cartGrandTotal => _cartRawTotal;
+
+  int get _cartProfitTotal =>
+      _cartGrandTotal - SalesStoreBody.estimateCostUzs(_cart.items);
 
   @override
   Widget build(BuildContext context) {
@@ -1306,6 +1325,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 return null;
               },
             ),
+            _ToggleShowCartProfitIntent: CallbackAction<_ToggleShowCartProfitIntent>(
+              onInvoke: (_) {
+                unawaited(_toggleCartProfitDisplay());
+                return null;
+              },
+            ),
           },
           child: CashRegisterShiftGate(
             child: SavatchaDesktopLayout(
@@ -1333,6 +1358,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         sellerName: _sellerName.isNotEmpty ? _sellerName : 'Sotuvchi',
         cartGrandTotal: _cartGrandTotal,
         cartCatalogTotal: _cartCatalogTotal,
+        cartProfitTotal: _cartProfitTotal,
+        showCartProfit: SalesCartProfitDisplaySettings.visible.value,
         cartDiscountPercent: _sales.cartDiscountPercent,
         usdExchangeRate: _sales.usdRate > 0 ? _sales.usdRate : 12600,
         onSearchChanged: _onSearchFieldChanged,
@@ -1359,8 +1386,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             onAddNew: () => _addCustomer(context),
             iconOnlyAddButton: true,
             searchFocusNode: _customerSearchFocus,
+            shortcutKeyLabel: SalesKeyboardShortcutsSettings.resolveKeyLabel(
+              _shortcutKeys,
+              SalesShortcutAction.focusCustomerSearch,
+            ),
           ),
         ),
+        shortcutKeys: _shortcutKeys,
         onOpenSavedOrders: () => _runWithSuspendedCatalogSearchRefocus(
           () => SalesHoldOrdersSheet.show(
             context,
@@ -2430,4 +2462,8 @@ class _FocusCustomerSearchIntent extends Intent {
 
 class _ToggleShowPurchasePriceIntent extends Intent {
   const _ToggleShowPurchasePriceIntent();
+}
+
+class _ToggleShowCartProfitIntent extends Intent {
+  const _ToggleShowCartProfitIntent();
 }

@@ -545,7 +545,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
           'Tezkor klavishlar',
           'Sotuv bo‘limida F-tugmalari orqali tez fokus o‘tish. '
           'Standart: F2 — mijoz, F7 — mahsulot, F5 — oxirgi miqdor, '
-          'F12 — kelish narxini ko‘rsatish (faqat do‘kon rejimi).',
+          'F12 — kelish narxini ko‘rsatish (faqat do‘kon rejimi), '
+          'F6 — savat foydasini ko‘rsatish.',
         ),
         const SizedBox(height: 12),
         _card(
