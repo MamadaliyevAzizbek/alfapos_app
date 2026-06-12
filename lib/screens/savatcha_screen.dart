@@ -178,6 +178,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       setState(() {
         _desktopSalesLayoutMode = mode;
         _restaurantCategoryId = null;
+        if (mode == DesktopSalesLayoutMode.restaurant) {
+          _isReturnMode = false;
+        }
       });
     }
   }
@@ -671,8 +674,17 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           SalesShortcutAction.focusCustomerSearch => const _FocusCustomerSearchIntent(),
           SalesShortcutAction.focusProductSearch => const _FocusCatalogSearchIntent(),
           SalesShortcutAction.focusLastCartQty => const _FocusLastCartQtyIntent(),
+          SalesShortcutAction.toggleShowPurchasePrice => const _ToggleShowPurchasePriceIntent(),
         },
     };
+  }
+
+  void _toggleShowPurchasePriceOnCards() {
+    if (!isDesktopPosLayout || _desktopSalesLayoutMode != DesktopSalesLayoutMode.standard) {
+      return;
+    }
+    _sales.setShowPurchasePrice(!_sales.showPurchasePrice);
+    setState(() {});
   }
 
   void _setCartLineSellByPack(CartItem item, bool sellByPack) {
@@ -786,7 +798,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
     if (_desktopSalesLayoutMode == DesktopSalesLayoutMode.restaurant) {
       if (_restaurantCategoryId != null) return _restaurantCategoryProducts;
-      return const [];
+      return _desktopBrowseProducts;
     }
     return _desktopBrowseProducts;
   }
@@ -1285,6 +1297,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             _FocusCustomerSearchIntent: CallbackAction<_FocusCustomerSearchIntent>(
               onInvoke: (_) {
                 _focusCustomerSearchInput();
+                return null;
+              },
+            ),
+            _ToggleShowPurchasePriceIntent: CallbackAction<_ToggleShowPurchasePriceIntent>(
+              onInvoke: (_) {
+                _toggleShowPurchasePriceOnCards();
                 return null;
               },
             ),
@@ -2408,4 +2426,8 @@ class _FocusCatalogSearchIntent extends Intent {
 
 class _FocusCustomerSearchIntent extends Intent {
   const _FocusCustomerSearchIntent();
+}
+
+class _ToggleShowPurchasePriceIntent extends Intent {
+  const _ToggleShowPurchasePriceIntent();
 }

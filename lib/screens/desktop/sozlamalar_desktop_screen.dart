@@ -457,7 +457,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _sectionHeader(
           'Savdo sozlamalari',
           'Desktop sotuv ekranida mahsulotlar qanday ko‘rinishini tanlang. '
-          'Restoran rejimida avval kategoriyalar (grid), keyin mahsulotlar chiqadi.',
+          'Restoran rejimida kategoriyalar qidiruv ostida gorizontal tugmalar, '
+          'pastda mahsulotlar chiqadi.',
         ),
         const SizedBox(height: 20),
         _card(
@@ -543,7 +544,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _sectionHeader(
           'Tezkor klavishlar',
           'Sotuv bo‘limida F-tugmalari orqali tez fokus o‘tish. '
-          'Standart: F2 — mijoz, F7 — mahsulot, F5 — oxirgi mahsulot miqdori.',
+          'Standart: F2 — mijoz, F7 — mahsulot, F5 — oxirgi miqdor, '
+          'F12 — kelish narxini ko‘rsatish (faqat do‘kon rejimi).',
         ),
         const SizedBox(height: 12),
         _card(

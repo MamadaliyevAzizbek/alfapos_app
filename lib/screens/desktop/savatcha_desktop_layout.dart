@@ -8,7 +8,7 @@ import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
 import '../../utils/customer_group_discount.dart';
 import '../../widgets/product_tile.dart';
-import '../../widgets/reorderable_category_grid.dart';
+import '../../widgets/restaurant_category_chips.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import 'sales_nav_filters.dart';
 import 'sales_window_tabs.dart';
@@ -241,19 +241,22 @@ class SavatchaDesktopLayout extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: SalesNavCategoryBrandFilters(
-                        categoryId: categoryFilterId,
-                        brandId: brandFilterId,
-                        categories: filterCategories,
-                        brands: filterBrands,
-                        onCategoryChanged: onCategoryFilterChanged,
-                        onBrandChanged: onBrandFilterChanged,
-                        expand: true,
+                    if (!_isRestaurantMode) ...[
+                      Expanded(
+                        child: SalesNavCategoryBrandFilters(
+                          categoryId: categoryFilterId,
+                          brandId: brandFilterId,
+                          categories: filterCategories,
+                          brands: filterBrands,
+                          onCategoryChanged: onCategoryFilterChanged,
+                          onBrandChanged: onBrandFilterChanged,
+                          expand: true,
+                        ),
                       ),
-                    ),
-                    if (onSalesWindowSelected != null && onAddSalesWindow != null) ...[
-                      const SizedBox(width: 16),
+                      if (onSalesWindowSelected != null && onAddSalesWindow != null)
+                        const SizedBox(width: 16),
+                    ],
+                    if (onSalesWindowSelected != null && onAddSalesWindow != null)
                       SalesWindowTabs(
                         windowCount: salesWindowCount,
                         activeIndex: activeSalesWindowIndex,
@@ -261,7 +264,6 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         onAddWindow: onAddSalesWindow!,
                         canAddWindow: canAddSalesWindow,
                       ),
-                    ],
                   ],
                 ),
               ),
@@ -325,7 +327,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (onReturnModeChanged != null) _buildPosModeNavCards(compact: compact),
+        if (onReturnModeChanged != null && !_isRestaurantMode) _buildPosModeNavCards(compact: compact),
         if (onOpenShiftDashboard != null)
           TextButton.icon(
             onPressed: onOpenShiftDashboard,
@@ -452,33 +454,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
-  bool get _isRestaurantBrowse =>
-      salesLayoutMode == DesktopSalesLayoutMode.restaurant &&
-      query.trim().isEmpty &&
-      restaurantCategoryId == null;
+  bool get _isRestaurantMode => salesLayoutMode == DesktopSalesLayoutMode.restaurant;
 
-  bool get _isRestaurantCategoryView =>
-      salesLayoutMode == DesktopSalesLayoutMode.restaurant &&
-      query.trim().isEmpty &&
-      restaurantCategoryId != null;
-
-  String? _restaurantCategoryName() {
-    final id = restaurantCategoryId;
-    if (id == null) return null;
-    for (final c in restaurantCategories) {
-      if (c['id']?.toString() == id) {
-        final name = c['name']?.toString().trim();
-        if (name != null && name.isNotEmpty) return name;
-      }
-    }
-    return null;
-  }
+  bool get _showRestaurantCategoryChips => _isRestaurantMode && query.trim().isEmpty;
 
   Widget _buildCatalogPanel(BuildContext context) {
-    final initialLoading = productsLoading && catalogProducts.isEmpty && !_isRestaurantBrowse;
+    final initialLoading = productsLoading && catalogProducts.isEmpty;
     final loadingMore = productsLoading && catalogProducts.isNotEmpty;
-    final showCategoryGrid = _isRestaurantBrowse;
-    final showProductGrid = !showCategoryGrid;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -530,51 +512,26 @@ class SavatchaDesktopLayout extends StatelessWidget {
             ],
           ),
         ),
-        if (_isRestaurantCategoryView)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
-                onTap: onRestaurantCategoryBack,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.arrow_back_rounded, size: 22, color: AppTheme.primary),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _restaurantCategoryName() ?? 'Kategoriya',
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: onRestaurantCategoryBack,
-                        child: const Text('Orqaga'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+        if (_showRestaurantCategoryChips)
+          RestaurantCategoryChips(
+            categories: restaurantCategories,
+            selectedCategoryId: restaurantCategoryId,
+            onCategorySelected: onRestaurantCategorySelected,
+            productCount: restaurantCategoryProductCount,
           ),
         Expanded(
-          child: showCategoryGrid
-              ? _buildRestaurantCategoryGrid(context)
-              : initialLoading
-                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-                  : showProductGrid && catalogProducts.isEmpty
-                      ? Center(
-                          child: Text(
-                            _isRestaurantCategoryView ? 'Bu kategoriyada mahsulot yo‘q' : 'Mahsulot topilmadi',
-                            style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-                          ),
-                        )
-                      : Stack(
+          child: initialLoading
+              ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+              : catalogProducts.isEmpty
+                  ? Center(
+                      child: Text(
+                        _showRestaurantCategoryChips && restaurantCategoryId != null
+                            ? 'Bu kategoriyada mahsulot yo‘q'
+                            : 'Mahsulot topilmadi',
+                        style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+                      ),
+                    )
+                  : Stack(
                           children: [
                             NotificationListener<ScrollNotification>(
                               onNotification: (n) {
@@ -590,11 +547,11 @@ class SavatchaDesktopLayout extends StatelessWidget {
                                   'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}-${restaurantCategoryId ?? ''}',
                                 ),
                                 padding: EdgeInsets.fromLTRB(12, 0, 12, loadingMore ? 40 : 12),
-                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 4,
-                                  mainAxisSpacing: 12,
-                                  crossAxisSpacing: 12,
-                                  childAspectRatio: 0.82,
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 6 : 4,
+                                  mainAxisSpacing: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 8 : 12,
+                                  crossAxisSpacing: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 8 : 12,
+                                  childAspectRatio: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 0.76 : 0.82,
                                 ),
                                 itemCount: catalogProducts.length,
                                 itemBuilder: (context, i) => _DesktopProductCard(
@@ -605,6 +562,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                                   showPurchasePrice: showPurchasePriceOnCards,
                                   showUsdEquivalent: showUsdEquivalentOnCards,
                                   showSkuInTitle: showSkuInProductTitle,
+                                  compact: salesLayoutMode == DesktopSalesLayoutMode.restaurant,
                                   onTap: () => onProductTap(catalogProducts[i]),
                                 ),
                               ),
@@ -717,26 +675,6 @@ class SavatchaDesktopLayout extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRestaurantCategoryGrid(BuildContext context) {
-    final visible = restaurantCategories.where((c) {
-      final id = c['id']?.toString();
-      if (id == null || id.isEmpty) return false;
-      final count = restaurantCategoryProductCount?.call(id);
-      return count == null || count > 0;
-    }).toList();
-
-    return ReorderableCategoryGrid(
-      categories: visible,
-      productCount: restaurantCategoryProductCount,
-      onCategorySelected: onRestaurantCategorySelected,
-      onOrderChanged: (reordered) async {
-        if (onRestaurantCategoriesReordered != null) {
-          await onRestaurantCategoriesReordered!(reordered);
-        }
-      },
     );
   }
 
@@ -1030,6 +968,7 @@ class _DesktopProductCard extends StatelessWidget {
   final bool showPurchasePrice;
   final bool showUsdEquivalent;
   final bool showSkuInTitle;
+  final bool compact;
   final VoidCallback onTap;
 
   const _DesktopProductCard({
@@ -1040,6 +979,7 @@ class _DesktopProductCard extends StatelessWidget {
     this.showPurchasePrice = false,
     this.showUsdEquivalent = false,
     this.showSkuInTitle = false,
+    this.compact = false,
     required this.onTap,
   });
 
@@ -1080,26 +1020,40 @@ class _DesktopProductCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+              padding: EdgeInsets.fromLTRB(
+                compact ? 6 : 8,
+                compact ? 4 : 6,
+                compact ? 6 : 8,
+                compact ? 6 : 8,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.inventory_2_outlined, size: 14, color: AppTheme.textSecondary),
-                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: compact ? 12 : 14,
+                        color: AppTheme.textSecondary,
+                      ),
+                      SizedBox(width: compact ? 3 : 4),
                       Expanded(
                         child: Text(
                           showSkuInTitle ? product.nameWithSku : product.name,
-                          maxLines: 2,
+                          maxLines: compact ? 1 : 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                          style: TextStyle(
+                            fontSize: compact ? 10 : 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                            height: 1.15,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: compact ? 4 : 6),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -1109,8 +1063,10 @@ class _DesktopProductCard extends StatelessWidget {
                           children: [
                             Text(
                               primary,
-                              style: const TextStyle(
-                                fontSize: 14,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 11 : 14,
                                 fontWeight: FontWeight.w700,
                                 color: SavatchaDesktopLayout._priceGreen,
                               ),
@@ -1118,14 +1074,23 @@ class _DesktopProductCard extends StatelessWidget {
                             if (purchase != null)
                               Text(
                                 purchase,
-                                style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: compact ? 9 : 10,
+                                  color: AppTheme.textSecondary,
+                                ),
                               ),
                           ],
                         ),
                       ),
                       Text(
                         '$qty',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                        style: TextStyle(
+                          fontSize: compact ? 10 : 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                     ],
                   ),

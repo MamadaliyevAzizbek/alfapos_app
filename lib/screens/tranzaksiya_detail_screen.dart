@@ -538,9 +538,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }
   }
 
-  Future<void> _printThermalReceipt({bool silent = false}) async {
+  Future<bool> _printThermalReceipt({bool silent = false}) async {
     final rid = _completedReceiptId;
-    if (rid == null || _printingReceipt) return;
+    if (rid == null || _printingReceipt) return false;
     setState(() => _printingReceipt = true);
     try {
       await _loadReceiptDesign();
@@ -558,14 +558,16 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         localLines,
         directOnly: directOnly,
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       if (result.ok) {
         if (!silent) AppNotify.success(context, result.message);
-      } else {
-        AppNotify.warning(context, result.message);
+        return true;
       }
+      AppNotify.warning(context, result.message);
+      return false;
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Chop etish xatosi: $e');
+      return false;
     } finally {
       if (mounted) setState(() => _printingReceipt = false);
     }
@@ -2047,9 +2049,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     }
     if (widget.useDesktopFullscreenLayout) {
       final autoPrint = await PrinterSettings.isAutoPrintEnabled();
+      if (!autoPrint || !mounted) return;
       final ready = await PrinterSettings.isPrinterReady();
-      if (autoPrint && ready && mounted) {
-        await _printThermalReceipt(silent: true);
+      if (!ready || !mounted) return;
+      final printed = await _printThermalReceipt(silent: true);
+      if (printed && mounted) {
+        _finishDesktopPaymentFlow();
       }
     }
   }

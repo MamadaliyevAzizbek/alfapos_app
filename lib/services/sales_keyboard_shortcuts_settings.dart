@@ -8,6 +8,7 @@ enum SalesShortcutAction {
   focusCustomerSearch,
   focusProductSearch,
   focusLastCartQty,
+  toggleShowPurchasePrice,
 }
 
 class SalesKeyboardShortcutsSettings {
@@ -19,6 +20,7 @@ class SalesKeyboardShortcutsSettings {
     SalesShortcutAction.focusCustomerSearch: 'f2',
     SalesShortcutAction.focusProductSearch: 'f7',
     SalesShortcutAction.focusLastCartQty: 'f5',
+    SalesShortcutAction.toggleShowPurchasePrice: 'f12',
   };
 
   static const List<String> allowedKeyIds = [
@@ -43,6 +45,7 @@ class SalesKeyboardShortcutsSettings {
         SalesShortcutAction.focusCustomerSearch => 'Mijoz qidirish',
         SalesShortcutAction.focusProductSearch => 'Mahsulot qidirish',
         SalesShortcutAction.focusLastCartQty => 'Oxirgi mahsulot miqdori',
+        SalesShortcutAction.toggleShowPurchasePrice => 'Kelish narxini ko‘rsatish',
       };
 
   static String formatKeyLabel(String keyId) => keyId.toUpperCase();
