@@ -12,6 +12,7 @@ import '../../services/product_display_settings.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
+import '../../services/sales_stock_limit_settings.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
@@ -54,6 +55,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   ProductCatalogSortMode _productCatalogSortMode = ProductCatalogSortMode.defaultOrder;
   Map<SalesShortcutAction, String> _shortcutKeys =
       Map.of(SalesKeyboardShortcutsSettings.defaults);
+  bool _enforceStockLimit = true;
 
   @override
   void initState() {
@@ -77,6 +79,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final showSku = await ProductDisplaySettings.getShowSkuInTitle();
       final productSort = await ProductCatalogSortSettings.getMode();
       final shortcutKeys = await SalesKeyboardShortcutsSettings.loadAll();
+      final enforceStockLimit = await SalesStockLimitSettings.getEnabled();
       if (!mounted) return;
       setState(() {
         _printers = names;
@@ -88,6 +91,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _showSkuInProductTitle = showSku;
         _productCatalogSortMode = productSort;
         _shortcutKeys = shortcutKeys;
+        _enforceStockLimit = enforceStockLimit;
         _loading = false;
       });
     } catch (e) {
@@ -113,6 +117,17 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
     AppNotify.success(
       context,
       'Sotuv ko‘rinishi: ${DesktopSalesLayoutSettings.modeLabel(_salesLayoutMode)}',
+    );
+  }
+
+  Future<void> _saveStockLimitSetting() async {
+    await SalesStockLimitSettings.setEnabled(_enforceStockLimit);
+    if (!mounted) return;
+    AppNotify.success(
+      context,
+      _enforceStockLimit
+          ? 'Ombor chegarasida sotish yoqildi'
+          : 'Ombor chegarasida sotish o‘chirildi',
     );
   }
 
@@ -473,6 +488,47 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 alignment: Alignment.centerRight,
                 child: FilledButton.icon(
                   onPressed: _saveSalesLayoutMode,
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('Saqlash'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _sectionHeader(
+          'Ombor chegarasi',
+          'Yoqilganda savatga omborda yetmaydigan miqdor qo‘shilmaydi. '
+          'Masalan, 10 ta qolgan mahsulotdan 11 tasini sotib bo‘lmaydi.',
+        ),
+        const SizedBox(height: 12),
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Omborda yetarli bo‘lmaganda sotmaslik',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  '0 qolgan mahsulot savatga tushmaydi. Mavjud miqdordan ortiq sotishda '
+                  '«Mahsulot omborda yetarli emas» ogohlantirishi chiqadi.',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+                ),
+                value: _enforceStockLimit,
+                activeColor: AppTheme.primary,
+                onChanged: (v) => setState(() => _enforceStockLimit = v),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _saveStockLimitSetting,
                   icon: const Icon(Icons.save_rounded),
                   label: const Text('Saqlash'),
                   style: FilledButton.styleFrom(

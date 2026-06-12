@@ -45,6 +45,8 @@ import '../utils/hold_order_cart.dart';
 import '../utils/hold_order_precheck_excel_export.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/sales_keyboard_shortcuts_settings.dart';
+import '../services/sales_stock_limit_settings.dart';
+import '../utils/cart_stock_limit.dart';
 import '../services/category_order_storage.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/product_catalog_sort_settings.dart';
@@ -275,7 +277,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _sales.addListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.addListener(_onShortcutSettingsChanged);
+    SalesStockLimitSettings.enabled.addListener(_onStockLimitSettingsChanged);
     unawaited(_loadShortcutKeys());
+    unawaited(SalesStockLimitSettings.load());
     if (isDesktopPosLayout) {
       FocusManager.instance.addListener(_onDesktopFocusChanged);
       _categoriesSub = CategoriesProvider.instance.stream.listen((_) {
@@ -408,6 +412,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _sales.removeListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.removeListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.removeListener(_onShortcutSettingsChanged);
+    SalesStockLimitSettings.enabled.removeListener(_onStockLimitSettingsChanged);
     _catalogSearchFocus.dispose();
     _customerSearchFocus.dispose();
     _searchController.dispose();
@@ -572,6 +577,75 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     unawaited(_loadShortcutKeys());
   }
 
+  void _onStockLimitSettingsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _enforceStockLimit => SalesStockLimitSettings.enabled.value;
+
+  List<CartItem> _allCartItemsForStockCheck() {
+    if (isDesktopPosLayout) {
+      _captureActiveSalesWindow();
+      return [
+        for (final window in _salesWindows)
+          for (final item in window.cartItems)
+            item,
+      ];
+    }
+    return _cart.items;
+  }
+
+  void _notifyStockInsufficient() {
+    AppNotify.warning(context, CartStockLimit.message);
+  }
+
+  bool _canAddProductToCart(
+    Product product, {
+    num quantity = 1,
+    bool sellByPack = false,
+  }) {
+    if (!_enforceStockLimit || _isReturnMode) return true;
+    final aligned = ProductsProvider.instance.withCatalogStock(product);
+    final ok = CartStockLimit.allowsAdd(
+      product: aligned,
+      allItems: _allCartItemsForStockCheck(),
+      addQuantity: quantity,
+      sellByPack: sellByPack,
+    );
+    if (!ok) _notifyStockInsufficient();
+    return ok;
+  }
+
+  bool _canSetCartLineQuantity(CartItem item, num newQuantity, {bool? sellByPack}) {
+    if (!_enforceStockLimit || _isReturnMode) return true;
+    if (newQuantity <= 0) return true;
+    final aligned = ProductsProvider.instance.withCatalogStock(item.product);
+    final ok = CartStockLimit.allowsLineQuantity(
+      product: aligned,
+      allItems: _allCartItemsForStockCheck(),
+      line: item,
+      newQuantity: newQuantity,
+      sellByPack: sellByPack,
+    );
+    if (!ok) _notifyStockInsufficient();
+    return ok;
+  }
+
+  void _updateCartQuantity(CartItem item, num quantity) {
+    if (!_canSetCartLineQuantity(item, quantity)) return;
+    if (quantity <= 0) {
+      _cart.remove(item);
+      if (identical(_expandedCartLine, item)) _expandedCartLine = null;
+    } else {
+      _cart.updateQuantity(item, quantity);
+    }
+    setState(() {});
+  }
+
+  void _incrementCartLine(CartItem item) {
+    _updateCartQuantity(item, item.quantity + 1);
+  }
+
   void _focusCustomerSearchInput() {
     if (!mounted || !isDesktopPosLayout || !widget.isTabActive) return;
     _suspendCatalogSearchRefocusBriefly();
@@ -604,6 +678,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void _setCartLineSellByPack(CartItem item, bool sellByPack) {
     if (item.sellByPack == sellByPack) return;
     if (sellByPack && !item.product.canSellByPack) return;
+    if (!_canSetCartLineQuantity(item, item.quantity, sellByPack: sellByPack)) return;
     item.sellByPack = sellByPack;
     item.salePriceOverride = null;
     item.unitPriceBaseForCartPercent = null;
@@ -924,22 +999,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                             return _CartItemTile(
                               item: item,
                               onLineTap: () => _showCartLinePriceDialog(context, item),
-                              onIncrement: () {
-                                _cart.updateQuantity(item, item.quantity + 1);
-                                setState(() {});
-                              },
+                              onIncrement: () => _incrementCartLine(item),
                               onDecrement: () {
                                 if (item.quantity > 1) {
-                                  _cart.updateQuantity(item, item.quantity - 1);
+                                  _updateCartQuantity(item, item.quantity - 1);
                                 } else {
                                   _cart.remove(item);
+                                  setState(() {});
                                 }
-                                setState(() {});
                               },
-                              onQuantityChanged: (newQty) {
-                                _cart.updateQuantity(item, newQty);
-                                setState(() {});
-                              },
+                              onQuantityChanged: (newQty) => _updateCartQuantity(item, newQty),
                             );
                           },
                         ),
@@ -1102,6 +1171,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       setState(() {});
     }
 
+    void addLine({required bool sellByPack}) {
+      if (!_canAddProductToCart(product, sellByPack: sellByPack)) return;
+      afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: sellByPack)));
+    }
+
     if (product.canSellByPack && !isDesktopPosLayout) {
       showCupertinoModalPopup<void>(
         context: context,
@@ -1112,14 +1186,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.pop(ctx);
-                afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: true)));
+                addLine(sellByPack: true);
               },
               child: Text(_packChoiceLabel(product)),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.pop(ctx);
-                afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: false)));
+                addLine(sellByPack: false);
               },
               child: Text(_pieceChoiceLabel(product)),
             ),
@@ -1132,7 +1206,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         ),
       ).whenComplete(_refocusCatalogSearch);
     } else {
-      afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: false)));
+      addLine(sellByPack: false);
       _refocusCatalogSearch();
     }
   }
@@ -1297,15 +1371,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         onCollapseCartExpand: () {
           setState(() => _expandedCartLine = null);
         },
-        onCartQuantityChanged: (item, qty) {
-          if (qty <= 0) {
-            _cart.remove(item);
-            if (identical(_expandedCartLine, item)) _expandedCartLine = null;
-          } else {
-            _cart.updateQuantity(item, qty);
-          }
-          setState(() {});
-        },
+        onCartQuantityChanged: (item, qty) => _updateCartQuantity(item, qty),
         onCartUnitPriceChanged: (item, override) {
           _setCartLineUnitPrice(item, override);
           setState(() {});
@@ -1319,18 +1385,15 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           if (identical(_expandedCartLine, item)) _expandedCartLine = null;
           setState(() {});
         },
-        onIncrement: (item) {
-          _cart.updateQuantity(item, item.quantity + 1);
-          setState(() {});
-        },
+        onIncrement: _incrementCartLine,
         onDecrement: (item) {
           if (item.quantity > 1) {
-            _cart.updateQuantity(item, item.quantity - 1);
+            _updateCartQuantity(item, item.quantity - 1);
           } else {
             _cart.remove(item);
             if (identical(_expandedCartLine, item)) _expandedCartLine = null;
+            setState(() {});
           }
-          setState(() {});
         },
         onPayment: () => _openPayment(context),
         onDailyReport: () => _sendDailyReport(context),
