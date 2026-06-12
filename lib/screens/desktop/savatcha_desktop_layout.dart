@@ -11,6 +11,7 @@ import '../../widgets/product_tile.dart';
 import '../../widgets/reorderable_category_grid.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import 'sales_nav_filters.dart';
+import 'sales_window_tabs.dart';
 
 /// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
 class SavatchaDesktopLayout extends StatelessWidget {
@@ -90,6 +91,11 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final VoidCallback? onOpenSectionMenu;
   final VoidCallback? onGlobalSync;
   final bool globalSyncing;
+  final int salesWindowCount;
+  final int activeSalesWindowIndex;
+  final ValueChanged<int>? onSalesWindowSelected;
+  final VoidCallback? onAddSalesWindow;
+  final bool canAddSalesWindow;
 
   const SavatchaDesktopLayout({
     super.key,
@@ -164,6 +170,11 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.onOpenSectionMenu,
     this.onGlobalSync,
     this.globalSyncing = false,
+    this.salesWindowCount = 1,
+    this.activeSalesWindowIndex = 0,
+    this.onSalesWindowSelected,
+    this.onAddSalesWindow,
+    this.canAddSalesWindow = false,
   });
 
   int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
@@ -227,14 +238,31 @@ class SavatchaDesktopLayout extends StatelessWidget {
               _buildTopBarLeading(compact: compact),
               const SizedBox(width: 12),
               Expanded(
-                child: SalesNavCategoryBrandFilters(
-                  categoryId: categoryFilterId,
-                  brandId: brandFilterId,
-                  categories: filterCategories,
-                  brands: filterBrands,
-                  onCategoryChanged: onCategoryFilterChanged,
-                  onBrandChanged: onBrandFilterChanged,
-                  expand: true,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: SalesNavCategoryBrandFilters(
+                        categoryId: categoryFilterId,
+                        brandId: brandFilterId,
+                        categories: filterCategories,
+                        brands: filterBrands,
+                        onCategoryChanged: onCategoryFilterChanged,
+                        onBrandChanged: onBrandFilterChanged,
+                        expand: true,
+                      ),
+                    ),
+                    if (onSalesWindowSelected != null && onAddSalesWindow != null) ...[
+                      const SizedBox(width: 16),
+                      SalesWindowTabs(
+                        windowCount: salesWindowCount,
+                        activeIndex: activeSalesWindowIndex,
+                        onWindowSelected: onSalesWindowSelected!,
+                        onAddWindow: onAddSalesWindow!,
+                        canAddWindow: canAddSalesWindow,
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 12),

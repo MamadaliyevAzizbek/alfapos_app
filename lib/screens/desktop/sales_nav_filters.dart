@@ -6,6 +6,8 @@ import '../../providers/sales_session_provider.dart';
 /// Sotuv navbar: kategoriya va brend (kassa nomi yonida, filtr dialogidagi ko‘rinish).
 class SalesNavCategoryBrandFilters extends StatelessWidget {
   static const double menuMaxHeight = 48 * 4;
+  /// Navbar kategoriya/brend maydoni balandligi (oyna tugmalari bilan bir xil).
+  static const double navbarFieldHeight = 56;
 
   final String? categoryId;
   final String? brandId;

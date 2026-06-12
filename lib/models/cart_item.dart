@@ -19,6 +19,14 @@ class CartItem {
     this.unitPriceBaseForCartPercent,
   });
 
+  CartItem copy() => CartItem(
+        product: product,
+        quantity: quantity,
+        sellByPack: sellByPack,
+        salePriceOverride: salePriceOverride,
+        unitPriceBaseForCartPercent: unitPriceBaseForCartPercent,
+      );
+
   /// Katalog bo'yicha 1 dona yoki 1 pachka narxi (override siz)
   num get defaultLineUnitPrice {
     if (sellByPack) {

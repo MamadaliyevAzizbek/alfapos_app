@@ -72,6 +72,13 @@ class CartProvider {
     _controller.add(items);
   }
 
+  void replaceAll(Iterable<CartItem> items) {
+    _items
+      ..clear()
+      ..addAll(items);
+    _controller.add(this.items);
+  }
+
   void dispose() {
     _controller.close();
   }

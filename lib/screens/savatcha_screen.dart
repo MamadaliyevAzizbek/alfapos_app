@@ -9,6 +9,7 @@ import '../core/constants.dart';
 import '../core/theme.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../models/sales_window_snapshot.dart';
 import '../providers/cart_provider.dart';
 import '../providers/clients_provider.dart';
 import '../providers/products_provider.dart';
@@ -109,6 +110,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   DesktopSalesLayoutMode _desktopSalesLayoutMode = DesktopSalesLayoutMode.standard;
   String? _restaurantCategoryId;
   List<String> _categoryOrderIds = [];
+  static const int _maxSalesWindows = 12;
+  final List<SalesWindowSnapshot> _salesWindows = [SalesWindowSnapshot.empty()];
+  int _activeSalesWindowIndex = 0;
+  bool _applyingSalesWindow = false;
 
   Future<void> _onRefresh() async {
     if (isDesktopPosLayout) {
@@ -417,6 +422,95 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (_discountPercentController.text != text) {
       _discountPercentController.text = text;
     }
+  }
+
+  void _captureActiveSalesWindow() {
+    if (!isDesktopPosLayout || _applyingSalesWindow) return;
+    _salesWindows[_activeSalesWindowIndex] = SalesWindowSnapshot(
+      cartItems: _cart.items.map((e) => e.copy()).toList(),
+      client: _selectedClient,
+      discountPercent: _sales.cartDiscountPercent,
+      isReturnMode: _isReturnMode,
+      holdOrderId: _activeHoldOrderId,
+      holdInvoiceId: _activeHoldInvoiceId,
+    );
+  }
+
+  Future<void> _applySalesWindow(SalesWindowSnapshot window) async {
+    if (!isDesktopPosLayout) return;
+    _applyingSalesWindow = true;
+    try {
+      _cart.replaceAll(window.cartItems.map((e) => e.copy()));
+      _selectedClient = window.client;
+      _activeHoldOrderId = window.holdOrderId;
+      _activeHoldInvoiceId = window.holdInvoiceId;
+      _expandedCartLine = null;
+      _cartQtyFocusItem = null;
+
+      _sales.setCartDiscountPercent(window.discountPercent);
+      for (final item in _cart.items) {
+        CartDiscountPercent.syncBaseFromCurrent(item);
+        CartDiscountPercent.applyToItem(item, window.discountPercent);
+      }
+      _syncDiscountPercentField();
+
+      if (_isReturnMode != window.isReturnMode) {
+        _isReturnMode = window.isReturnMode;
+        if (window.isReturnMode) {
+          unawaited(() async {
+            try {
+              await SalesApi.setReturnsType();
+            } catch (_) {}
+          }());
+        }
+      }
+    } finally {
+      _applyingSalesWindow = false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _switchSalesWindow(int index) {
+    if (!isDesktopPosLayout || index == _activeSalesWindowIndex) return;
+    if (index < 0 || index >= _salesWindows.length) return;
+    _captureActiveSalesWindow();
+    _activeSalesWindowIndex = index;
+    unawaited(_applySalesWindow(_salesWindows[index]));
+    _refocusCatalogSearch();
+  }
+
+  void _addSalesWindow() {
+    if (!isDesktopPosLayout) return;
+    if (_cart.items.isEmpty) {
+      AppNotify.info(context, 'Yangi oyna uchun avval savatga mahsulot qo\'shing');
+      return;
+    }
+    if (_salesWindows.length >= _maxSalesWindows) {
+      AppNotify.warning(context, 'Maksimum $_maxSalesWindows ta sotuv oynasi');
+      return;
+    }
+    _captureActiveSalesWindow();
+    _salesWindows.add(SalesWindowSnapshot.empty());
+    _activeSalesWindowIndex = _salesWindows.length - 1;
+    unawaited(_applySalesWindow(_salesWindows[_activeSalesWindowIndex]));
+    _refocusCatalogSearch();
+  }
+
+  /// To‘lov yakunlangach joriy oynani yopish (bitta oyna qolsa — tozalash).
+  Future<void> _closeActiveSalesWindowAfterPayment() async {
+    if (!isDesktopPosLayout) return;
+
+    if (_salesWindows.length <= 1) {
+      _salesWindows[0] = SalesWindowSnapshot.empty();
+      _activeSalesWindowIndex = 0;
+      return;
+    }
+
+    _salesWindows.removeAt(_activeSalesWindowIndex);
+    if (_activeSalesWindowIndex >= _salesWindows.length) {
+      _activeSalesWindowIndex = _salesWindows.length - 1;
+    }
+    await _applySalesWindow(_salesWindows[_activeSalesWindowIndex]);
   }
 
   void _setCartDiscountPercent(int percent) {
@@ -1270,6 +1364,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         onOpenSectionMenu: widget.onOpenSectionMenu,
         onGlobalSync: widget.onGlobalSync,
         globalSyncing: DesktopShellScope.maybeOf(context)?.syncing ?? false,
+        salesWindowCount: _salesWindows.length,
+        activeSalesWindowIndex: _activeSalesWindowIndex,
+        onSalesWindowSelected: _switchSalesWindow,
+        onAddSalesWindow: _addSalesWindow,
+        canAddSalesWindow: items.isNotEmpty,
             ),
           ),
         ),
@@ -1292,12 +1391,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _activeHoldInvoiceId = null;
     _selectedClient = null;
     _setCartDiscountPercent(0);
+    _captureActiveSalesWindow();
   }
 
   void _setReturnMode(bool returnMode) {
     if (_isReturnMode == returnMode) return;
     if (_cart.items.isNotEmpty) _clearCart();
     setState(() => _isReturnMode = returnMode);
+    _captureActiveSalesWindow();
     if (returnMode) {
       unawaited(() async {
         try {
@@ -1423,6 +1524,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _syncDiscountPercentField();
     if (mounted) {
       setState(() {});
+      _captureActiveSalesWindow();
       await _refreshSavedOrdersCount();
       AppNotify.success(
         context,
@@ -1490,6 +1592,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _selectedClient = null;
     _setCartDiscountPercent(0);
     await _refreshSavedOrdersCount();
+    _captureActiveSalesWindow();
     setState(() {});
     _refocusCatalogSearch();
   }
@@ -1769,9 +1872,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _selectedClient = null;
       _setCartDiscountPercent(0);
       _isReturnMode = false;
-      setState(() {});
-      unawaited(_refreshSavedOrdersCount(force: true));
-      _refocusCatalogSearch();
+      if (isDesktopPosLayout) {
+        unawaited(_closeActiveSalesWindowAfterPayment().then((_) {
+          if (!mounted) return;
+          setState(() {});
+          unawaited(_refreshSavedOrdersCount(force: true));
+          _refocusCatalogSearch();
+        }));
+      } else {
+        setState(() {});
+        unawaited(_refreshSavedOrdersCount(force: true));
+        _refocusCatalogSearch();
+      }
     }
 
     if (isDesktopPosLayout) {
