@@ -26,14 +26,9 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
     this.expand = false,
   });
 
-  bool get _hasActiveFilter =>
-      (categoryId != null && categoryId!.isNotEmpty) ||
-      (brandId != null && brandId!.isNotEmpty);
+  bool get _hasCategoryFilter => categoryId != null && categoryId!.isNotEmpty;
 
-  void _clearFilters() {
-    onCategoryChanged(null);
-    onBrandChanged(null);
-  }
+  bool get _hasBrandFilter => brandId != null && brandId!.isNotEmpty;
 
   Widget _categoryField() => SalesFilterDropdownField(
         label: 'Kategoriya',
@@ -51,29 +46,61 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
         size: SalesFilterDropdownSize.navbar,
       );
 
+  Widget _clearButton({
+    required VoidCallback onPressed,
+    required String tooltip,
+  }) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: const Icon(Icons.close_rounded, size: 24, color: Color(0xFF64748B)),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+      tooltip: tooltip,
+    );
+  }
+
+  Widget _filterWithClear({
+    required Widget field,
+    required bool showClear,
+    required VoidCallback onClear,
+    required String clearTooltip,
+  }) {
+    if (!showClear) return field;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(child: field),
+        _clearButton(onPressed: onClear, tooltip: clearTooltip),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final categoryBlock = _filterWithClear(
+      field: _categoryField(),
+      showClear: _hasCategoryFilter,
+      onClear: () => onCategoryChanged(null),
+      clearTooltip: 'Kategoriyani tozalash',
+    );
+    final brandBlock = _filterWithClear(
+      field: _brandField(),
+      showClear: _hasBrandFilter,
+      onClear: () => onBrandChanged(null),
+      clearTooltip: 'Brendni tozalash',
+    );
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (expand) ...[
-          Expanded(child: _categoryField()),
+          Expanded(child: categoryBlock),
           const SizedBox(width: 16),
-          Expanded(child: _brandField()),
+          Expanded(child: brandBlock),
         ] else ...[
-          SizedBox(width: 180, child: _categoryField()),
+          SizedBox(width: 180, child: categoryBlock),
           const SizedBox(width: 14),
-          SizedBox(width: 170, child: _brandField()),
-        ],
-        if (_hasActiveFilter) ...[
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: _clearFilters,
-            icon: const Icon(Icons.close_rounded, size: 24, color: Color(0xFF64748B)),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-            tooltip: 'Kategoriya va brendni tozalash',
-          ),
+          SizedBox(width: 170, child: brandBlock),
         ],
       ],
     );

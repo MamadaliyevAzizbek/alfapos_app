@@ -45,6 +45,6 @@ class CatalogProductPriceLabel {
   static String? purchaseLine(Product p) {
     final c = p.costPriceUzs;
     if (c == null || c <= 0) return null;
-    return 'Kelish: ${formatThousands(c)}';
+    return formatThousands(c);
   }
 }

@@ -11,6 +11,7 @@ import '../../services/product_catalog_sort_settings.dart';
 import '../../services/product_display_settings.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../services/desktop_sales_layout_settings.dart';
+import '../../services/sales_keyboard_shortcuts_settings.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
@@ -51,6 +52,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   DesktopSalesLayoutMode _salesLayoutMode = DesktopSalesLayoutMode.standard;
   bool _showSkuInProductTitle = false;
   ProductCatalogSortMode _productCatalogSortMode = ProductCatalogSortMode.defaultOrder;
+  Map<SalesShortcutAction, String> _shortcutKeys =
+      Map.of(SalesKeyboardShortcutsSettings.defaults);
 
   @override
   void initState() {
@@ -73,6 +76,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final salesMode = await DesktopSalesLayoutSettings.getMode();
       final showSku = await ProductDisplaySettings.getShowSkuInTitle();
       final productSort = await ProductCatalogSortSettings.getMode();
+      final shortcutKeys = await SalesKeyboardShortcutsSettings.loadAll();
       if (!mounted) return;
       setState(() {
         _printers = names;
@@ -83,6 +87,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _salesLayoutMode = salesMode;
         _showSkuInProductTitle = showSku;
         _productCatalogSortMode = productSort;
+        _shortcutKeys = shortcutKeys;
         _loading = false;
       });
     } catch (e) {
@@ -109,6 +114,24 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       context,
       'Sotuv ko‘rinishi: ${DesktopSalesLayoutSettings.modeLabel(_salesLayoutMode)}',
     );
+  }
+
+  Future<void> _saveShortcutKeys() async {
+    if (SalesKeyboardShortcutsSettings.hasDuplicateKeys(_shortcutKeys)) {
+      AppNotify.info(context, 'Har bir tugma faqat bitta amal uchun ishlatilishi kerak');
+      return;
+    }
+    await SalesKeyboardShortcutsSettings.saveAll(_shortcutKeys);
+    if (!mounted) return;
+    AppNotify.success(context, 'Tezkor klavishlar saqlandi');
+  }
+
+  Future<void> _resetShortcutKeys() async {
+    await SalesKeyboardShortcutsSettings.resetAll();
+    final keys = await SalesKeyboardShortcutsSettings.loadAll();
+    if (!mounted) return;
+    setState(() => _shortcutKeys = keys);
+    AppNotify.success(context, 'Tezkor klavishlar standartga qaytarildi');
   }
 
   Future<void> _saveProductDisplay() async {
@@ -458,6 +481,83 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _sectionHeader(
+          'Tezkor klavishlar',
+          'Sotuv bo‘limida F-tugmalari orqali tez fokus o‘tish. '
+          'Standart: F2 — mijoz, F7 — mahsulot, F5 — oxirgi mahsulot miqdori.',
+        ),
+        const SizedBox(height: 12),
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final action in SalesShortcutAction.values) ...[
+                _shortcutKeyRow(action),
+                if (action != SalesShortcutAction.values.last) const SizedBox(height: 12),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: _resetShortcutKeys,
+                    icon: const Icon(Icons.restore_rounded, size: 20),
+                    label: const Text('Standartga qaytarish'),
+                  ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: _saveShortcutKeys,
+                    icon: const Icon(Icons.save_rounded),
+                    label: const Text('Saqlash'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _shortcutKeyRow(SalesShortcutAction action) {
+    final current = _shortcutKeys[action] ?? SalesKeyboardShortcutsSettings.defaults[action]!;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            SalesKeyboardShortcutsSettings.label(action),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
+        SizedBox(
+          width: 120,
+          child: DropdownButtonFormField<String>(
+            value: current,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'Tugma',
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            ),
+            items: SalesKeyboardShortcutsSettings.allowedKeyIds
+                .map(
+                  (k) => DropdownMenuItem(
+                    value: k,
+                    child: Text(SalesKeyboardShortcutsSettings.formatKeyLabel(k)),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() => _shortcutKeys = {..._shortcutKeys, action: v});
+            },
           ),
         ),
       ],

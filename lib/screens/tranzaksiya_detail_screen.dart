@@ -343,19 +343,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   int _maxMixedPaymentForKey(String key) {
     if (_isCashPaymentById(key)) return 0x7FFFFFFF;
 
-    var remaining = _totalAfterDiscount;
-    for (final k in _paymentKeysInAllocationOrder()) {
-      if (k == key) break;
-      final entered = _paymentAmounts[k] ?? 0;
-      if (entered <= 0 || remaining <= 0) continue;
-      var take = entered > remaining ? remaining : entered;
-      if (_isClientBalancePaymentById(k) && !_isTolovsizPaymentById(k) && take > _clientBalanceUzs) {
-        take = _clientBalanceUzs;
-      }
-      if (take <= 0) continue;
-      remaining -= take;
-    }
-    var max = remaining.clamp(0, 0x7FFFFFFF);
+    final otherEntered = _paymentAmounts.entries
+        .where((e) => e.key != key && e.value > 0)
+        .fold<int>(0, (s, e) => s + e.value);
+
+    var max = (_totalAfterDiscount - otherEntered).clamp(0, 0x7FFFFFFF);
     if (_isClientBalancePaymentById(key) &&
         !_isTolovsizPaymentById(key) &&
         max > _clientBalanceUzs) {
@@ -720,6 +712,22 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _applyPaymentAmountInput(key, raw);
   }
 
+  void _fillMixedPaymentWithRemaining(String key) {
+    if (!_mixedPayment) return;
+    final hasOtherPayment = _paymentAmounts.entries.any(
+      (e) => e.key != key && e.value > 0,
+    );
+    // Birinchi to'lov turiga avtomatik to'liq summa yozilmaydi — faqat qoldiq uchun.
+    if (!hasOtherPayment) return;
+    var fill = _remainingToPay;
+    if (!_isCashPaymentById(key)) {
+      final max = _maxMixedPaymentForKey(key);
+      if (fill > max) fill = max;
+    }
+    if (fill <= 0) return;
+    setState(() => _paymentAmounts[key] = fill);
+  }
+
   void _applyPaymentAmountInput(String key, String raw) {
     final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
     var amount = int.tryParse(digits) ?? 0;
@@ -928,6 +936,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           onPaymentKeySelected: _selectDesktopPayment,
           onPaymentMethodTap: (key, title) => _showPaymentMethodDialog(title, key),
           onMixedPaymentAmountChanged: _onMixedPaymentAmountChanged,
+          onMixedPaymentMethodActivate: _fillMixedPaymentWithRemaining,
           onClearPayment: (key) => setState(() => _paymentAmounts.remove(key)),
           amountController: _desktopPayAmountController,
           onAmountChanged: _onDesktopAmountChanged,
@@ -1581,6 +1590,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                 amount: amount,
                 balanceUzs: (isBalancePayment && _client != null) ? _clientBalanceUzs : null,
                 onAmountChanged: (raw) => _onMixedPaymentAmountChanged(key, raw),
+                onActivate: () => _fillMixedPaymentWithRemaining(key),
               );
             }
             return _PaymentMethodCard(

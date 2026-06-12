@@ -3,7 +3,7 @@ import 'product.dart';
 class CartItem {
   final Product product;
   num quantity; // dona yoki pachka soni; o'nli bo'lishi mumkin (masalan 1.8 kg)
-  final bool sellByPack; // true = pachkada sotilmoqda
+  bool sellByPack; // true = pachkada sotilmoqda
 
   /// Shu savatcha / sotuv uchun 1 dona yoki 1 pachka narxi; null = katalogdagi narx
   double? salePriceOverride;

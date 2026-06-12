@@ -60,6 +60,13 @@ class CartProvider {
     _controller.add(items);
   }
 
+  void updateSellByPack(CartItem item, bool sellByPack) {
+    if (!_items.contains(item)) return;
+    if (item.sellByPack == sellByPack) return;
+    item.sellByPack = sellByPack;
+    _controller.add(items);
+  }
+
   void clear() {
     _items.clear();
     _controller.add(items);

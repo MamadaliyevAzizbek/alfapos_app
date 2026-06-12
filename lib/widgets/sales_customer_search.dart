@@ -15,6 +15,8 @@ class SalesCustomerSearch extends StatefulWidget {
   final bool largeButtons;
   /// POS savatcha: faqat «+» tugmasi (matnsiz).
   final bool iconOnlyAddButton;
+  /// Tashqi fokus (masalan F2 tezkor klavish).
+  final FocusNode? searchFocusNode;
 
   const SalesCustomerSearch({
     super.key,
@@ -23,6 +25,7 @@ class SalesCustomerSearch extends StatefulWidget {
     required this.onAddNew,
     this.largeButtons = false,
     this.iconOnlyAddButton = false,
+    this.searchFocusNode,
   });
 
   @override
@@ -33,8 +36,10 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
   double get _fieldHeight => widget.largeButtons ? 52 : 48;
 
   final _controller = TextEditingController();
-  final _focus = FocusNode();
+  FocusNode? _ownedFocus;
   Timer? _debounce;
+
+  FocusNode get _focus => widget.searchFocusNode ?? _ownedFocus!;
   List<Client> _results = [];
   bool _loading = false;
   bool _showList = false;
@@ -43,6 +48,9 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
   @override
   void initState() {
     super.initState();
+    if (widget.searchFocusNode == null) {
+      _ownedFocus = FocusNode();
+    }
   }
 
   @override
@@ -60,7 +68,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
-    _focus.dispose();
+    _ownedFocus?.dispose();
     super.dispose();
   }
 

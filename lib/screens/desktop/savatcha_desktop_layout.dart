@@ -6,6 +6,7 @@ import '../../models/cart_item.dart';
 import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
+import '../../utils/customer_group_discount.dart';
 import '../../widgets/product_tile.dart';
 import '../../widgets/reorderable_category_grid.dart';
 import '../../services/desktop_sales_layout_settings.dart';
@@ -51,10 +52,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final VoidCallback onClearCart;
   final void Function(Product product) onProductTap;
   final CartItem? expandedCartItem;
+  final int cartQtyFocusNonce;
+  final CartItem? cartQtyFocusItem;
   final void Function(CartItem item) onToggleCartExpand;
   final VoidCallback onCollapseCartExpand;
   final void Function(CartItem item, num quantity) onCartQuantityChanged;
   final void Function(CartItem item, double? unitPriceOverride) onCartUnitPriceChanged;
+  final void Function(CartItem item, bool sellByPack) onCartSellByPackChanged;
   final void Function(CartItem item) onRemoveCartItem;
   final void Function(CartItem item) onIncrement;
   final void Function(CartItem item) onDecrement;
@@ -122,10 +126,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required this.onClearCart,
     required this.onProductTap,
     this.expandedCartItem,
+    this.cartQtyFocusNonce = 0,
+    this.cartQtyFocusItem,
     required this.onToggleCartExpand,
     required this.onCollapseCartExpand,
     required this.onCartQuantityChanged,
     required this.onCartUnitPriceChanged,
+    required this.onCartSellByPackChanged,
     required this.onRemoveCartItem,
     required this.onIncrement,
     required this.onDecrement,
@@ -775,6 +782,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       return _DesktopCartLine(
                         item: line,
                         expanded: identical(expandedCartItem, line),
+                        qtyFocusNonce: cartQtyFocusNonce,
+                        isQtyFocusTarget: identical(cartQtyFocusItem, line),
                         onToggleExpand: () => onToggleCartExpand(line),
                         onCollapse: onCollapseCartExpand,
                         onIncrement: () => onIncrement(line),
@@ -782,6 +791,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         onRemove: () => onRemoveCartItem(line),
                         onQuantityChanged: (q) => onCartQuantityChanged(line, q),
                         onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
+                        onSellByPackChanged: (pack) => onCartSellByPackChanged(line, pack),
                         onSuspendCatalogSearchRefocus: onSuspendCatalogSearchRefocus,
                       );
                     },
@@ -1014,7 +1024,7 @@ class _DesktopProductCard extends StatelessWidget {
       usdRate: usdRate,
       showUsdEquivalent: showUsdEquivalent,
     );
-    final purchase = showPurchasePrice ? _purchaseLabel(product) : null;
+    final purchase = showPurchasePrice ? CatalogProductPriceLabel.purchaseLine(product) : null;
 
     return Material(
       color: Colors.white,
@@ -1100,16 +1110,13 @@ class _DesktopProductCard extends StatelessWidget {
     );
   }
 
-  static String? _purchaseLabel(Product p) {
-    final c = p.costPriceUzs;
-    if (c == null || c <= 0) return null;
-    return 'Kelish: ${formatThousands(c)}';
-  }
 }
 
 class _DesktopCartLine extends StatefulWidget {
   final CartItem item;
   final bool expanded;
+  final int qtyFocusNonce;
+  final bool isQtyFocusTarget;
   final VoidCallback onToggleExpand;
   final VoidCallback onCollapse;
   final VoidCallback onIncrement;
@@ -1117,11 +1124,14 @@ class _DesktopCartLine extends StatefulWidget {
   final VoidCallback onRemove;
   final ValueChanged<num> onQuantityChanged;
   final ValueChanged<double?> onUnitPriceChanged;
+  final ValueChanged<bool> onSellByPackChanged;
   final VoidCallback? onSuspendCatalogSearchRefocus;
 
   const _DesktopCartLine({
     required this.item,
     required this.expanded,
+    this.qtyFocusNonce = 0,
+    this.isQtyFocusTarget = false,
     required this.onToggleExpand,
     required this.onCollapse,
     required this.onIncrement,
@@ -1129,6 +1139,7 @@ class _DesktopCartLine extends StatefulWidget {
     required this.onRemove,
     required this.onQuantityChanged,
     required this.onUnitPriceChanged,
+    required this.onSellByPackChanged,
     this.onSuspendCatalogSearchRefocus,
   });
 
@@ -1142,6 +1153,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   late final FocusNode _qtyFocusNode;
   late final FocusNode _priceFocusNode;
   bool _inlineQtyEditing = false;
+  bool _inlinePriceEditing = false;
+  bool _qtyToPriceFocusTransition = false;
 
   @override
   void initState() {
@@ -1155,11 +1168,14 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   }
 
   void _onEditFocusChange() {
+    if (_qtyToPriceFocusTransition) return;
     if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (_qtyToPriceFocusTransition) return;
       if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
       if (_inlineQtyEditing) _closeInlineQtyEdit();
+      if (_inlinePriceEditing) _closeInlinePriceEdit();
       if (!widget.expanded) return;
       _commitQuantity();
       _commitPrice();
@@ -1167,12 +1183,20 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     });
   }
 
-  void _startInlineQtyEdit() {
+  void _startInlineQtyEdit({bool selectAll = false}) {
+    if (_inlinePriceEditing) _closeInlinePriceEdit();
     widget.onSuspendCatalogSearchRefocus?.call();
     _qtyController.text = _qtyText(widget.item.quantity);
     setState(() => _inlineQtyEditing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _qtyFocusNode.requestFocus();
+      if (!mounted) return;
+      _qtyFocusNode.requestFocus();
+      if (selectAll) {
+        _qtyController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _qtyController.text.length,
+        );
+      }
     });
   }
 
@@ -1181,19 +1205,31 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     if (mounted) setState(() => _inlineQtyEditing = false);
   }
 
-  void _submitQuantityAndCollapse() {
-    _commitQuantity();
-    if (widget.expanded) widget.onCollapse();
+  void _startInlinePriceEdit() {
+    if (_inlineQtyEditing) _closeInlineQtyEdit();
+    widget.onSuspendCatalogSearchRefocus?.call();
+    _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+    setState(() => _inlinePriceEditing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _priceFocusNode.requestFocus();
+    });
   }
 
-  void _submitPriceAndCollapse() {
+  void _closeInlinePriceEdit() {
     _commitPrice();
-    if (widget.expanded) widget.onCollapse();
+    if (mounted) setState(() => _inlinePriceEditing = false);
   }
 
   @override
   void didUpdateWidget(covariant _DesktopCartLine oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.isQtyFocusTarget &&
+        widget.qtyFocusNonce != oldWidget.qtyFocusNonce &&
+        widget.qtyFocusNonce > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startInlineQtyEdit(selectAll: true);
+      });
+    }
     if (!_qtyFocusNode.hasFocus) {
       final q = _qtyText(widget.item.quantity);
       if (_qtyController.text != q) _qtyController.text = q;
@@ -1237,40 +1273,66 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
 
   void _commitQuantity() => _applyQuantityInput(_qtyController.text, resetIfInvalid: true);
 
+  void _moveFromQuantityToPrice() {
+    _qtyToPriceFocusTransition = true;
+    _commitQuantity();
+    _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+    setState(() {
+      _inlineQtyEditing = false;
+      _inlinePriceEditing = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _priceFocusNode.requestFocus();
+      _qtyToPriceFocusTransition = false;
+    });
+  }
+
   Widget _buildInlineQuantityControl() {
     if (_inlineQtyEditing) {
       return SizedBox(
         width: 52,
-        child: TextField(
-          controller: _qtyController,
-          focusNode: _qtyFocusNode,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-          ],
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppTheme.divider),
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey != LogicalKeyboardKey.tab ||
+                HardwareKeyboard.instance.isShiftPressed) {
+              return KeyEventResult.ignored;
+            }
+            _moveFromQuantityToPrice();
+            return KeyEventResult.handled;
+          },
+          child: TextField(
+            controller: _qtyController,
+            focusNode: _qtyFocusNode,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
+            ],
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppTheme.divider),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppTheme.divider),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+              ),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppTheme.divider),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
-            ),
+            onChanged: _applyQuantityInput,
+            onSubmitted: (_) => _closeInlineQtyEdit(),
+            onEditingComplete: _closeInlineQtyEdit,
           ),
-          onChanged: _applyQuantityInput,
-          onSubmitted: (_) => _closeInlineQtyEdit(),
-          onEditingComplete: _closeInlineQtyEdit,
         ),
       );
     }
@@ -1303,40 +1365,211 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
 
   void _commitPrice() => _applyPriceInput(_priceController.text, resetIfInvalid: true);
 
-  InputDecoration get _inputDecoration => InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppTheme.divider),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppTheme.divider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
-        ),
-      );
+  void _selectCatalogPriceType(String priceType) {
+    final catalogPrice = CustomerGroupDiscount.catalogUnitPriceForItem(widget.item, priceType);
+    final def = widget.item.defaultLineUnitPrice.round();
+    final v = catalogPrice.round();
+    final override = v == def ? null : catalogPrice.toDouble();
+    widget.onUnitPriceChanged(override);
+    if (!_priceFocusNode.hasFocus) {
+      _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+    }
+  }
 
-  Widget _labeledField(String label, Widget field) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  bool _isActiveCatalogPrice(num catalogPrice) {
+    return (widget.item.unitPriceDisplay - catalogPrice).abs() < 0.5;
+  }
+
+  String? _activeCatalogPriceType() {
+    const types = [
+      CustomerGroupDiscount.selling,
+      CustomerGroupDiscount.wholesale,
+    ];
+    for (final type in types) {
+      final price = CustomerGroupDiscount.catalogUnitPriceForItem(widget.item, type);
+      if (_isActiveCatalogPrice(price)) return type;
+    }
+    return null;
+  }
+
+  Widget _buildLinePriceAndTotal() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: AppTheme.textSecondary,
+        _buildInlinePriceControl(),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 88,
+          child: Text(
+            formatThousands(widget.item.total),
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
           ),
         ),
-        const SizedBox(height: 8),
-        field,
       ],
+    );
+  }
+
+  Widget _buildInlinePriceControl() {
+    if (_inlinePriceEditing) {
+      return SizedBox(
+        width: 80,
+        child: TextField(
+          controller: _priceController,
+          focusNode: _priceFocusNode,
+          keyboardType: TextInputType.number,
+          inputFormatters: [ThousandsInputFormatter()],
+          textAlign: TextAlign.right,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppTheme.divider),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppTheme.divider),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+            ),
+          ),
+          onChanged: _applyPriceInput,
+          onSubmitted: (_) => _closeInlinePriceEdit(),
+          onEditingComplete: _closeInlinePriceEdit,
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: _startInlinePriceEdit,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: SizedBox(
+          width: 72,
+          child: Text(
+            formatThousands(widget.item.unitPriceDisplay),
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
+          ),
+        ),
+      ),
+    );
+  }
+
+  CartItem _probeSellByPack(bool sellByPack) {
+    return CartItem(product: widget.item.product, sellByPack: sellByPack);
+  }
+
+  num _catalogPriceForSellByPack(bool sellByPack) {
+    final type = _activeCatalogPriceType() ?? CustomerGroupDiscount.selling;
+    return CustomerGroupDiscount.catalogUnitPriceForItem(_probeSellByPack(sellByPack), type);
+  }
+
+  Widget _buildSellUnitPicker() {
+    final p = widget.item.product;
+    if (!p.canSellByPack) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        Expanded(
+          child: _catalogPriceTypeChip(
+            label: 'Dona',
+            price: _catalogPriceForSellByPack(false),
+            selected: !widget.item.sellByPack,
+            onTap: () => widget.onSellByPackChanged(false),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _catalogPriceTypeChip(
+            label: 'Pachka (${p.quantityPerPack})',
+            price: _catalogPriceForSellByPack(true),
+            selected: widget.item.sellByPack,
+            onTap: () => widget.onSellByPackChanged(true),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCatalogPriceTypePicker() {
+    const types = <({String type, String label})>[
+      (type: CustomerGroupDiscount.selling, label: 'Sotish'),
+      (type: CustomerGroupDiscount.wholesale, label: 'Ulgurji'),
+    ];
+    final activeType = _activeCatalogPriceType();
+
+    return Row(
+      children: [
+        for (var i = 0; i < types.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: _catalogPriceTypeChip(
+              label: types[i].label,
+              price: CustomerGroupDiscount.catalogUnitPriceForItem(widget.item, types[i].type),
+              selected: types[i].type == activeType,
+              onTap: () => _selectCatalogPriceType(types[i].type),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _catalogPriceTypeChip({
+    required String label,
+    required num price,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? AppTheme.primary.withValues(alpha: 0.06) : Colors.white,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected ? AppTheme.primary : AppTheme.divider,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? AppTheme.primary : AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                formatThousands(price.round()),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? AppTheme.primary : AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1393,14 +1626,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                       _buildInlineQuantityControl(),
                       _qtyCircleButton(Icons.add, widget.onIncrement, primary: true),
                       const SizedBox(width: 8),
-                      SizedBox(
-                        width: 72,
-                        child: Text(
-                          formatThousands(widget.item.total),
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
-                        ),
-                      ),
+                      _buildLinePriceAndTotal(),
                       IconButton(
                         visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.textSecondary),
@@ -1414,48 +1640,20 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
             ),
             if (widget.expanded)
               Container(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                 decoration: const BoxDecoration(
                   color: Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.vertical(bottom: Radius.circular(7)),
                   border: Border(top: BorderSide(color: AppTheme.divider)),
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: _labeledField(
-                        'Miqdori',
-                        TextField(
-                          controller: _qtyController,
-                          focusNode: _qtyFocusNode,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
-                          ],
-                          decoration: _inputDecoration,
-                          onChanged: _applyQuantityInput,
-                          onSubmitted: (_) => _submitQuantityAndCollapse(),
-                          onEditingComplete: _submitQuantityAndCollapse,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _labeledField(
-                        'Chegirmali narx',
-                        TextField(
-                          controller: _priceController,
-                          focusNode: _priceFocusNode,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [ThousandsInputFormatter()],
-                          decoration: _inputDecoration,
-                          onChanged: _applyPriceInput,
-                          onSubmitted: (_) => _submitPriceAndCollapse(),
-                          onEditingComplete: _submitPriceAndCollapse,
-                        ),
-                      ),
-                    ),
+                    if (p.canSellByPack) ...[
+                      _buildSellUnitPicker(),
+                      const SizedBox(height: 8),
+                    ],
+                    _buildCatalogPriceTypePicker(),
                   ],
                 ),
               ),

@@ -1,30 +1,41 @@
 import 'dart:io';
 
+import 'package:alfapos_app/models/cart_item.dart';
+import 'package:alfapos_app/models/product.dart';
 import 'package:alfapos_app/utils/hold_order_precheck_excel_export.dart';
-import 'package:alfapos_app/widgets/receipt_widget.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('HoldOrderPrecheckExcelExport', () {
-    test('buildSpreadsheetXml contains product rows and total', () {
+    test('buildSpreadsheetXml matches nakladnoy layout', () {
       final xml = HoldOrderPrecheckExcelExport.buildSpreadsheetXmlForTest(
-        storeTitle: 'Test do\'kon',
-        receiptNumber: 'POS10169',
-        productRows: const [
-          ReceiptRow(
-            productName: 'Cola',
-            quantityStr: '2 dona',
-            price: 5000,
-            sum: 10000,
+        storeTitle: 'Alfa market',
+        receiptNumber: 'POS10451',
+        items: [
+          CartItem(
+            product: Product(
+              id: '1',
+              name: 'Cola',
+              priceUzs: 5000,
+              sku: 'SKU1',
+            ),
+            quantity: 2,
           ),
         ],
         total: 10000,
       );
 
-      expect(xml, contains('Test do\'kon'));
-      expect(xml, contains('POS10169'));
+      expect(xml, contains('Nakladnoy № POS10451, 12.06.2026'));
+      expect(xml, contains("Do'kon:"));
+      expect(xml, contains('Alfa market'));
+      expect(xml, contains('Mahsulot kodi'));
+      expect(xml, contains("O'lchov birligi"));
+      expect(xml, contains('SKU1'));
       expect(xml, contains('Cola'));
-      expect(xml, contains('10 000'));
+      expect(xml, contains('10,000'));
+      expect(xml, contains('Jami:'));
+      expect(xml, contains('Ombordan:'));
+      expect(xml, contains('ss:StyleID="TableHead"'));
       expect(xml, contains('<?mso-application progid="Excel.Sheet"?>'));
     });
 

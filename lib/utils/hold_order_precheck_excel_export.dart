@@ -8,12 +8,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../core/seller_preferences.dart';
+import '../models/cart_item.dart';
+import '../models/product.dart';
 import '../providers/sales_session_provider.dart';
-import '../utils/receipt_row_builder.dart';
 import '../utils/receipt_store_title.dart';
 import '../models/receipt_design_config.dart';
 import '../services/receipt_design_storage.dart';
-import '../widgets/receipt_widget.dart';
 import 'hold_order_cart.dart';
 import 'hold_orders_response.dart';
 
@@ -84,11 +84,7 @@ class HoldOrderPrecheckExcelExport {
       final receiptNumber = _receiptLabel(hold, resume) ?? 'chek';
       final branchName = SalesSessionProvider.instance.branchName.trim();
       final storeTitle = ReceiptStoreTitle.resolve(design: design, branchName: branchName);
-      final productRows = ReceiptRowBuilder.fromCartItems(resume.items);
-      final discount = ReceiptRowBuilder.totalDiscountUzs(
-        items: resume.items,
-        totalAfterDiscount: total,
-      );
+      final description = _holdDescription(hold);
 
       final bytes = utf8.encode(_buildSpreadsheetXml(
         storeTitle: storeTitle,
@@ -98,8 +94,10 @@ class HoldOrderPrecheckExcelExport {
         sellerPhone: sellerPhone,
         clientName: client?.name,
         clientPhone: client?.phone,
-        productRows: productRows,
-        discount: discount,
+        clientAddress: client?.address,
+        description: description,
+        branchName: branchName,
+        items: resume.items,
         total: total,
       ));
 
@@ -107,7 +105,7 @@ class HoldOrderPrecheckExcelExport {
       return (
         data: HoldOrderExcelData(
           bytes: bytes,
-          fileName: 'chek_$safeName.xls',
+          fileName: 'nakladnoy_$safeName.xls',
           receiptNumber: receiptNumber,
         ),
         error: null,
@@ -204,7 +202,7 @@ class HoldOrderPrecheckExcelExport {
     String? path;
     try {
       path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Chekni qayerga saqlash',
+        dialogTitle: 'Nakladnoyni qayerga saqlash',
         fileName: fileName,
         initialDirectory: initialDirectory,
         type: FileType.any,
@@ -278,22 +276,29 @@ class HoldOrderPrecheckExcelExport {
     return null;
   }
 
+  static String? _holdDescription(Map<String, dynamic> hold) {
+    for (final key in ['description', 'comment', 'note', 'izoh', 'remarks']) {
+      final v = hold[key]?.toString().trim();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
   @visibleForTesting
   static String buildSpreadsheetXmlForTest({
     required String storeTitle,
     required String receiptNumber,
-    required List<ReceiptRow> productRows,
-    int discount = 0,
+    required List<CartItem> items,
     int total = 0,
   }) {
     return _buildSpreadsheetXml(
       storeTitle: storeTitle,
       receiptNumber: receiptNumber,
-      dateTime: DateTime(2026, 5, 28, 9, 39),
-      sellerName: 'Sotuvchi',
-      productRows: productRows,
-      discount: discount,
+      dateTime: DateTime(2026, 6, 12),
+      sellerName: 'Murod Qodirov',
+      items: items,
       total: total,
+      branchName: 'Asosiy filial',
     );
   }
 
@@ -305,33 +310,26 @@ class HoldOrderPrecheckExcelExport {
     String? sellerPhone,
     String? clientName,
     String? clientPhone,
-    required List<ReceiptRow> productRows,
-    required int discount,
+    String? clientAddress,
+    String? description,
+    String? branchName,
+    required List<CartItem> items,
     required int total,
   }) {
-    final rows = <List<String>>[
-      [storeTitle],
-      ['Oldindan chek'],
-      ['Chek raqami', receiptNumber],
-      ['Sana', _fmtDateTime(dateTime)],
-      ['Sotuvchi', sellerName],
-      if (sellerPhone != null && sellerPhone.trim().isNotEmpty) ['Telefon', sellerPhone.trim()],
-      if (clientName != null && clientName.trim().isNotEmpty) ['Mijoz', clientName.trim()],
-      if (clientPhone != null && clientPhone.trim().isNotEmpty) ['Mijoz tel.', clientPhone.trim()],
-      const [],
-      const ['Mahsulot', 'Miqdor', 'Narx', 'Summa'],
-      ...productRows.map(
-        (r) => [
-          r.productName,
-          r.quantityStr,
-          _fmt(r.price),
-          _fmt(r.sum),
-        ],
-      ),
-      const [],
-      if (discount > 0) ['Chegirma', _fmt(discount)],
-      ['Jami', _fmt(total)],
+    const tableHeaders = [
+      '№',
+      'Mahsulot kodi',
+      'Nomi',
+      "O'lchov birligi",
+      'Miqdor',
+      'Narx',
+      'Summa',
     ];
+
+    final productLines = <List<String>>[];
+    for (var i = 0; i < items.length; i++) {
+      productLines.add(_productLineCells(items[i], i + 1));
+    }
 
     final buffer = StringBuffer()
       ..writeln('<?xml version="1.0"?>')
@@ -340,18 +338,42 @@ class HoldOrderPrecheckExcelExport {
         '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
         'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">',
       )
-      ..writeln('<Worksheet ss:Name="Chek">')
-      ..writeln('<Table>');
+      ..writeln(_stylesXml())
+      ..writeln('<Worksheet ss:Name="Nakladnoy">')
+      ..writeln('<Table>')
+      ..writeln(_columnsXml());
 
-    for (final row in rows) {
-      buffer.writeln('<Row>');
-      for (final cell in row) {
-        buffer.writeln(
-          '<Cell><Data ss:Type="String">${_xmlEscape(cell)}</Data></Cell>',
-        );
-      }
-      buffer.writeln('</Row>');
+    _writeRow(buffer, ['Nakladnoy № $receiptNumber, ${_fmtDate(dateTime)}'], styleId: 'Title');
+    _writeRow(buffer, const []);
+    _writeRow(buffer, ["Do'kon:", _dash(storeTitle)]);
+    _writeRow(buffer, ['Sotuvchi:', _dash(sellerName)]);
+    _writeRow(buffer, ['Tel.:', _dash(sellerPhone)]);
+    _writeRow(buffer, ['Mijoz:', _dash(clientName)]);
+    _writeRow(buffer, ['Tel.:', _dash(clientPhone)]);
+    _writeRow(buffer, ['Manzil:', _dash(clientAddress)]);
+    _writeRow(buffer, ['Izoh:', _dash(description)]);
+    _writeRow(buffer, const []);
+    _writeRow(buffer, tableHeaders, styleId: 'TableHead');
+    for (final line in productLines) {
+      _writeRow(buffer, line, styleId: 'TableCell');
     }
+    _writeRow(
+      buffer,
+      ['${items.length}', '', '', '', '', '', _fmtComma(total)],
+      styleId: 'TableCell',
+    );
+    _writeRow(buffer, ['', '', '', '', '', 'Jami:', _fmtComma(total)], styleId: 'Total');
+    _writeRow(buffer, const []);
+    _writeRow(
+      buffer,
+      [
+        'Ombordan:',
+        _dash((branchName != null && branchName.trim().isNotEmpty) ? branchName.trim() : storeTitle),
+        'Qabul qildi:',
+        '',
+      ],
+    );
+    _writeRow(buffer, ['Izoh', _dash(description)]);
 
     buffer
       ..writeln('</Table>')
@@ -361,23 +383,98 @@ class HoldOrderPrecheckExcelExport {
     return buffer.toString();
   }
 
-  static String _fmt(int n) {
+  static List<String> _productLineCells(CartItem item, int index) {
+    final p = item.product;
+    final code = (p.sku ?? p.barcode ?? '').trim();
+    final unit = _excelUnitLabel(item);
+    final qty = item.quantity == item.quantity.roundToDouble()
+        ? '${item.quantity.round()}'
+        : item.quantity.toString();
+    return [
+      '$index',
+      code.isEmpty ? '—' : code,
+      p.name,
+      unit,
+      qty,
+      _fmtComma(item.unitPriceDisplay),
+      _fmtComma(item.total),
+    ];
+  }
+
+  static String _excelUnitLabel(CartItem item) {
+    if (item.sellByPack) return 'pachka';
+    final short = Product.unitDisplayShort(item.product.unit);
+    if (short == 'sht') return 'шт';
+    return short;
+  }
+
+  static String _columnsXml() {
+    const widths = [28, 72, 140, 56, 48, 64, 72];
+    return widths.map((w) => '<Column ss:Width="$w"/>').join('\n');
+  }
+
+  static String _stylesXml() {
+    const border = '''
+<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>''';
+    return '''
+<Styles>
+  <Style ss:ID="Title">
+    <Font ss:Bold="1" ss:Size="12"/>
+  </Style>
+  <Style ss:ID="TableHead">
+    <Font ss:Bold="1"/>
+    <Interior ss:Color="#F2F2F2" ss:Pattern="Solid"/>
+    <Borders>$border</Borders>
+  </Style>
+  <Style ss:ID="TableCell">
+    <Borders>$border</Borders>
+  </Style>
+  <Style ss:ID="Total">
+    <Font ss:Bold="1"/>
+    <Borders>$border</Borders>
+  </Style>
+</Styles>''';
+  }
+
+  static void _writeRow(
+    StringBuffer buffer,
+    List<String> cells, {
+    String? styleId,
+  }) {
+    buffer.writeln('<Row>');
+    for (final cell in cells) {
+      final style = styleId == null ? '' : ' ss:StyleID="$styleId"';
+      buffer.writeln(
+        '<Cell$style><Data ss:Type="String">${_xmlEscape(cell)}</Data></Cell>',
+      );
+    }
+    buffer.writeln('</Row>');
+  }
+
+  static String _dash(String? value) {
+    final v = value?.trim();
+    if (v == null || v.isEmpty) return '—';
+    return v;
+  }
+
+  static String _fmtComma(int n) {
     final s = n.toString();
     final buf = StringBuffer();
     for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(' ');
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
       buf.write(s[i]);
     }
     return buf.toString();
   }
 
-  static String _fmtDateTime(DateTime dt) {
-    final y = dt.year.toString().padLeft(4, '0');
-    final m = dt.month.toString().padLeft(2, '0');
+  static String _fmtDate(DateTime dt) {
     final d = dt.day.toString().padLeft(2, '0');
-    final h = dt.hour.toString().padLeft(2, '0');
-    final min = dt.minute.toString().padLeft(2, '0');
-    return '$y-$m-$d $h:$min';
+    final m = dt.month.toString().padLeft(2, '0');
+    final y = dt.year.toString();
+    return '$d.$m.$y';
   }
 
   static String _xmlEscape(String value) => value

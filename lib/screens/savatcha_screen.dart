@@ -43,6 +43,7 @@ import '../utils/catalog_product_price_label.dart';
 import '../utils/hold_order_cart.dart';
 import '../utils/hold_order_precheck_excel_export.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../services/sales_keyboard_shortcuts_settings.dart';
 import '../services/category_order_storage.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/product_catalog_sort_settings.dart';
@@ -84,7 +85,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   StreamSubscription<List<String>>? _categoriesSub;
   final _searchController = TextEditingController();
   final _catalogSearchFocus = FocusNode();
+  final _customerSearchFocus = FocusNode();
   final _discountPercentController = TextEditingController();
+  Map<SalesShortcutAction, String> _shortcutKeys = Map.of(SalesKeyboardShortcutsSettings.defaults);
   int _catalogSearchRefocusSuspend = 0;
   final _cart = CartProvider.instance;
   final _products = ProductsProvider.instance;
@@ -100,6 +103,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   String? _activeHoldInvoiceId;
   int _savedOrdersCount = 0;
   CartItem? _expandedCartLine;
+  CartItem? _cartQtyFocusItem;
+  int _cartQtyFocusNonce = 0;
   bool _isReturnMode = false;
   DesktopSalesLayoutMode _desktopSalesLayoutMode = DesktopSalesLayoutMode.standard;
   String? _restaurantCategoryId;
@@ -264,6 +269,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     });
     _sales.addListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
+    SalesKeyboardShortcutsSettings.revision.addListener(_onShortcutSettingsChanged);
+    unawaited(_loadShortcutKeys());
     if (isDesktopPosLayout) {
       FocusManager.instance.addListener(_onDesktopFocusChanged);
       _categoriesSub = CategoriesProvider.instance.stream.listen((_) {
@@ -395,7 +402,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
     _sales.removeListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.removeListener(_onCashShiftChanged);
+    SalesKeyboardShortcutsSettings.revision.removeListener(_onShortcutSettingsChanged);
     _catalogSearchFocus.dispose();
+    _customerSearchFocus.dispose();
     _searchController.dispose();
     _discountPercentController.dispose();
     super.dispose();
@@ -432,6 +441,79 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       override,
       _sales.cartDiscountPercent,
     );
+    _cart.updateSalePriceOverride(item, item.salePriceOverride);
+  }
+
+  void _focusLastAddedCartQuantity() {
+    final items = _cart.items;
+    if (items.isEmpty) return;
+    _suspendCatalogSearchRefocusBriefly();
+    setState(() {
+      _cartQtyFocusItem = items.first;
+      _cartQtyFocusNonce++;
+    });
+  }
+
+  void _focusCatalogSearchInput() {
+    if (!mounted || !isDesktopPosLayout || !widget.isTabActive) return;
+    _catalogSearchRefocusTimer?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.isTabActive) return;
+      if (!_catalogSearchFocus.canRequestFocus) return;
+      _catalogSearchFocus.requestFocus();
+      final text = _searchController.text;
+      if (text.isNotEmpty) {
+        _searchController.selection = TextSelection(baseOffset: 0, extentOffset: text.length);
+      }
+    });
+  }
+
+  Future<void> _loadShortcutKeys() async {
+    final keys = await SalesKeyboardShortcutsSettings.loadAll();
+    if (!mounted) return;
+    setState(() => _shortcutKeys = keys);
+  }
+
+  void _onShortcutSettingsChanged() {
+    unawaited(_loadShortcutKeys());
+  }
+
+  void _focusCustomerSearchInput() {
+    if (!mounted || !isDesktopPosLayout || !widget.isTabActive) return;
+    _suspendCatalogSearchRefocusBriefly();
+    if (_selectedClient != null) {
+      setState(() {
+        _selectedClient = null;
+        CustomerGroupDiscount.applyCustomerPricingToCart(_cart.items, null);
+        CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.isTabActive) return;
+      if (!_customerSearchFocus.canRequestFocus) return;
+      _customerSearchFocus.requestFocus();
+    });
+  }
+
+  Map<ShortcutActivator, Intent> _salesShortcutIntents() {
+    final activators = SalesKeyboardShortcutsSettings.buildActivators(_shortcutKeys);
+    return {
+      for (final entry in activators.entries)
+        entry.key: switch (entry.value) {
+          SalesShortcutAction.focusCustomerSearch => const _FocusCustomerSearchIntent(),
+          SalesShortcutAction.focusProductSearch => const _FocusCatalogSearchIntent(),
+          SalesShortcutAction.focusLastCartQty => const _FocusLastCartQtyIntent(),
+        },
+    };
+  }
+
+  void _setCartLineSellByPack(CartItem item, bool sellByPack) {
+    if (item.sellByPack == sellByPack) return;
+    if (sellByPack && !item.product.canSellByPack) return;
+    item.sellByPack = sellByPack;
+    item.salePriceOverride = null;
+    item.unitPriceBaseForCartPercent = null;
+    _applyCustomerPricingToNewItem(item);
     _cart.updateSalePriceOverride(item, item.salePriceOverride);
   }
 
@@ -926,7 +1008,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       setState(() {});
     }
 
-    if (product.canSellByPack) {
+    if (product.canSellByPack && !isDesktopPosLayout) {
       showCupertinoModalPopup<void>(
         context: context,
         builder: (ctx) => CupertinoActionSheet(
@@ -1016,8 +1098,31 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
     final items = _cart.items;
     return Scaffold(
-      body: CashRegisterShiftGate(
-        child: SavatchaDesktopLayout(
+      body: Shortcuts(
+        shortcuts: _salesShortcutIntents(),
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            _FocusLastCartQtyIntent: CallbackAction<_FocusLastCartQtyIntent>(
+              onInvoke: (_) {
+                _focusLastAddedCartQuantity();
+                return null;
+              },
+            ),
+            _FocusCatalogSearchIntent: CallbackAction<_FocusCatalogSearchIntent>(
+              onInvoke: (_) {
+                _focusCatalogSearchInput();
+                return null;
+              },
+            ),
+            _FocusCustomerSearchIntent: CallbackAction<_FocusCustomerSearchIntent>(
+              onInvoke: (_) {
+                _focusCustomerSearchInput();
+                return null;
+              },
+            ),
+          },
+          child: CashRegisterShiftGate(
+            child: SavatchaDesktopLayout(
         searchController: _searchController,
         catalogSearchFocus: _catalogSearchFocus,
         onCatalogSearchRefocus: _refocusCatalogSearch,
@@ -1067,6 +1172,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             onSelected: _onCustomerSelected,
             onAddNew: () => _addCustomer(context),
             iconOnlyAddButton: true,
+            searchFocusNode: _customerSearchFocus,
           ),
         ),
         onOpenSavedOrders: () => _runWithSuspendedCatalogSearchRefocus(
@@ -1086,6 +1192,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         onClearCart: _clearCart,
         onSalesList: widget.onNavigateToTransactions,
         onProductTap: (p) => _addProductToCart(p),
+        cartQtyFocusNonce: _cartQtyFocusNonce,
+        cartQtyFocusItem: _cartQtyFocusItem,
         expandedCartItem: _expandedCartLine,
         onToggleCartExpand: (item) {
           setState(() {
@@ -1106,6 +1214,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         },
         onCartUnitPriceChanged: (item, override) {
           _setCartLineUnitPrice(item, override);
+          setState(() {});
+        },
+        onCartSellByPackChanged: (item, sellByPack) {
+          _setCartLineSellByPack(item, sellByPack);
           setState(() {});
         },
         onRemoveCartItem: (item) {
@@ -1158,6 +1270,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         onOpenSectionMenu: widget.onOpenSectionMenu,
         onGlobalSync: widget.onGlobalSync,
         globalSyncing: DesktopShellScope.maybeOf(context)?.syncing ?? false,
+            ),
+          ),
         ),
       ),
     );
@@ -2107,4 +2221,16 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
       ],
     );
   }
+}
+
+class _FocusLastCartQtyIntent extends Intent {
+  const _FocusLastCartQtyIntent();
+}
+
+class _FocusCatalogSearchIntent extends Intent {
+  const _FocusCatalogSearchIntent();
+}
+
+class _FocusCustomerSearchIntent extends Intent {
+  const _FocusCustomerSearchIntent();
 }

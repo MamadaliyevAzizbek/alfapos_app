@@ -12,6 +12,8 @@ class MixedPaymentInlineCard extends StatefulWidget {
   final bool compact;
   final bool desktopLarge;
   final ValueChanged<String> onAmountChanged;
+  /// Aralash to'lov: kartaga bosilganda qoldiq summani to'ldirish.
+  final VoidCallback? onActivate;
 
   const MixedPaymentInlineCard({
     super.key,
@@ -22,6 +24,7 @@ class MixedPaymentInlineCard extends StatefulWidget {
     this.compact = false,
     this.desktopLarge = false,
     required this.onAmountChanged,
+    this.onActivate,
   });
 
   @override
@@ -36,7 +39,13 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
   void initState() {
     super.initState();
     _focus = FocusNode();
+    _focus.addListener(_onFocusChanged);
     _controller = TextEditingController(text: _textForAmount(widget.amount));
+  }
+
+  void _onFocusChanged() {
+    if (!_focus.hasFocus || widget.onActivate == null || widget.amount > 0) return;
+    widget.onActivate!();
   }
 
   @override
@@ -57,6 +66,7 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
 
   @override
   void dispose() {
+    _focus.removeListener(_onFocusChanged);
     _focus.dispose();
     _controller.dispose();
     super.dispose();
@@ -98,18 +108,33 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(widget.icon, size: iconSize, color: iconColor),
-          SizedBox(height: large ? 8 : (widget.compact ? 4 : 6)),
-          Text(
-            widget.title,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: titleSize,
-              fontWeight: FontWeight.w600,
-              height: 1.15,
-              color: AppTheme.textPrimary,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onActivate,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(widget.icon, size: iconSize, color: iconColor),
+                    SizedBox(height: large ? 8 : (widget.compact ? 4 : 6)),
+                    Text(
+                      widget.title,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: titleSize,
+                        fontWeight: FontWeight.w600,
+                        height: 1.15,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           if (isBalance) ...[

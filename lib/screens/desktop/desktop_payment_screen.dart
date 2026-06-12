@@ -87,6 +87,7 @@ class DesktopPaymentLayout extends StatefulWidget {
   final ValueChanged<String> onPaymentKeySelected;
   final void Function(String key, String title) onPaymentMethodTap;
   final void Function(String key, String raw) onMixedPaymentAmountChanged;
+  final void Function(String key)? onMixedPaymentMethodActivate;
   final ValueChanged<String> onClearPayment;
   final TextEditingController amountController;
   final ValueChanged<String> onAmountChanged;
@@ -131,6 +132,7 @@ class DesktopPaymentLayout extends StatefulWidget {
     required this.onPaymentKeySelected,
     required this.onPaymentMethodTap,
     required this.onMixedPaymentAmountChanged,
+    this.onMixedPaymentMethodActivate,
     required this.onClearPayment,
     required this.amountController,
     required this.onAmountChanged,
@@ -517,6 +519,9 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                               amount: amount,
                               balanceUzs: isBalance ? widget.clientBalanceUzs : null,
                               onAmountChanged: (raw) => widget.onMixedPaymentAmountChanged(e.key, raw),
+                              onActivate: widget.onMixedPaymentMethodActivate == null
+                                  ? null
+                                  : () => widget.onMixedPaymentMethodActivate!(e.key),
                             );
                           },
                         ),
