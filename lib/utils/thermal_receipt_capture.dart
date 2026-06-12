@@ -3,15 +3,16 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:screenshot/screenshot.dart';
 
-import 'thermal_bitmap.dart';
-
-/// Chek widgetini termal chop uchun PNG ga aylantiradi (aniq qora-oq).
-Future<Uint8List> captureReceiptForThermal(
+/// ReceiptWidget — galereyaga saqlash / ulashish uchun skrinshot.
+Future<Uint8List> captureReceiptWidget(
   Widget receiptWidget, {
   BuildContext? context,
+  required double targetHeight,
+  double targetWidth = 360,
+  int lineCount = 0,
 }) async {
   final controller = ScreenshotController();
-  final ratio = thermalReceiptCapturePixelRatio();
+  final delayMs = (200 + lineCount * 3).clamp(200, 2000);
   final wrapped = Directionality(
     textDirection: TextDirection.ltr,
     child: MediaQuery(
@@ -22,12 +23,12 @@ Future<Uint8List> captureReceiptForThermal(
       ),
     ),
   );
-
   final png = await controller.captureFromWidget(
     wrapped,
     context: context,
-    pixelRatio: ratio,
-    delay: const Duration(milliseconds: 320),
+    pixelRatio: 3,
+    targetSize: Size(targetWidth, targetHeight),
+    delay: Duration(milliseconds: delayMs),
   );
-  return prepareThermalBitmap(png);
+  return png;
 }

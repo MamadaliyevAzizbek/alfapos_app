@@ -11,7 +11,6 @@ import '../../services/product_catalog_sort_settings.dart';
 import '../../services/product_display_settings.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../services/desktop_sales_layout_settings.dart';
-import '../../widgets/receipt_font_selector_panel.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
@@ -605,12 +604,6 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _sectionHeader(
           'Chek sozlamalari',
           'Chek dizayni va printerga chiqadigan matn ko‘rinishi.',
-        ),
-        const SizedBox(height: 20),
-        _card(
-          child: ReceiptFontSelectorPanel(
-            onFontChanged: () => setState(() {}),
-          ),
         ),
         const SizedBox(height: 20),
         _card(child: ReceiptDesignEditorPanel(onSaved: _loadLocalReceiptPreview)),

@@ -5,7 +5,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image/image.dart' as img;
@@ -38,6 +37,8 @@ import 'desktop/desktop_payment_screen.dart';
 import '../models/receipt_design_config.dart';
 import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../utils/thermal_receipt_capture.dart';
+import '../utils/thermal_receipt_layout_metrics.dart';
 import '../services/printer_settings.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/restaurant_queue_number.dart';
@@ -2448,13 +2449,20 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   Future<void> _captureReceiptAndSave(BuildContext dialogContext, ReceiptWidget receiptWidget, {required bool share, String? receiptId}) async {
     final id = receiptId ?? _txId;
-    final controller = ScreenshotController();
-    final pngBytes = await controller.captureFromWidget(
+    final lines = receiptWidget.toThermalPrintLines();
+    final showLogo = receiptWidget.design.showLogo &&
+        receiptWidget.design.logoFilePath != null &&
+        receiptWidget.design.logoFilePath!.trim().isNotEmpty;
+    final captureHeight = ThermalReceiptLayoutMetrics.estimateHeight(
+      lines: lines,
+      showLogo: showLogo,
+    );
+    final pngBytes = await captureReceiptWidget(
       receiptWidget,
       context: context,
-      pixelRatio: 3,
-      delay: const Duration(milliseconds: 80),
-      targetSize: const Size(360, 640),
+      targetHeight: captureHeight + 40,
+      targetWidth: 360,
+      lineCount: lines.length,
     );
     if (!dialogContext.mounted) return;
     final decoded = img.decodeImage(pngBytes);

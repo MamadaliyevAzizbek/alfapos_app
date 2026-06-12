@@ -13,8 +13,6 @@ import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
 import 'escpos_receipt_builder.dart';
 import 'printer_settings.dart';
-import 'receipt_font_settings.dart';
-import 'thermal_receipt_image_builder.dart';
 import 'receipt_design_storage.dart';
 import 'raw_printer_send.dart';
 
@@ -119,9 +117,7 @@ class ThermalReceiptPrinter {
   static Future<void> warmup() async {
     await Future.wait([
       ReceiptDesignStorage.load(),
-      ReceiptFontSettings.preload(),
       EscPosReceiptBuilder.warmup(),
-      ThermalReceiptImageBuilder.warmup(),
       savedPrinterName(),
     ]);
   }
@@ -334,20 +330,6 @@ class ThermalReceiptPrinter {
     final posPin =
         drawerPin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
 
-    try {
-      return await ThermalReceiptImageBuilder.buildReceipt(
-        lines: lines,
-        design: design,
-        openCashDrawer: drawerEnabled,
-        cashDrawerPin: posPin,
-      );
-    } catch (e, st) {
-      if (kDebugMode) {
-        // ignore: avoid_print
-        print('[ThermalReceiptPrinter] Tanlangan shrift chop etish: $e\n$st');
-      }
-    }
-
     return EscPosReceiptBuilder.buildReceipt(
       lines: lines,
       design: design,
@@ -360,7 +342,7 @@ class ThermalReceiptPrinter {
     return _printEscPosLines(
       [
         '^AlfaPOS',
-        'Shrift testi',
+        'Printer testi',
         'Do\'kon — O\'zbekiston noni',
         'Jami: 125 000 so\'m',
         DateTime.now().toString().substring(0, 19),
