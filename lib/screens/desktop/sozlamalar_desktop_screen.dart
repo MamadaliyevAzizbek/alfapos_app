@@ -48,6 +48,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
 
   List<String> _sampleLines = [];
   List<String> _restaurantSampleLines = [];
+  List<String> _xReportSampleLines = [];
   ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.defaults;
   bool _previewLoading = false;
   DesktopSalesLayoutMode _salesLayoutMode = DesktopSalesLayoutMode.standard;
@@ -168,11 +169,13 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final lines = await LocalReceiptSample.sampleSalePrintLines(design: design);
       final restaurantLines =
           await LocalReceiptSample.sampleRestaurantSalePrintLines(design: design);
+      final xReportLines = await LocalReceiptSample.sampleXReportPrintLines(design: design);
       if (!mounted) return;
       setState(() {
         _receiptDesign = design;
         _sampleLines = lines;
         _restaurantSampleLines = restaurantLines;
+        _xReportSampleLines = xReportLines;
         _previewLoading = false;
       });
     } catch (e) {
@@ -808,7 +811,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Chek serverdan emas — dastur o\'zi yig\'adi (savatcha, to\'lov, filial nomi) va shu formatda termal printerga yuboriladi.',
+            'Chek serverdan emas — dastur o\'zi yig\'adi (savatcha, to\'lov, kassa X-otchot) va shu formatda termal printerga yuboriladi.',
             style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
           ),
           const SizedBox(height: 20),
@@ -822,7 +825,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
           else
             LayoutBuilder(
               builder: (context, c) {
-                final sideBySide = c.maxWidth > 720;
+                final threeAcross = c.maxWidth > 1040;
+                final twoAcross = c.maxWidth > 680;
                 final standard = _previewColumn(
                   title: "Do'kon sotuv cheki",
                   subtitle: 'Logo va matn printer tartibida',
@@ -847,13 +851,43 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                     ),
                   ),
                 );
-                if (sideBySide) {
+                final xReport = _previewColumn(
+                  title: 'Kassa X-otchot',
+                  subtitle: 'Kassa smenalari → Chop etish',
+                  child: SingleChildScrollView(
+                    child: Center(
+                      child: ReceiptLinesPreview(
+                        lines: _xReportSampleLines,
+                        design: _receiptDesign.copyWith(showLogo: false),
+                      ),
+                    ),
+                  ),
+                );
+                if (threeAcross) {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: standard),
                       const SizedBox(width: 16),
                       Expanded(child: restaurant),
+                      const SizedBox(width: 16),
+                      Expanded(child: xReport),
+                    ],
+                  );
+                }
+                if (twoAcross) {
+                  return Column(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: standard),
+                          const SizedBox(width: 16),
+                          Expanded(child: restaurant),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      xReport,
                     ],
                   );
                 }
@@ -862,6 +896,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                     standard,
                     const SizedBox(height: 16),
                     restaurant,
+                    const SizedBox(height: 16),
+                    xReport,
                   ],
                 );
               },

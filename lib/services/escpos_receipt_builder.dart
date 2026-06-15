@@ -9,6 +9,7 @@ import '../utils/escpos_text_codec.dart';
 import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
+import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 
 /// API dan parse qilingan matn qatorlarini ESC/POS ga aylantirish.
@@ -39,9 +40,11 @@ class EscPosReceiptBuilder {
     PaperSize paperSize = PaperSize.mm80,
     bool openCashDrawer = false,
     PosDrawer cashDrawerPin = PosDrawer.pin2,
+    bool compactRestaurant = false,
   }) async {
     final profile = await _profile();
-    final g = Generator(paperSize, profile, spaceBetweenRows: 6);
+    final rowGap = compactRestaurant ? 0 : 6;
+    final g = Generator(paperSize, profile, spaceBetweenRows: rowGap);
     final bytes = <int>[];
 
     final maxWidth = paperSize == PaperSize.mm58
@@ -59,7 +62,10 @@ class EscPosReceiptBuilder {
       bytes.addAll(g.drawer(pin: cashDrawerPin));
     }
 
-    if (cfg.showLogo && cfg.logoFilePath != null && cfg.logoFilePath!.isNotEmpty) {
+    if (!compactRestaurant &&
+        cfg.showLogo &&
+        cfg.logoFilePath != null &&
+        cfg.logoFilePath!.isNotEmpty) {
       final logoBytes = await _loadLogoBytes(cfg.logoFilePath!);
       if (logoBytes != null) {
         final decoded = img.decodeImage(logoBytes);
@@ -69,18 +75,23 @@ class EscPosReceiptBuilder {
               ? img.copyResize(decoded, width: maxW)
               : decoded;
           bytes.addAll(g.image(resized, align: PosAlign.center));
-          bytes.addAll(g.feed(1));
+          if (!compactRestaurant) {
+            bytes.addAll(g.feed(1));
+          }
         }
       }
     }
 
     for (final line in wrapped) {
       if (line.isEmpty) {
-        bytes.addAll(g.feed(1));
+        if (!compactRestaurant) {
+          bytes.addAll(g.feed(1));
+        }
         continue;
       }
-      if (ThermalReceiptCompactText.isCompactLine(line)) {
+      if (ThermalReceiptCompactText.isAnyCompactLine(line)) {
         final text = ThermalReceiptCompactText.unwrap(line);
+        final bold = ThermalReceiptCompactText.isCompactBoldLine(line);
         final compactMax = paperSize == PaperSize.mm58
             ? ThermalReceiptCompactText.chars58mm
             : ThermalReceiptCompactText.chars80mm;
@@ -93,6 +104,7 @@ class EscPosReceiptBuilder {
               codePage: codePage,
               maxWidth: compactMax,
               fontType: PosFontType.fontB,
+              bold: bold,
             ),
           );
         } else {
@@ -103,6 +115,7 @@ class EscPosReceiptBuilder {
                 codeTable: codeTable,
                 fontType: PosFontType.fontB,
                 align: PosAlign.left,
+                bold: bold,
               ),
               maxCharsPerLine: compactMax,
             ),
@@ -115,11 +128,14 @@ class EscPosReceiptBuilder {
         final text = ThermalReceiptLargeText.unwrap(line);
         final compactPaper = paperSize == PaperSize.mm58;
         final queueSize = _queueTextSize(
-          compactPaper
-              ? ThermalReceiptLargeText.printerSize58mm
-              : ThermalReceiptLargeText.printerSize80mm,
+          compactRestaurant
+              ? (compactPaper
+                  ? ThermalReceiptLargeText.restaurantPrinterSize58mm
+                  : ThermalReceiptLargeText.restaurantPrinterSize80mm)
+              : (compactPaper
+                  ? ThermalReceiptLargeText.printerSize58mm
+                  : ThermalReceiptLargeText.printerSize80mm),
         );
-        bytes.addAll(g.feed(1));
         bytes.addAll(
           g.textEncoded(
             EscPosTextCodec.encodeSync(text, codePage: codePage),
@@ -134,7 +150,6 @@ class EscPosReceiptBuilder {
             maxCharsPerLine: compactPaper ? 16 : 24,
           ),
         );
-        bytes.addAll(g.feed(1));
         continue;
       }
 
@@ -154,9 +169,10 @@ class EscPosReceiptBuilder {
         );
       } else {
         final lower = text.toLowerCase();
-        final isTotal = lower.contains('umumiy summa') ||
-            lower.contains('jami') ||
-            lower.contains('итого');
+        final isTotal = !compactRestaurant &&
+            (lower.contains('umumiy summa') ||
+                lower.contains('jami') ||
+                lower.contains('итого'));
         if (ReceiptStrikethroughText.containsMarker(text)) {
           bytes.addAll(
             _printMarkedLine(
@@ -186,7 +202,7 @@ class EscPosReceiptBuilder {
       }
     }
 
-    bytes.addAll(g.feed(2));
+    bytes.addAll(g.feed(compactRestaurant ? 1 : 2));
     bytes.addAll(g.cut());
     return bytes;
   }

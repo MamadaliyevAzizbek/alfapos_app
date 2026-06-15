@@ -22,7 +22,8 @@ class ThermalReceiptLineWrap {
         out.add('');
         continue;
       }
-      if (ThermalReceiptLargeText.isLargeLine(line) || ThermalReceiptCompactText.isCompactLine(line)) {
+      if (ThermalReceiptLargeText.isLargeLine(line) ||
+          ThermalReceiptCompactText.isAnyCompactLine(line)) {
         out.add(line);
         continue;
       }
@@ -80,6 +81,72 @@ class ThermalReceiptLineWrap {
     }
     if (rest.isNotEmpty) out.add(rest);
     return out.isEmpty ? [t.substring(0, maxWidth)] : out;
+  }
+
+  /// Restoran cheki: Mahsulot | Miqdor | Narx | Summa (ixcham jadval).
+  static const restaurantProductW = 18;
+  static const restaurantQtyW = 5;
+  static const restaurantPriceW = 11;
+  static const restaurantTotalW = 11;
+
+  static String restaurantTableHeader() {
+    return ThermalReceiptCompactText.line(
+      _restaurantTableRow(
+        product: 'Mahsulot',
+        qty: 'Miqdor',
+        price: 'Narx',
+        total: 'Summa',
+      ),
+    );
+  }
+
+  static String restaurantTableProductRow({
+    required String name,
+    required String quantity,
+    required String unitPrice,
+    required String lineTotal,
+  }) {
+    final row = _restaurantTableRow(
+      product: name,
+      qty: quantity,
+      price: unitPrice,
+      total: lineTotal,
+    );
+    if (row.length <= kThermalChars80mm) return row;
+    return ThermalReceiptCompactText.line(row);
+  }
+
+  static String _restaurantTableRow({
+    required String product,
+    required String qty,
+    required String price,
+    required String total,
+  }) {
+    return [
+      _restaurantCell(product, restaurantProductW),
+      _restaurantCell(qty, restaurantQtyW),
+      _restaurantCell(price, restaurantPriceW),
+      _restaurantCell(total, restaurantTotalW),
+    ].join(' ');
+  }
+
+  static String _restaurantCell(String text, int width) {
+    final t = text.trim();
+    if (t.length <= width) return t.padRight(width);
+    return t.substring(0, width);
+  }
+
+  static String restaurantTotalRow(String label, String amount) {
+    final left = label.trim();
+    final right = amount.trim();
+    final width = ThermalReceiptCompactText.chars80mm;
+    final gap = 1;
+    final rightLen = right.length;
+    final leftMax = (width - rightLen - gap).clamp(1, width);
+    final row = '${left.padRight(leftMax)}${' ' * gap}$right';
+    return ThermalReceiptCompactText.boldLine(
+      row.length <= width ? row : '$left $right',
+    );
   }
 
   /// Jadval qatori: chap (miqdor x narx) + o‘ng (summa).

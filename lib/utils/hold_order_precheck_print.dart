@@ -6,6 +6,7 @@ import '../providers/sales_session_provider.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
+import '../services/desktop_sales_layout_settings.dart';
 import '../utils/receipt_row_builder.dart';
 import '../widgets/receipt_widget.dart';
 import 'hold_order_cart.dart';
@@ -36,10 +37,12 @@ class HoldOrderPrecheckPrint {
       designFuture,
       sellerNameFuture,
       sellerPhoneFuture,
+      DesktopSalesLayoutSettings.getMode(),
     ]);
     final design = results[0] as ReceiptDesignConfig;
     final seller = results[1] as String;
     final sellerPhone = results[2] as String?;
+    final isRestaurantLayout = results[3] == DesktopSalesLayoutMode.restaurant;
 
     final raw = resume.items.fold<int>(0, (s, e) => s + e.total);
     final total = _resolveGrandTotal(raw, resume);
@@ -62,6 +65,7 @@ class HoldOrderPrecheckPrint {
       ),
       totalSum: total,
       isPrecheck: true,
+      isRestaurantLayout: isRestaurantLayout,
       design: design,
     );
 

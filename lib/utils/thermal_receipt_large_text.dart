@@ -13,8 +13,14 @@ abstract class ThermalReceiptLargeText {
   /// 80mm printerda navbat raqami kattaligi (1–8; 4 = aniq va xavfsiz).
   static const int printerSize80mm = 4;
 
+  /// Restoran chekida navbat — katta, lekin qog‘oz tejash uchun biroz kichikroq.
+  static const int restaurantPrinterSize80mm = 3;
+
   /// 58mm printerda navbat raqami kattaligi.
   static const int printerSize58mm = 3;
+
+  /// Restoran chekida 58mm navbat.
+  static const int restaurantPrinterSize58mm = 2;
 
   static String line(String text) => '$marker$text';
 

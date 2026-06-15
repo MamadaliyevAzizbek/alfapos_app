@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/api_receipt_html_parser.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
+import '../utils/thermal_receipt_formatter.dart';
 import 'escpos_receipt_builder.dart';
 import 'printer_settings.dart';
 import 'receipt_design_storage.dart';
@@ -335,6 +336,7 @@ class ThermalReceiptPrinter {
       design: design,
       openCashDrawer: drawerEnabled,
       cashDrawerPin: posPin,
+      compactRestaurant: ThermalReceiptFormatter.looksLikeRestaurantReceipt(lines),
     );
   }
 

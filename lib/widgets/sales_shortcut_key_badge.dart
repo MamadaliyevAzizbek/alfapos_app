@@ -41,19 +41,22 @@ class SalesFieldShortcutOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!visible || keyLabel == null || keyLabel!.isEmpty) return child;
+    final showBadge = visible && keyLabel != null && keyLabel!.isNotEmpty;
 
+    // Stack tuzilmasini doim saqlash — query bo‘shdan to‘ldiq o‘tganda TextField
+    // qayta mount bo‘lib fokus yo‘qolmasin (desktop qidiruv).
     return Stack(
       clipBehavior: Clip.none,
       children: [
         child,
-        Positioned(
-          right: 10,
-          bottom: 7,
-          child: IgnorePointer(
-            child: SalesShortcutKeyBadge(label: keyLabel!),
+        if (showBadge)
+          Positioned(
+            right: 10,
+            bottom: 7,
+            child: IgnorePointer(
+              child: SalesShortcutKeyBadge(label: keyLabel!),
+            ),
           ),
-        ),
       ],
     );
   }

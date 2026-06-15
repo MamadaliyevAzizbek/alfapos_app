@@ -716,14 +716,17 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   void _clearSearchField() {
     _searchController.clear();
-    if (mounted) setState(() => _query = '');
+    _query = '';
+    if (mounted && !isDesktopPosLayout) setState(() {});
     _refocusCatalogSearch();
   }
 
   void _onSearchFieldChanged(String v) {
     if (_query != v) {
       _query = v;
-      if (mounted) setState(() {});
+      // Desktop: qidiruv matni ValueListenableBuilder orqali yangilanadi —
+      // setState TextField fokusini buzmasligi uchun shu yerda chaqirilmaydi.
+      if (mounted && !isDesktopPosLayout) setState(() {});
     }
     _barcodeSearchDebounce?.cancel();
     final q = v.trim();
@@ -807,8 +810,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return _sales.catalogProductsVisible;
   }
 
-  List<Product> get _desktopCatalogProducts {
-    final q = _query.trim();
+  List<Product> get _desktopCatalogProducts => _desktopCatalogProductsFor(_query);
+
+  List<Product> _desktopCatalogProductsFor(String searchQuery) {
+    final q = searchQuery.trim();
     if (q.isNotEmpty) {
       return product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
     }
@@ -1296,6 +1301,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
 
     final items = _cart.items;
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _searchController,
+      builder: (context, searchValue, _) =>
+          _buildDesktopPosScaffold(context, items, searchValue.text),
+    );
+  }
+
+  Widget _buildDesktopPosScaffold(
+    BuildContext context,
+    List<CartItem> items,
+    String searchQuery,
+  ) {
     return Scaffold(
       body: Shortcuts(
         shortcuts: _salesShortcutIntents(),
@@ -1338,8 +1355,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         catalogSearchFocus: _catalogSearchFocus,
         onCatalogSearchRefocus: _refocusCatalogSearch,
         onSuspendCatalogSearchRefocus: _suspendCatalogSearchRefocusBriefly,
-        query: _query,
-        catalogProducts: _desktopCatalogProducts,
+        query: searchQuery,
+        catalogProducts: _desktopCatalogProductsFor(searchQuery),
         cartItems: items,
         productsLoading: _sales.productsLoading,
         selectedCustomerName: _selectedClient?.name,
@@ -1402,7 +1419,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           ),
         ),
         savedOrdersCount: _savedOrdersCount,
-        onLoadMoreProducts: _query.trim().isEmpty &&
+        onLoadMoreProducts: searchQuery.trim().isEmpty &&
                 _sales.hasMoreProducts &&
                 !_sales.productsLoading
             ? () => _sales.loadMoreProducts()

@@ -110,11 +110,10 @@ void main() {
     );
   });
 
-  test('restaurant queue number prints large after title', () {
+  test('restaurant layout uses compact queue and product table', () {
     final config = ReceiptDesignConfig.defaults.copyWith(
       showRestaurantQueueNumber: true,
       restaurantQueueLabel: 'Navbat raqami',
-      restaurantQueueHint: 'Raqamingizni kuting',
     );
     final lines = ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
@@ -129,21 +128,42 @@ void main() {
             unitPrice: '10,000',
             lineTotal: '10,000',
           ),
+          ThermalReceiptProductLine(
+            name: 'Non',
+            quantity: '2 dona',
+            unitPrice: '5,000',
+            lineTotal: '10,000',
+          ),
         ],
         payments: const [
-          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '10,000'),
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '20,000'),
         ],
         discountAmount: '0',
-        totalAmount: '10,000',
+        totalAmount: '20,000',
         queueNumber: 7,
+        isRestaurantLayout: true,
       ),
       config: config,
     );
-    final queueIdx = lines.indexWhere((l) => l.contains('Navbat raqami'));
-    final largeIdx = lines.indexWhere(ThermalReceiptLargeText.isLargeLine);
-    expect(queueIdx, greaterThanOrEqualTo(0));
-    expect(largeIdx, greaterThan(queueIdx));
-    expect(ThermalReceiptLargeText.unwrap(lines[largeIdx]), '7');
-    expect(lines.any((l) => l.contains('Raqamingizni kuting')), isTrue);
+    expect(lines.any((l) => l.contains('Navbat raqami')), isTrue);
+    expect(lines.any((l) => l.contains('Restoran')), isFalse);
+    expect(lines.any((l) => l.contains('Kassir')), isFalse);
+    expect(lines.any((l) => l.contains('Chek raqami')), isFalse);
+    expect(lines.any((l) => l.contains('Naqd pul')), isFalse);
+    expect(lines.any((l) {
+      if (!ThermalReceiptCompactText.isCompactBoldLine(l)) return false;
+      final text = ThermalReceiptCompactText.unwrap(l);
+      return text.contains('Umumiy') && text.contains('20,000');
+    }), isTrue);
+    expect(lines.any(ThermalReceiptLargeText.isLargeLine), isTrue);
+    expect(
+      lines.any((l) => ThermalReceiptLargeText.isLargeLine(l) && ThermalReceiptLargeText.unwrap(l) == '7'),
+      isTrue,
+    );
+    expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isTrue);
+    expect(lines.any((l) => l.contains('Choy')), isTrue);
+    expect(lines.any((l) => l.contains('1 шт') || l.contains('1шт')), isTrue);
+    expect(lines.any((l) => l.startsWith('1) Choy')), isFalse);
+    expect(lines.any((l) => l.contains('x 10,000')), isFalse);
   });
 }

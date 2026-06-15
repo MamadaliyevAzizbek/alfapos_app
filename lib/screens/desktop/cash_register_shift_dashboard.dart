@@ -7,6 +7,7 @@ import '../../core/input_formatters.dart';
 import '../../core/theme.dart';
 import '../../providers/cash_register_shift_provider.dart';
 import '../../providers/sales_session_provider.dart';
+import '../../utils/cash_register_shift_x_report_print.dart';
 import '../../utils/cash_register_utils.dart';
 import '../../utils/platform_layout.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
@@ -94,6 +95,7 @@ class CashRegisterShiftDashboardBody extends StatefulWidget {
 
 class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashboardBody> {
   final _shift = CashRegisterShiftProvider.instance;
+  bool _printing = false;
 
   @override
   void initState() {
@@ -116,6 +118,38 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
   }
 
   Future<void> _refresh() => _shift.loadShiftDetail();
+
+  Future<bool> _printXReport({bool silent = false}) async {
+    if (_printing) return false;
+    final info = _shift.shiftInfo;
+    final analytics = _shift.shiftAnalytics;
+    if (info == null || analytics == null) {
+      if (!silent && mounted) {
+        AppNotify.warning(context, 'Hisobot ma\'lumoti yuklanmagan');
+      }
+      return false;
+    }
+    setState(() => _printing = true);
+    try {
+      final result = await CashRegisterShiftXReportPrint.print(
+        shiftInfo: info,
+        shiftAnalytics: analytics,
+        cashRegisterTitle: _shift.cashRegisterTitle,
+      );
+      if (!mounted) return result.ok;
+      if (result.ok) {
+        if (!silent) AppNotify.success(context, result.message);
+      } else if (!silent) {
+        AppNotify.warning(context, result.message);
+      }
+      return result.ok;
+    } catch (e) {
+      if (mounted && !silent) AppNotify.error(context, 'Chop etish xatosi: $e');
+      return false;
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
 
   Future<void> _closeShift() async {
     final expected = _shift.expectedClosingAmount ?? 0;
@@ -153,10 +187,18 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
     );
     if (ok != true || !mounted) return;
     final amount = parseFormattedSum(controller.text) ?? expected;
+
+    await _refresh();
+    final printed = await _printXReport(silent: true);
     final closed = await _shift.closeShift(closingAmount: amount, note: noteController.text.trim());
     if (!mounted) return;
     if (closed) {
-      AppNotify.success(context, 'Kassa yopildi');
+      if (printed) {
+        AppNotify.success(context, 'X-otchot chop etildi, kassa yopildi');
+      } else {
+        AppNotify.success(context, 'Kassa yopildi');
+        AppNotify.warning(context, 'X-otchot chop etilmadi');
+      }
       widget.onRequestClose?.call();
     } else if (_shift.error != null) {
       AppNotify.error(context, _shift.error!);
@@ -227,7 +269,8 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
         await showQuickExpenseDialog(context);
         unawaited(_refresh());
       },
-      onPrint: () => AppNotify.info(context, 'Chop etish — tez orada'),
+      onPrint: _printXReport,
+      printBusy: _printing,
       onLeave: _shift.canLeaveCurrentShift ? _leaveShift : null,
       onClose: _shift.canCloseFromInfo ? _closeShift : null,
     );
@@ -588,6 +631,7 @@ class _ActionPanel extends StatelessWidget {
   final VoidCallback onQuickIncome;
   final VoidCallback onQuickExpense;
   final VoidCallback onPrint;
+  final bool printBusy;
   final VoidCallback? onLeave;
   final VoidCallback? onClose;
 
@@ -597,6 +641,7 @@ class _ActionPanel extends StatelessWidget {
     required this.onQuickIncome,
     required this.onQuickExpense,
     required this.onPrint,
+    this.printBusy = false,
     this.onLeave,
     this.onClose,
   });
@@ -607,7 +652,7 @@ class _ActionPanel extends StatelessWidget {
       _actionBtn('To\'liq hisobot', Icons.bar_chart_rounded, const Color(0xFF2563EB), onFullReport),
       _actionBtn('Tezkor kirim', Icons.arrow_downward_rounded, const Color(0xFF16A34A), onQuickIncome),
       _actionBtn('Tezkor chiqim', Icons.arrow_upward_rounded, const Color(0xFFEA580C), onQuickExpense),
-      _actionBtn('Chop etish', Icons.print_rounded, const Color(0xFF94A3B8), onPrint),
+      _actionBtn('Chop etish', Icons.print_rounded, const Color(0xFF94A3B8), onPrint, busy: printBusy),
     ];
     if (onLeave != null) {
       buttons.add(_actionBtn('Smenadan chiqish', Icons.logout_rounded, const Color(0xFF64748B), onLeave!));
@@ -642,13 +687,14 @@ class _ActionPanel extends StatelessWidget {
     );
   }
 
-  Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap, {bool busy = false}) {
     final large = !compact;
+    final effectiveColor = busy ? color.withValues(alpha: 0.55) : color;
     return Material(
-      color: color,
+      color: effectiveColor,
       borderRadius: BorderRadius.circular(large ? 12 : 8),
       child: InkWell(
-        onTap: onTap,
+        onTap: busy ? null : onTap,
         borderRadius: BorderRadius.circular(large ? 12 : 8),
         child: SizedBox.expand(
           child: Padding(
@@ -658,11 +704,18 @@ class _ActionPanel extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white, size: large ? 32 : 22),
+                if (busy)
+                  SizedBox(
+                    width: large ? 32 : 22,
+                    height: large ? 32 : 22,
+                    child: const CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                  )
+                else
+                  Icon(icon, color: Colors.white, size: large ? 32 : 22),
                 SizedBox(width: large ? 16 : 10),
                 Expanded(
                   child: Text(
-                    label,
+                    busy ? 'Chop etilmoqda...' : label,
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,

@@ -101,6 +101,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   String _completedSellerName = '';
   String? _completedClientName;
   int? _completedQueueNumber;
+  bool _isRestaurantLayout = false;
   String _sellerDisplayName = '';
   String? _cachedSellerPhone;
   ReceiptDesignConfig _receiptDesign = ReceiptDesignConfig.defaults;
@@ -632,6 +633,13 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     _loadPaymentTypes();
     _loadSellerDisplayName();
     unawaited(_preloadPaymentResources());
+    unawaited(_loadRestaurantLayoutFlag());
+  }
+
+  Future<void> _loadRestaurantLayoutFlag() async {
+    final mode = await DesktopSalesLayoutSettings.getMode();
+    if (!mounted) return;
+    setState(() => _isRestaurantLayout = mode == DesktopSalesLayoutMode.restaurant);
   }
 
   Future<void> _loadReceiptDesign() async {
@@ -2044,7 +2052,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (await DesktopSalesLayoutSettings.getMode() == DesktopSalesLayoutMode.restaurant) {
       queueNumber = await RestaurantQueueNumberService.nextForToday();
       if (mounted) {
-        setState(() => _completedQueueNumber = queueNumber);
+        setState(() {
+          _completedQueueNumber = queueNumber;
+          _isRestaurantLayout = true;
+        });
       }
     }
     if (widget.useDesktopFullscreenLayout) {
@@ -2343,6 +2354,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       discount: discountUzs,
       totalSum: _totalAfterDiscount,
       isPrecheck: true,
+      isRestaurantLayout: _isRestaurantLayout,
       design: _receiptDesign,
     );
   }
@@ -2385,6 +2397,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       totalSum: _totalAfterDiscount,
       barcodeData: posNumber,
       queueNumber: queueNumber ?? _completedQueueNumber,
+      isRestaurantLayout: _isRestaurantLayout,
       design: _receiptDesign,
     );
   }

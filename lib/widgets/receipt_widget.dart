@@ -69,6 +69,7 @@ class ReceiptWidget extends StatelessWidget {
   final String barcodeData;
   final bool isPrecheck;
   final int? queueNumber;
+  final bool isRestaurantLayout;
   final ReceiptDesignConfig design;
 
   const ReceiptWidget({
@@ -89,6 +90,7 @@ class ReceiptWidget extends StatelessWidget {
     this.barcodeData = '',
     this.isPrecheck = false,
     this.queueNumber,
+    this.isRestaurantLayout = false,
     this.design = ReceiptDesignConfig.defaults,
   });
 
@@ -131,6 +133,7 @@ class ReceiptWidget extends StatelessWidget {
         discountAmount: _fmt(discount),
         totalAmount: _fmt(totalSum),
         queueNumber: queueNumber,
+        isRestaurantLayout: isRestaurantLayout,
       ),
       config: design,
     );
@@ -154,13 +157,14 @@ class ReceiptWidget extends StatelessWidget {
 
     return Container(
       width: width,
-      padding: const EdgeInsets.all(padding),
+      padding: EdgeInsets.all(isRestaurantLayout ? 8 : padding),
       color: Colors.white,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (design.showLogo &&
+          if (!isRestaurantLayout &&
+              design.showLogo &&
               design.logoFilePath != null &&
               design.logoFilePath!.isNotEmpty &&
               File(design.logoFilePath!).existsSync()) ...[
@@ -173,39 +177,56 @@ class ReceiptWidget extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          Center(
-            child: Text(
-              _displayTitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey.shade900,
+          if (!isRestaurantLayout)
+            Center(
+              child: Text(
+                _displayTitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade900,
+                ),
               ),
             ),
-          ),
-          if (isPrecheck) ...[
-            const SizedBox(height: 8),
+          if (isRestaurantLayout && design.showDateTime)
             Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade700, width: 1.5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  design.precheckBanner,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                    color: Colors.grey.shade900,
-                  ),
-                ),
+              child: Text(
+                '${_dateStr(dateTime)} | ${_timeStr(dateTime)}',
+                style: textStyle.copyWith(fontSize: 12),
               ),
+            ),
+          if (isPrecheck) ...[
+            SizedBox(height: isRestaurantLayout ? 4 : 8),
+            Center(
+              child: isRestaurantLayout
+                  ? Text(
+                      design.precheckBanner,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.grey.shade900,
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade700, width: 1.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        design.precheckBanner,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
+                    ),
             ),
           ],
-          if (design.showDateTime) ...[
+          if (!isRestaurantLayout && design.showDateTime) ...[
             const SizedBox(height: 8),
             Center(
               child: Text(
@@ -218,54 +239,45 @@ class ReceiptWidget extends StatelessWidget {
               queueNumber != null &&
               queueNumber! > 0 &&
               design.showRestaurantQueueNumber) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: isRestaurantLayout ? 4 : 8),
             Center(
               child: Text(
                 design.restaurantQueueLabel,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: isRestaurantLayout ? 13 : 14,
+                  fontWeight: FontWeight.w700,
                   color: Colors.grey.shade800,
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: isRestaurantLayout ? 1 : 2),
             Center(
               child: Text(
                 '$queueNumber',
                 style: TextStyle(
-                  fontSize: ThermalReceiptLargeText.onScreenFontSize,
-                  fontWeight: FontWeight.w700,
+                  fontSize: isRestaurantLayout ? 42 : ThermalReceiptLargeText.onScreenFontSize,
+                  fontWeight: FontWeight.w800,
                   fontFamily: 'Courier',
                   fontFamilyFallback: const ['monospace'],
-                  height: 1.15,
+                  height: 1.05,
                   letterSpacing: 1,
                   color: Colors.grey.shade900,
                 ),
               ),
             ),
-            if (design.restaurantQueueHint.trim().isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  design.restaurantQueueHint.trim(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ),
-            ],
           ],
-          const SizedBox(height: 8),
-          Text(
-            isPrecheck
-                ? "${design.receiptNumberLabel}: to'lov oldin"
-                : '${design.receiptNumberLabel}: $receiptNumber',
-            style: textStyle,
-          ),
-          Text('${design.sellerLabel}: $sellerName', style: textStyle),
-          if (design.showSellerPhone &&
+          SizedBox(height: isRestaurantLayout ? 4 : 6),
+          if (!isRestaurantLayout) ...[
+            Text(
+              isPrecheck
+                  ? "${design.receiptNumberLabel}: to'lov oldin"
+                  : '${design.receiptNumberLabel}: $receiptNumber',
+              style: textStyle,
+            ),
+            Text('${design.sellerLabel}: $sellerName', style: textStyle),
+          ],
+          if (!isRestaurantLayout &&
+              design.showSellerPhone &&
               sellerPhone != null &&
               sellerPhone!.trim().isNotEmpty)
             Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}', style: textStyle),
@@ -273,48 +285,53 @@ class ReceiptWidget extends StatelessWidget {
               clientName != null &&
               clientName!.trim().isNotEmpty)
             Text('${design.clientLabel}: ${clientName!.trim()}', style: textStyle),
-          if (design.showClientPhone &&
+          if (!isRestaurantLayout &&
+              design.showClientPhone &&
               clientPhone != null &&
               clientPhone!.trim().isNotEmpty)
             Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}', style: textStyle),
-          if (design.showClientAddress &&
+          if (!isRestaurantLayout &&
+              design.showClientAddress &&
               clientAddress != null &&
               clientAddress!.trim().isNotEmpty)
             Text('${design.clientAddressLabel}: ${clientAddress!.trim()}', style: textStyle),
-          if ((description ?? '').trim().isNotEmpty) ...[
+          if (!isRestaurantLayout && (description ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Tavsif: ${description!.trim()}', style: textStyle),
           ],
-          const SizedBox(height: 10),
-          for (var i = 0; i < productRows.length; i++) ...[
-            Text(
-              design.numberedProducts
-                  ? '${i + 1}) ${productRows[i].productName}'
-                  : productRows[i].productName,
-              style: headerStyle,
-            ),
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _productPriceLine(productRows[i], textStyle, som)),
-                  SizedBox(
-                    width: 108,
-                    child: _productSumColumn(productRows[i], textStyle, som),
-                  ),
-                ],
-              ),
-            ),
-            if (design.showItemSeparator) ...[
-              const SizedBox(height: 4),
+          SizedBox(height: isRestaurantLayout ? 4 : 6),
+          if (isRestaurantLayout) ...[
+            _buildRestaurantProductTable(textStyle, headerStyle, som),
+          ] else
+            for (var i = 0; i < productRows.length; i++) ...[
               Text(
-                ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
-                style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+                design.numberedProducts
+                    ? '${i + 1}) ${productRows[i].productName}'
+                    : productRows[i].productName,
+                style: headerStyle,
               ),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _productPriceLine(productRows[i], textStyle, som)),
+                    SizedBox(
+                      width: 108,
+                      child: _productSumColumn(productRows[i], textStyle, som),
+                    ),
+                  ],
+                ),
+              ),
+              if (design.showItemSeparator) ...[
+                const SizedBox(height: 4),
+                Text(
+                  ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+                  style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+                ),
+              ],
+              const SizedBox(height: 6),
             ],
-            const SizedBox(height: 6),
-          ],
-          if (!isPrecheck)
+          if (!isPrecheck && !isRestaurantLayout)
             for (final row in paymentRows)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
@@ -329,38 +346,59 @@ class ReceiptWidget extends StatelessWidget {
                   ],
                 ),
               ),
-          if (discount > 0) ...[
+          if (discount > 0 && !isRestaurantLayout) ...[
             Row(
               children: [
                 Expanded(child: Text(design.discountLabel, style: textStyle)),
                 Text('${_fmt(discount)} $som', style: textStyle, softWrap: false),
               ],
             ),
-            if (design.showItemSeparator) ...[
+            if (design.showItemSeparator && !isRestaurantLayout) ...[
               const SizedBox(height: 4),
               Text(
                 ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
                 style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
               ),
             ],
-          ] else if (design.showItemSeparator) ...[
+          ] else if (design.showItemSeparator && !isRestaurantLayout) ...[
             const SizedBox(height: 4),
             Text(
               ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
               style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
             ),
           ],
-          Row(
-            children: [
-              Expanded(child: Text(design.totalLabel, style: headerStyle)),
-              Text(
-                '${_fmt(totalSum)} $som',
-                style: headerStyle,
-                softWrap: false,
-              ),
-            ],
-          ),
-          if (!isPrecheck) ...[
+          if (isRestaurantLayout)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Umumiy',
+                  style: textStyle.copyWith(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  '${_fmt(totalSum)} $som',
+                  style: textStyle.copyWith(fontSize: 12, fontWeight: FontWeight.w800),
+                  softWrap: false,
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    design.totalLabel,
+                    style: headerStyle,
+                  ),
+                ),
+                Text(
+                  '${_fmt(totalSum)} $som',
+                  style: headerStyle,
+                  softWrap: false,
+                ),
+              ],
+            ),
+          if (!isPrecheck && !isRestaurantLayout) ...[
             if (design.showBarcode) ...[
               const SizedBox(height: 16),
               Center(
@@ -379,8 +417,8 @@ class ReceiptWidget extends StatelessWidget {
                 ),
               ),
             ],
-          ] else ...[
-            const SizedBox(height: 12),
+          ] else if (isPrecheck) ...[
+            SizedBox(height: isRestaurantLayout ? 4 : 12),
             Center(
               child: Text(
                 "To'lov hali amalga oshirilmagan",
@@ -404,6 +442,59 @@ class ReceiptWidget extends StatelessWidget {
 
   static String _timeStr(DateTime d) {
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}:${d.second.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildRestaurantProductTable(TextStyle textStyle, TextStyle headerStyle, String som) {
+    Widget cell(String text, {int flex = 1, bool header = false, TextAlign align = TextAlign.left}) {
+      return Expanded(
+        flex: flex,
+        child: Text(
+          text,
+          style: header ? headerStyle.copyWith(fontSize: 11) : textStyle.copyWith(fontSize: 11),
+          textAlign: align,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          softWrap: false,
+        ),
+      );
+    }
+
+    Widget row(List<Widget> cells) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Row(children: cells),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row([
+          cell('Mahsulot', flex: 4, header: true),
+          cell('Miqdor', flex: 2, header: true, align: TextAlign.center),
+          cell('Narx', flex: 3, header: true, align: TextAlign.right),
+          cell('Summa', flex: 3, header: true, align: TextAlign.right),
+        ]),
+        for (var i = 0; i < productRows.length; i++)
+          row([
+            cell(
+              design.numberedProducts
+                  ? '${i + 1}. ${productRows[i].productName}'
+                  : productRows[i].productName,
+              flex: 4,
+            ),
+            cell(_restaurantQtyLabel(productRows[i].quantityStr), flex: 2, align: TextAlign.center),
+            cell('${_fmt(productRows[i].price)}', flex: 3, align: TextAlign.right),
+            cell('${_fmt(productRows[i].sum)}', flex: 3, align: TextAlign.right),
+          ]),
+      ],
+    );
+  }
+
+  static String _restaurantQtyLabel(String qty) {
+    return qty
+        .replaceAll('×', 'x')
+        .replaceAll(RegExp(r'\bdona\b', caseSensitive: false), 'шт')
+        .replaceAll(RegExp(r'\s*x\s*.*$'), '')
+        .trim();
   }
 
   static String _normalizeQty(String qty) {

@@ -190,6 +190,14 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
 
+  String _cartProfitPercentLabel() {
+    if (cartGrandTotal <= 0) return 'F: 0%';
+    final pct = cartProfitTotal / cartGrandTotal * 100;
+    final abs = pct.abs();
+    final value = abs >= 10 ? pct.round().toString() : pct.toStringAsFixed(1);
+    return 'F: $value%';
+  }
+
   Map<String, dynamic>? _selectedRegister() {
     if (cashRegisters.isEmpty) return null;
     if (selectedCashRegisterId == null) return cashRegisters.first;
@@ -483,13 +491,32 @@ class SavatchaDesktopLayout extends StatelessWidget {
             children: [
               Expanded(
                 flex: 5,
-                child: SalesFieldShortcutOverlay(
-                  keyLabel: _shortcutLabel(SalesShortcutAction.focusProductSearch),
-                  visible: query.isEmpty,
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: searchController,
+                  builder: (context, searchValue, searchField) {
+                    return SalesFieldShortcutOverlay(
+                      keyLabel: _shortcutLabel(SalesShortcutAction.focusProductSearch),
+                      visible: searchValue.text.isEmpty,
+                      child: Stack(
+                        alignment: Alignment.centerRight,
+                        children: [
+                          searchField!,
+                          if (searchValue.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              onPressed: () {
+                                searchController.clear();
+                                onSearchChanged('');
+                              },
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                   child: TextField(
+                    key: const ValueKey('desktop-catalog-search'),
                     controller: searchController,
                     focusNode: catalogSearchFocus,
-                    autofocus: catalogSearchFocus != null,
                     onChanged: onSearchChanged,
                     onSubmitted: onSearchSubmitted,
                     textInputAction: TextInputAction.search,
@@ -498,15 +525,6 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       filled: true,
                       fillColor: Colors.white,
                       prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                      suffixIcon: query.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 20),
-                              onPressed: () {
-                                searchController.clear();
-                                onSearchChanged('');
-                              },
-                            )
-                          : null,
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: const BorderSide(color: AppTheme.divider),
@@ -515,7 +533,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                         borderSide: const BorderSide(color: AppTheme.primary, width: 2),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      contentPadding: const EdgeInsets.fromLTRB(0, 14, 40, 14),
                     ),
                   ),
                 ),
@@ -850,7 +868,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                     if (showCartProfit && !isReturnMode) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Foyda: ${formatThousands(cartProfitTotal)}',
+                        _cartProfitPercentLabel(),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.78),
                           fontSize: 13,

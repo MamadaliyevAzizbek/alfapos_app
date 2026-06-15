@@ -2,6 +2,7 @@ import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
+import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
 
@@ -52,6 +53,9 @@ class ThermalReceiptPrintData {
   final bool isPrecheck;
   final int? queueNumber;
 
+  /// Restoran rejimida ixcham jadval ko‘rinishi (Mahsulot|Miqdor|Narx|Summa).
+  final bool isRestaurantLayout;
+
   const ThermalReceiptPrintData({
     required this.storeName,
     required this.dateTime,
@@ -67,6 +71,7 @@ class ThermalReceiptPrintData {
     required this.totalAmount,
     this.isPrecheck = false,
     this.queueNumber,
+    this.isRestaurantLayout = false,
   });
 }
 
@@ -236,6 +241,112 @@ class ThermalReceiptFormatter {
   static List<String> toPrintLines(
     ThermalReceiptPrintData d, {
     ReceiptDesignConfig config = ReceiptDesignConfig.defaults,
+  }) {
+    if (d.isRestaurantLayout) {
+      return _toRestaurantPrintLines(d, config: config);
+    }
+    return _toStandardPrintLines(d, config: config);
+  }
+
+  static List<String> _toRestaurantPrintLines(
+    ThermalReceiptPrintData d, {
+    required ReceiptDesignConfig config,
+  }) {
+    final lines = <String>[];
+    String som(String amount) => _withSom(amount, suffix: config.currencySuffix);
+
+    void center(String s) => lines.add('^${s.trim()}');
+    void left(String s) {
+      for (final part in ThermalReceiptLineWrap.wrapLine(s)) {
+        lines.add(part);
+      }
+    }
+
+    if (config.showDateTime) {
+      center(_fmtDateTime(d.dateTime));
+    }
+
+    if (!d.isPrecheck &&
+        d.queueNumber != null &&
+        d.queueNumber! > 0 &&
+        config.showRestaurantQueueNumber) {
+      center(config.restaurantQueueLabel);
+      lines.add(ThermalReceiptLargeText.line('${d.queueNumber}'));
+    }
+
+    if (d.isPrecheck) {
+      center(config.precheckBanner);
+    }
+
+    if (config.showClientLine &&
+        d.clientName != null &&
+        d.clientName!.trim().isNotEmpty) {
+      left('${config.clientLabel}: ${d.clientName!.trim()}');
+    }
+
+    lines.add(ThermalReceiptLineWrap.restaurantTableHeader());
+
+    var n = 0;
+    for (final p in d.products) {
+      n++;
+      final name = config.numberedProducts ? '$n. ${p.name}' : p.name;
+      lines.add(
+        ThermalReceiptLineWrap.restaurantTableProductRow(
+          name: name,
+          quantity: _restaurantQty(p.quantity),
+          unitPrice: formatAmountForReceipt(
+            p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+          ),
+          lineTotal: formatAmountForReceipt(
+            p.lineTotal.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+          ),
+        ),
+      );
+    }
+
+    lines.add(
+      ThermalReceiptLineWrap.restaurantTotalRow(
+        'Umumiy',
+        som(formatAmountForReceipt(d.totalAmount)),
+      ),
+    );
+
+    if (d.isPrecheck) {
+      left("To'lov hali amalga oshirilmagan");
+    }
+
+    return ThermalReceiptLineWrap.wrapAll(lines);
+  }
+
+  /// Restoran ixcham jadvali bo‘yicha chop etish qatorlarini aniqlash.
+  static bool looksLikeRestaurantReceipt(List<String> lines) {
+    for (final line in lines) {
+      final text = ThermalReceiptCompactText.isCompactLine(line)
+          ? ThermalReceiptCompactText.unwrap(line)
+          : (line.startsWith('^') ? line.substring(1) : line);
+      if (text.contains('Mahsulot') &&
+          text.contains('Miqdor') &&
+          text.contains('Summa')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String _restaurantQty(String raw) {
+    final t = raw.trim().replaceAll('×', 'x').replaceAll('’', "'");
+    if (t.contains('x')) {
+      final parts = t.split(RegExp(r'\s*x\s*', caseSensitive: false));
+      return parts.first.trim();
+    }
+    return t
+        .replaceAll(RegExp(r'\bdona\b', caseSensitive: false), 'шт')
+        .replaceAll(RegExp(r'\bDona\b'), 'шт');
+  }
+
+  static List<String> _toStandardPrintLines(
+    ThermalReceiptPrintData d, {
+    required ReceiptDesignConfig config,
   }) {
     final lines = <String>[];
     final sep = ThermalReceiptLineWrap.fullSeparator(
