@@ -60,6 +60,7 @@ class SaleReceiptReprintPrint {
     return ThermalReceiptPrinter.printLocalReceipt(
       widget.toThermalPrintLines(),
       directOnly: directOnly,
+      design: design,
     );
   }
 

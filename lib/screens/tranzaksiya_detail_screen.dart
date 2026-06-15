@@ -514,7 +514,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (_printingPrecheck || _printingReceipt || widget.items.isEmpty) return;
     setState(() => _printingPrecheck = true);
     try {
-      await _loadReceiptDesign();
+      final design = await ReceiptDesignStorage.load();
+      if (mounted && _receiptDesign != design) {
+        setState(() => _receiptDesign = design);
+      }
       final sellerPhone = _cachedSellerPhone ?? await getSellerPhone();
       final receiptWidget = _buildPrecheckReceiptWidget(
         DateTime.now(),
@@ -525,6 +528,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         receiptWidget.toThermalPrintLines(),
         directOnly: directOnly,
         openCashDrawer: false,
+        design: design,
       );
       if (!mounted) return;
       if (result.ok) {
@@ -544,7 +548,10 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (rid == null || _printingReceipt) return false;
     setState(() => _printingReceipt = true);
     try {
-      await _loadReceiptDesign();
+      final design = await ReceiptDesignStorage.load();
+      if (mounted && _receiptDesign != design) {
+        setState(() => _receiptDesign = design);
+      }
       final sellerPhone = _cachedSellerPhone ?? await getSellerPhone();
       final receiptWidget = _buildReceiptWidget(
         DateTime.now(),
@@ -558,6 +565,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       final result = await ThermalReceiptPrinter.printLocalReceipt(
         localLines,
         directOnly: directOnly,
+        design: design,
       );
       if (!mounted) return false;
       if (result.ok) {
@@ -642,9 +650,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     setState(() => _isRestaurantLayout = mode == DesktopSalesLayoutMode.restaurant);
   }
 
-  Future<void> _loadReceiptDesign() async {
-    ReceiptDesignStorage.invalidateCache();
-    final d = await ReceiptDesignStorage.reload();
+  Future<void> _loadReceiptDesign({bool forceReload = false}) async {
+    if (forceReload) ReceiptDesignStorage.invalidateCache();
+    final d = await ReceiptDesignStorage.load();
     if (mounted) setState(() => _receiptDesign = d);
   }
 

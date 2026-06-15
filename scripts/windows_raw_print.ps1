@@ -5,7 +5,11 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $DataFile)) { exit 2 }
 
-Add-Type -Language CSharp @"
+$dllDir = Join-Path $env:LOCALAPPDATA 'AlfaPOS'
+$dllPath = Join-Path $dllDir 'raw_print.dll'
+if (-not (Test-Path -LiteralPath $dllPath)) {
+    New-Item -ItemType Directory -Force -Path $dllDir | Out-Null
+    Add-Type -OutputAssembly $dllPath -Language CSharp @"
 using System;
 using System.Runtime.InteropServices;
 public class AlfaPosRawPrint {
@@ -44,7 +48,9 @@ public class AlfaPosRawPrint {
   }
 }
 "@
+}
 
 $bytes = [System.IO.File]::ReadAllBytes($DataFile)
-$ok = [AlfaPosRawPrint]::Send($PrinterName, $bytes)
+$type = [Reflection.Assembly]::LoadFrom($dllPath).GetType('AlfaPosRawPrint')
+$ok = $type.GetMethod('Send').Invoke($null, @($PrinterName, $bytes))
 if ($ok) { exit 0 } else { exit 1 }

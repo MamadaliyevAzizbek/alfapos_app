@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/receipt_design_config.dart';
 import '../utils/api_receipt_html_parser.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
@@ -54,6 +55,7 @@ class ThermalReceiptPrinter {
     List<String> lines, {
     bool directOnly = false,
     bool? openCashDrawer,
+    ReceiptDesignConfig? design,
   }) async {
     if (lines.isEmpty) {
       return ThermalPrintResult.fail('Chek matni bo\'sh');
@@ -67,6 +69,7 @@ class ThermalReceiptPrinter {
       lines,
       directOnly: directOnly,
       openCashDrawer: openCashDrawer,
+      design: design,
     );
   }
 
@@ -127,11 +130,15 @@ class ThermalReceiptPrinter {
     List<String> lines, {
     bool directOnly = false,
     bool? openCashDrawer,
+    ReceiptDesignConfig? design,
   }) async {
+    final totalSw = Stopwatch()..start();
     final bytes = await _buildEscPosBytes(
       lines,
       openCashDrawer: openCashDrawer,
+      design: design,
     );
+    final buildMs = totalSw.elapsedMilliseconds;
     final printer =
         await savedPrinterName() ?? await _resolveSystemPrinterName();
     if (printer == null || printer.isEmpty) {
@@ -144,6 +151,12 @@ class ThermalReceiptPrinter {
     final result = await RawPrinterSend.send(bytes, printerName: printer);
     if (result.ok) {
       await rememberPrinterName(printer);
+    }
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(
+        '[PrintPerf] printLocalReceipt build=${buildMs}ms send=${totalSw.elapsedMilliseconds - buildMs}ms total=${totalSw.elapsedMilliseconds}ms',
+      );
     }
     return result;
   }
@@ -323,17 +336,24 @@ class ThermalReceiptPrinter {
   static Future<List<int>> _buildEscPosBytes(
     List<String> lines, {
     bool? openCashDrawer,
+    ReceiptDesignConfig? design,
   }) async {
-    final design = await ReceiptDesignStorage.reload();
-    final drawerEnabled =
-        openCashDrawer ?? await PrinterSettings.isCashDrawerOpenOnPrintEnabled();
-    final drawerPin = await PrinterSettings.cashDrawerPin();
+    final settings = await Future.wait([
+      design != null ? Future.value(design) : ReceiptDesignStorage.load(),
+      openCashDrawer != null
+          ? Future<bool>.value(openCashDrawer)
+          : PrinterSettings.isCashDrawerOpenOnPrintEnabled(),
+      PrinterSettings.cashDrawerPin(),
+    ]);
+    final resolvedDesign = settings[0] as ReceiptDesignConfig;
+    final drawerEnabled = settings[1] as bool;
+    final drawerPin = settings[2] as CashDrawerPin;
     final posPin =
         drawerPin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
 
     return EscPosReceiptBuilder.buildReceipt(
       lines: lines,
-      design: design,
+      design: resolvedDesign,
       openCashDrawer: drawerEnabled,
       cashDrawerPin: posPin,
       compactRestaurant: ThermalReceiptFormatter.looksLikeRestaurantReceipt(lines),
@@ -377,7 +397,9 @@ class ThermalReceiptPrinter {
 
   static Future<void> rememberPrinterName(String name) async {
     final trimmed = name.trim();
-    _cachedPrinterName = trimmed.isEmpty ? null : trimmed;
+    if (trimmed.isEmpty) return;
+    if (_cachedPrinterName == trimmed) return;
+    _cachedPrinterName = trimmed;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsPrinterKey, trimmed);
   }

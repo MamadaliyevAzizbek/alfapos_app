@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/receipt_design_config.dart';
 import '../widgets/receipt_logo_image.dart';
+import 'escpos_receipt_builder.dart';
 
 /// Chek dizayni va logo faylini saqlash.
 class ReceiptDesignStorage {
@@ -97,6 +98,7 @@ class ReceiptDesignStorage {
     await _deleteLogoFileIfNeeded(previousPath);
 
     ReceiptLogoImage.evictCache();
+    EscPosReceiptBuilder.invalidateLogoCache();
     invalidateCache();
     final updated = current.copyWith(showLogo: true, logoFilePath: dest);
     await save(updated);

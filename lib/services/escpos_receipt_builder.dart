@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:image/image.dart' as img;
@@ -17,6 +16,8 @@ class EscPosReceiptBuilder {
   EscPosReceiptBuilder._();
 
   static CapabilityProfile? _cachedProfile;
+  static String? _cachedLogoPath;
+  static img.Image? _cachedLogoImage;
 
   static Future<CapabilityProfile> _profile() async {
     return _cachedProfile ??= await CapabilityProfile.load();
@@ -66,19 +67,12 @@ class EscPosReceiptBuilder {
         cfg.showLogo &&
         cfg.logoFilePath != null &&
         cfg.logoFilePath!.isNotEmpty) {
-      final logoBytes = await _loadLogoBytes(cfg.logoFilePath!);
-      if (logoBytes != null) {
-        final decoded = img.decodeImage(logoBytes);
-        if (decoded != null) {
-          final maxW = paperSize == PaperSize.mm58 ? 320 : 480;
-          final resized = decoded.width > maxW
-              ? img.copyResize(decoded, width: maxW)
-              : decoded;
-          bytes.addAll(g.image(resized, align: PosAlign.center));
+      final logoImage = await _loadLogoImage(cfg.logoFilePath!, maxW: paperSize == PaperSize.mm58 ? 320 : 480);
+      if (logoImage != null) {
+          bytes.addAll(g.image(logoImage, align: PosAlign.center));
           if (!compactRestaurant) {
             bytes.addAll(g.feed(1));
           }
-        }
       }
     }
 
@@ -264,11 +258,25 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
-  static Future<Uint8List?> _loadLogoBytes(String path) async {
+  static Future<img.Image?> _loadLogoImage(String path, {required int maxW}) async {
+    if (_cachedLogoPath == path && _cachedLogoImage != null) {
+      final decoded = _cachedLogoImage!;
+      return decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
+    }
     try {
       final f = File(path);
-      if (await f.exists()) return await f.readAsBytes();
+      if (!await f.exists()) return null;
+      final decoded = img.decodeImage(await f.readAsBytes());
+      if (decoded == null) return null;
+      _cachedLogoPath = path;
+      _cachedLogoImage = decoded;
+      return decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
     } catch (_) {}
     return null;
+  }
+
+  static void invalidateLogoCache() {
+    _cachedLogoPath = null;
+    _cachedLogoImage = null;
   }
 }
