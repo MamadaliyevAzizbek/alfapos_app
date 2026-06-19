@@ -10,6 +10,7 @@ import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
+import 'printer_paper_profile.dart';
 
 /// API dan parse qilingan matn qatorlarini ESC/POS ga aylantirish.
 class EscPosReceiptBuilder {
@@ -42,9 +43,12 @@ class EscPosReceiptBuilder {
     bool openCashDrawer = false,
     PosDrawer cashDrawerPin = PosDrawer.pin2,
     bool compactRestaurant = false,
+    String? printerName,
   }) async {
     final profile = await _profile();
-    final rowGap = compactRestaurant ? 0 : 6;
+    final compactLayout = compactRestaurant ||
+        PrinterPaperProfile.needsCompactLayout(printerName);
+    final rowGap = compactLayout ? 0 : 6;
     final g = Generator(paperSize, profile, spaceBetweenRows: rowGap);
     final bytes = <int>[];
 
@@ -58,6 +62,9 @@ class EscPosReceiptBuilder {
 
     bytes.addAll(g.reset());
     bytes.addAll(g.setGlobalCodeTable(codeTable));
+    if (compactLayout) {
+      bytes.addAll(PrinterPaperProfile.fullWidthMarginBytes());
+    }
 
     if (openCashDrawer) {
       bytes.addAll(g.drawer(pin: cashDrawerPin));
@@ -67,18 +74,19 @@ class EscPosReceiptBuilder {
         cfg.showLogo &&
         cfg.logoFilePath != null &&
         cfg.logoFilePath!.isNotEmpty) {
-      final logoImage = await _loadLogoImage(cfg.logoFilePath!, maxW: paperSize == PaperSize.mm58 ? 320 : 480);
+      final logoMaxW = paperSize == PaperSize.mm58 ? 320 : paperSize.width;
+      final logoImage = await _loadLogoImage(cfg.logoFilePath!, maxW: logoMaxW);
       if (logoImage != null) {
-          bytes.addAll(g.image(logoImage, align: PosAlign.center));
-          if (!compactRestaurant) {
-            bytes.addAll(g.feed(1));
-          }
+        bytes.addAll(g.image(logoImage, align: PosAlign.center));
+        if (!compactLayout) {
+          bytes.addAll(g.feed(1));
+        }
       }
     }
 
     for (final line in wrapped) {
       if (line.isEmpty) {
-        if (!compactRestaurant) {
+        if (!compactLayout) {
           bytes.addAll(g.feed(1));
         }
         continue;
@@ -196,8 +204,12 @@ class EscPosReceiptBuilder {
       }
     }
 
-    bytes.addAll(g.feed(compactRestaurant ? 1 : 2));
-    bytes.addAll(g.cut());
+    if (compactLayout) {
+      bytes.addAll(PrinterPaperProfile.minimalCutBytes());
+    } else {
+      bytes.addAll(g.feed(2));
+      bytes.addAll(g.cut());
+    }
     return bytes;
   }
 

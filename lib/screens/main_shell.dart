@@ -4,6 +4,7 @@ import '../core/constants.dart';
 import '../core/seller_preferences.dart';
 import '../core/theme.dart';
 import '../utils/platform_layout.dart';
+import '../utils/pos_navigation.dart';
 import 'asosiy_screen.dart';
 import 'desktop/desktop_shell.dart';
 import 'katalog_screen.dart';
@@ -27,7 +28,22 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    PosNavigation.openSalesSection = () {
+      if (!mounted) return;
+      setState(() {
+        _builtTabs.add(2);
+        _currentIndex = 2;
+      });
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) => syncSellerNameFromApi());
+  }
+
+  @override
+  void dispose() {
+    if (PosNavigation.openSalesSection != null) {
+      PosNavigation.openSalesSection = null;
+    }
+    super.dispose();
   }
 
   Widget _screenAt(int index) {

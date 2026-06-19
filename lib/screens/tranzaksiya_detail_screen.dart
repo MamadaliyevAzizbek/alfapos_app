@@ -59,6 +59,9 @@ class TranzaksiyaDetailScreen extends StatefulWidget {
   /// Pauzadan davom ettirilganda mavjud buyurtma.
   final int? initialOrderId;
   final String? initialInvoiceId;
+  /// Chek tahrirlash — yangi chek yaratiladi, eskisi bekor qilinadi.
+  final int? editOrderId;
+  final String? editReason;
   final bool useDesktopFullscreenLayout;
   final bool isReturnCheckout;
   /// Mobil savatchadan: mijoz tanlanganda savat narxlarini yangilash.
@@ -71,6 +74,8 @@ class TranzaksiyaDetailScreen extends StatefulWidget {
     this.initialClient,
     this.initialOrderId,
     this.initialInvoiceId,
+    this.editOrderId,
+    this.editReason,
     this.useDesktopFullscreenLayout = false,
     this.isReturnCheckout = false,
     this.onCustomerChanged,
@@ -2239,8 +2244,19 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       body['register_log_id'] = sess.registerLogId;
     }
     if (sess.branchId != null) body['selectedBranchID'] = sess.branchId;
-    if (widget.initialOrderId != null) body['orderID'] = widget.initialOrderId;
-    if (widget.initialInvoiceId != null && widget.initialInvoiceId!.isNotEmpty) {
+    if (widget.editOrderId != null) {
+      body['editOrderId'] = widget.editOrderId;
+      body['editReason'] = (widget.editReason ?? '').trim();
+      body.remove('orderID');
+      body.remove('orderId');
+      body.remove('id');
+      body.remove('invoice_id');
+    } else if (widget.initialOrderId != null) {
+      body['orderID'] = widget.initialOrderId;
+    }
+    if (widget.editOrderId == null &&
+        widget.initialInvoiceId != null &&
+        widget.initialInvoiceId!.isNotEmpty) {
       body['invoice_id'] = widget.initialInvoiceId;
     }
     if (widget.isReturnCheckout) {

@@ -14,6 +14,8 @@ class DesktopPaymentScreen extends StatelessWidget {
   final Client? initialClient;
   final int? initialOrderId;
   final String? initialInvoiceId;
+  final int? editOrderId;
+  final String? editReason;
   final bool isReturnCheckout;
 
   const DesktopPaymentScreen({
@@ -23,6 +25,8 @@ class DesktopPaymentScreen extends StatelessWidget {
     this.initialClient,
     this.initialOrderId,
     this.initialInvoiceId,
+    this.editOrderId,
+    this.editReason,
     this.isReturnCheckout = false,
   });
 
@@ -33,6 +37,8 @@ class DesktopPaymentScreen extends StatelessWidget {
     Client? initialClient,
     int? initialOrderId,
     String? initialInvoiceId,
+    int? editOrderId,
+    String? editReason,
     bool isReturnCheckout = false,
   }) {
     return Navigator.of(context).push<String>(
@@ -45,6 +51,8 @@ class DesktopPaymentScreen extends StatelessWidget {
           initialClient: initialClient,
           initialOrderId: initialOrderId,
           initialInvoiceId: initialInvoiceId,
+          editOrderId: editOrderId,
+          editReason: editReason,
           isReturnCheckout: isReturnCheckout,
         ),
         transitionsBuilder: (_, animation, __, child) {
@@ -62,6 +70,8 @@ class DesktopPaymentScreen extends StatelessWidget {
       initialClient: initialClient,
       initialOrderId: initialOrderId,
       initialInvoiceId: initialInvoiceId,
+      editOrderId: editOrderId,
+      editReason: editReason,
       useDesktopFullscreenLayout: true,
       isReturnCheckout: isReturnCheckout,
     );

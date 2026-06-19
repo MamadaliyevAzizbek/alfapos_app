@@ -661,6 +661,10 @@ class IncomesApi {
   static Future<Map<String, dynamic>> createIncome(Map<String, dynamic> data) async {
     return ApiClient.post('/incomes', body: data);
   }
+
+  static Future<void> deleteIncome(int id) async {
+    await ApiClient.delete('/incomes/$id');
+  }
 }
 
 /// Sotuv (Savatcha) — MOBILE_SALES_API_UZ.md
@@ -791,6 +795,26 @@ class SalesApi {
     return ApiClient.get('/sales/variant-available-quantity/$variantId?branchId=$branchId');
   }
 
+  /// GET /sales/editable-order/{id} — chekni tahrirlash uchun savat.
+  static Future<Map<String, dynamic>> getEditableOrder(
+    int orderId, {
+    String orderType = 'sales',
+  }) async {
+    return ApiClient.get('/sales/editable-order/$orderId?orderType=$orderType');
+  }
+
+  /// POST /sales/date/update/{id} — faqat sana/vaqt.
+  static Future<Map<String, dynamic>> updateSaleDate(
+    int orderId, {
+    required String editedSalesDate,
+    String? shippingStatus,
+  }) async {
+    return ApiClient.post('/sales/date/update/$orderId', body: {
+      'editedSalesDate': editedSalesDate,
+      if (shippingStatus != null && shippingStatus.isNotEmpty) 'shippingStatus': shippingStatus,
+    });
+  }
+
   static Future<Map<String, dynamic>> cancelSale(int orderId) async {
     return ApiClient.post('/sales/cancel', body: {'orderID': orderId});
   }
@@ -881,9 +905,36 @@ class ReportsApi {
     String columnKey = 'id',
     String columnSortedBy = 'DESC',
     String searchValue = '',
+    dynamic employeeId,
   }) {
     final startAt = '$from 00:00:00';
     final endAt = '$to 23:59:59';
+    final filtersData = <Map<String, dynamic>>[
+      {
+        'key': 'date_range',
+        'value': [
+          {
+            'start': from,
+            'end': to,
+            'start_date': from,
+            'end_date': to,
+            'from': from,
+            'to': to,
+            'start_datetime': startAt,
+            'end_datetime': endAt,
+          },
+        ],
+      },
+      {'key': 'date', 'value': {'from': from, 'to': to}},
+      {'key': 'start_date', 'value': from},
+      {'key': 'end_date', 'value': to},
+      {'key': 'from', 'value': from},
+      {'key': 'to', 'value': to},
+    ];
+    final emp = employeeId?.toString().trim();
+    if (emp != null && emp.isNotEmpty && emp != 'all') {
+      filtersData.add({'key': 'employee', 'value': employeeId});
+    }
     return {
       'rowLimit': rowLimit,
       'rowOffset': rowOffset,
@@ -891,34 +942,11 @@ class ReportsApi {
       'columnSortedBy': columnSortedBy,
       'searchValue': searchValue,
       'reqType': '',
-      // Ba'zi backendlar filterdan tashqarida ham shu maydonlarni kutadi.
       'from': from,
       'to': to,
       'start_date': from,
       'end_date': to,
-      'filtersData': [
-        {
-          'key': 'date_range',
-          'value': [
-            {
-              'start': from,
-              'end': to,
-              'start_date': from,
-              'end_date': to,
-              'from': from,
-              'to': to,
-              'start_datetime': startAt,
-              'end_datetime': endAt,
-            },
-          ],
-        },
-        {'key': 'date', 'value': {'from': from, 'to': to}},
-        // Backend bilan amaliyotda eng barqaror format.
-        {'key': 'start_date', 'value': from},
-        {'key': 'end_date', 'value': to},
-        {'key': 'from', 'value': from},
-        {'key': 'to', 'value': to},
-      ],
+      'filtersData': filtersData,
     };
   }
 
@@ -1059,6 +1087,75 @@ class ReportsApi {
       }
       rethrow;
     }
+  }
+}
+
+/// Kassa smena to'liq hisoboti — REGISTER_LOGS_API.md
+class RegisterLogsApi {
+  static Future<Map<String, dynamic>> getInfo(int logId) async {
+    return ApiClient.get('/reports/register-logs/$logId/info');
+  }
+
+  static Future<Map<String, dynamic>> getAnalytics(int logId) async {
+    return ApiClient.get('/reports/register-logs/$logId/analytics');
+  }
+
+  static Future<Map<String, dynamic>> getExpenses(int logId) async {
+    return ApiClient.get('/reports/register-logs/$logId/expenses');
+  }
+
+  static Future<Map<String, dynamic>> getIncomes(int logId) async {
+    return ApiClient.get('/reports/register-logs/$logId/incomes');
+  }
+
+  static Future<Map<String, dynamic>> getOrders(int logId) async {
+    return ApiClient.get('/reports/register-logs/$logId/orders');
+  }
+
+  static Future<Map<String, dynamic>> getSalesFilter(int logId) async {
+    return ApiClient.get('/reports/sales/filter', queryParams: {'register_log_id': '$logId'});
+  }
+
+  static Map<String, dynamic> salesListBody({
+    required int logId,
+    int rowLimit = 50,
+    int rowOffset = 0,
+    String employee = 'all',
+    String paymentTypeId = 'all',
+    String searchValue = '',
+  }) {
+    return {
+      'rowLimit': rowLimit,
+      'rowOffset': rowOffset,
+      'columnKey': 'id',
+      'columnSortedBy': 'DESC',
+      'searchValue': searchValue,
+      'reqType': null,
+      'customFilters': {'register_log_id': logId},
+      'filtersData': [
+        {'key': 'employee', 'value': employee},
+        {'key': 'payment_type_id', 'value': paymentTypeId},
+      ],
+    };
+  }
+
+  static Future<Map<String, dynamic>> getSales(int logId, {Map<String, dynamic>? body}) async {
+    return ApiClient.post('/reports/register-logs/$logId/sales', body: body ?? salesListBody(logId: logId));
+  }
+
+  static Future<Map<String, dynamic>> getAnalyticsCards({String? from, String? to}) async {
+    final q = <String, String>{};
+    if (from != null) q['from'] = from;
+    if (to != null) q['to'] = to;
+    return ApiClient.get('/reports/register-logs/analytics-cards', queryParams: q.isEmpty ? null : q);
+  }
+
+  static Future<Map<String, dynamic>> customerGroupSummary(Map<String, dynamic> body) async {
+    return ApiClient.post('/reports/register-logs/customer-group-summary', body: body);
+  }
+
+  static Future<Map<String, dynamic>> close(int logId, Map<String, dynamic> body) async {
+    return ApiClient.post('/reports/register-logs/$logId/close', body: body);
   }
 }
 

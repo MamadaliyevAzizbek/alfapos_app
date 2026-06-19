@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
@@ -12,6 +13,7 @@ import '../../utils/cash_register_utils.dart';
 import '../../utils/platform_layout.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import 'quick_cash_dialogs.dart';
+import '../register_log_full_report_screen.dart';
 
 /// Desktop: dialog. Mobil: to‘liq ekran. UI darhol ochiladi, hisobot fon rejimida yangilanadi.
 Future<void> openCashRegisterShiftDashboard(BuildContext context) async {
@@ -30,7 +32,10 @@ Future<void> openCashRegisterShiftDashboard(BuildContext context) async {
     );
   } else {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const CashRegisterShiftDashboardScreen()),
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const CashRegisterShiftDashboardScreen(),
+      ),
     );
   }
 }
@@ -71,9 +76,12 @@ class CashRegisterShiftDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: CashRegisterShiftDashboardBody(
-        compact: true,
-        onRequestClose: () => Navigator.pop(context),
+      body: SafeArea(
+        child: CashRegisterShiftDashboardBody(
+          compact: true,
+          mobileLayout: true,
+          onRequestClose: () => Navigator.pop(context),
+        ),
       ),
     );
   }
@@ -81,11 +89,14 @@ class CashRegisterShiftDashboardScreen extends StatelessWidget {
 
 class CashRegisterShiftDashboardBody extends StatefulWidget {
   final bool compact;
+  /// Mobil: desktop bilan bir xil katta panellar, vertikal scroll.
+  final bool mobileLayout;
   final VoidCallback? onRequestClose;
 
   const CashRegisterShiftDashboardBody({
     super.key,
     required this.compact,
+    this.mobileLayout = false,
     this.onRequestClose,
   });
 
@@ -242,12 +253,13 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
     final status = (info['status'] ?? log['status'] ?? 'open').toString();
     final statusLabel = status.toLowerCase() == 'open' ? 'Ochiq' : 'Yopilgan';
 
+    final useLargePanels = widget.mobileLayout || !widget.compact;
     final incomePanel = _IncomePanel(
       totalSales: formatShiftMoney(analytics['total_payment'] ?? analytics['total_sales']),
       paymentTypes: paymentTypes,
       ordersCount: '${analytics['shift_orders_count'] ?? 0}',
-      scrollable: widget.compact,
-      large: !widget.compact,
+      scrollable: widget.compact || widget.mobileLayout,
+      large: useLargePanels,
     );
     final outcomePanel = _OutcomePanel(
       cashBalance: _cashFromAnalytics(analytics),
@@ -255,12 +267,13 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       incomes: formatShiftMoney(analytics['total_incomes']),
       expenses: formatShiftMoney(analytics['total_expenses']),
       avgCheck: formatShiftMoney(analytics['shift_avg_check']),
-      scrollable: widget.compact,
-      large: !widget.compact,
+      scrollable: widget.compact || widget.mobileLayout,
+      large: useLargePanels,
     );
     final actionPanel = _ActionPanel(
-      compact: widget.compact,
-      onFullReport: () => AppNotify.info(context, 'To\'liq hisobot — tez orada'),
+      compact: widget.compact && !widget.mobileLayout,
+      mobileLayout: widget.mobileLayout,
+      onFullReport: () => openRegisterLogFullReport(context),
       onQuickIncome: () async {
         await showQuickIncomeDialog(context);
         unawaited(_refresh());
@@ -275,15 +288,30 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       onClose: _shift.canCloseFromInfo ? _closeShift : null,
     );
 
-    final chips = widget.compact
+    final chips = widget.compact || widget.mobileLayout
         ? Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _infoChip('Kassir tomonidan ochilgan', (info['opened_by_name'] ?? '—').toString(), fullWidth: true),
-              _infoChip('Kassa terminali', (info['cash_register_title'] ?? _shift.cashRegisterTitle).toString(), fullWidth: true),
-              _infoChip('Ochilish vaqti', formatShiftDateTime(log['opening_time']), fullWidth: true),
-              _infoChip('Holat', statusLabel, fullWidth: true),
+              _infoChip(
+                'Kassir tomonidan ochilgan',
+                (info['opened_by_name'] ?? '—').toString(),
+                fullWidth: true,
+                large: widget.mobileLayout,
+              ),
+              _infoChip(
+                'Kassa terminali',
+                (info['cash_register_title'] ?? _shift.cashRegisterTitle).toString(),
+                fullWidth: true,
+                large: widget.mobileLayout,
+              ),
+              _infoChip(
+                'Ochilish vaqti',
+                formatShiftDateTime(log['opening_time']),
+                fullWidth: true,
+                large: widget.mobileLayout,
+              ),
+              _infoChip('Holat', statusLabel, fullWidth: true, large: widget.mobileLayout),
             ],
           )
         : IntrinsicHeight(
@@ -303,31 +331,46 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
 
     final staffLine = (info['shift_staff_names'] ?? '').toString();
     final contentLoading = _shift.detailLoading && _shift.shiftAnalytics == null;
+    final loadFailed = !contentLoading && _shift.shiftAnalytics == null && _shift.error != null;
 
-    if (widget.compact) {
+    if (widget.compact || widget.mobileLayout) {
       return RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, widget.mobileLayout ? 4 : 8, 16, 24),
           children: [
             if (staffLine.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   'SMENADA ISHLAYOTGANLAR: $staffLine',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                  style: TextStyle(
+                    fontSize: widget.mobileLayout ? 13 : 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
               ),
             chips,
             const SizedBox(height: 16),
             if (contentLoading)
               const SizedBox(height: 200, child: Center(child: CircularProgressIndicator(color: AppTheme.primary)))
+            else if (loadFailed)
+              _loadErrorCard(_shift.error!)
             else ...[
               incomePanel,
               const SizedBox(height: 12),
               outcomePanel,
               const SizedBox(height: 16),
+              if (widget.mobileLayout)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'Amallar',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                ),
               actionPanel,
             ],
           ],
@@ -415,6 +458,34 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       }
     }
     return formatShiftMoney(analytics['total_current_amount']);
+  }
+
+  Widget _loadErrorCard(String message) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFDBA74)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Kassa ma\'lumotlari yuklanmadi',
+            style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF9A3412)),
+          ),
+          const SizedBox(height: 8),
+          Text(message, style: const TextStyle(color: Color(0xFF9A3412), height: 1.35)),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Qayta yuklash'),
+          ),
+        ],
+      ),
+    );
   }
 
   static Widget _infoChip(String label, String value, {bool fullWidth = false, bool large = false}) {
@@ -627,6 +698,7 @@ class _OutcomePanel extends StatelessWidget {
 
 class _ActionPanel extends StatelessWidget {
   final bool compact;
+  final bool mobileLayout;
   final VoidCallback onFullReport;
   final VoidCallback onQuickIncome;
   final VoidCallback onQuickExpense;
@@ -637,6 +709,7 @@ class _ActionPanel extends StatelessWidget {
 
   const _ActionPanel({
     this.compact = false,
+    this.mobileLayout = false,
     required this.onFullReport,
     required this.onQuickIncome,
     required this.onQuickExpense,
@@ -646,13 +719,23 @@ class _ActionPanel extends StatelessWidget {
     this.onClose,
   });
 
+  bool get _isMobileNative {
+    if (mobileLayout) return true;
+    try {
+      return Platform.isAndroid || Platform.isIOS;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final buttons = <Widget>[
       _actionBtn('To\'liq hisobot', Icons.bar_chart_rounded, const Color(0xFF2563EB), onFullReport),
       _actionBtn('Tezkor kirim', Icons.arrow_downward_rounded, const Color(0xFF16A34A), onQuickIncome),
       _actionBtn('Tezkor chiqim', Icons.arrow_upward_rounded, const Color(0xFFEA580C), onQuickExpense),
-      _actionBtn('Chop etish', Icons.print_rounded, const Color(0xFF94A3B8), onPrint, busy: printBusy),
+      if (!_isMobileNative)
+        _actionBtn('Chop etish', Icons.print_rounded, const Color(0xFF94A3B8), onPrint, busy: printBusy),
     ];
     if (onLeave != null) {
       buttons.add(_actionBtn('Smenadan chiqish', Icons.logout_rounded, const Color(0xFF64748B), onLeave!));
@@ -661,12 +744,12 @@ class _ActionPanel extends StatelessWidget {
       buttons.add(_actionBtn('Kassa yopish', Icons.lock_rounded, const Color(0xFFDC2626), onClose!));
     }
 
-    if (compact) {
+    if (compact || mobileLayout) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < buttons.length; i++) ...[
-            if (i > 0) const SizedBox(height: 10),
+            if (i > 0) SizedBox(height: mobileLayout ? 12 : 10),
             buttons[i],
           ],
         ],
@@ -688,45 +771,47 @@ class _ActionPanel extends StatelessWidget {
   }
 
   Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap, {bool busy = false}) {
-    final large = !compact;
+    final large = !compact || mobileLayout;
     final effectiveColor = busy ? color.withValues(alpha: 0.55) : color;
+    final content = Padding(
+      padding: EdgeInsets.symmetric(
+        vertical: large ? 18 : 14,
+        horizontal: large ? 20 : 12,
+      ),
+      child: Row(
+        children: [
+          if (busy)
+            SizedBox(
+              width: large ? 32 : 22,
+              height: large ? 32 : 22,
+              child: const CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+            )
+          else
+            Icon(icon, color: Colors.white, size: large ? 28 : 22),
+          SizedBox(width: large ? 16 : 10),
+          Expanded(
+            child: Text(
+              busy ? 'Chop etilmoqda...' : label,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: large ? 16 : 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Material(
       color: effectiveColor,
       borderRadius: BorderRadius.circular(large ? 12 : 8),
       child: InkWell(
         onTap: busy ? null : onTap,
         borderRadius: BorderRadius.circular(large ? 12 : 8),
-        child: SizedBox.expand(
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: large ? 20 : 14,
-              horizontal: large ? 20 : 12,
-            ),
-            child: Row(
-              children: [
-                if (busy)
-                  SizedBox(
-                    width: large ? 32 : 22,
-                    height: large ? 32 : 22,
-                    child: const CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                  )
-                else
-                  Icon(icon, color: Colors.white, size: large ? 32 : 22),
-                SizedBox(width: large ? 16 : 10),
-                Expanded(
-                  child: Text(
-                    busy ? 'Chop etilmoqda...' : label,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: large ? 18 : 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        child: (!compact && !mobileLayout)
+            ? SizedBox.expand(child: content)
+            : SizedBox(width: double.infinity, child: content),
       ),
     );
   }

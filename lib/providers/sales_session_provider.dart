@@ -31,6 +31,8 @@ import '../utils/sales_payment_types.dart';
 import '../utils/tolovsiz_payment.dart';
 import '../utils/sales_store_body.dart';
 import '../utils/cash_register_utils.dart';
+import '../utils/hold_order_cart.dart';
+import '../utils/invoice_edit_utils.dart';
 import 'cash_register_shift_provider.dart';
 
 /// Desktop sotuv sessiyasi — MOBILE_SALES_API_UZ.md init va mahsulotlar.
@@ -54,6 +56,9 @@ class SalesSessionProvider extends ChangeNotifier {
   List<Map<String, dynamic>> paymentTypes = [];
   /// GET /support/sales-settings — "1" bo'lsa to'lovsiz yoqilgan.
   bool salesTolovsizPaymentEnabled = false;
+  /// sales_list_edit_option — faqat aniq o‘chirilgan bo‘lsa false.
+  bool salesListEditEnabled = true;
+  bool enableEditSaleDate = true;
   double usdRate = 1;
 
   String? categoryId;
@@ -282,8 +287,41 @@ class SalesSessionProvider extends ChangeNotifier {
     try {
       final res = await SalesApi.getSalesSettings();
       salesTolovsizPaymentEnabled = TolovsizPayment.parseEnabledFromSettingsResponse(res);
+      salesListEditEnabled = parseSalesListEditEnabled(res);
+      enableEditSaleDate = parseEnableEditSaleDate(res);
     } catch (_) {}
   }
+
+  bool _salesSettingsLoaded = false;
+
+  /// Chek tahrirlash tugmasi uchun sozlamalar (kesh).
+  Future<void> ensureSalesSettingsLoaded({bool force = false}) async {
+    if (!force && _salesSettingsLoaded) return;
+    await _loadSalesSettings();
+    _salesSettingsLoaded = true;
+    notifyListeners();
+  }
+
+  InvoiceEditResume? _pendingInvoiceEdit;
+  HoldOrderResume? _pendingInvoiceEditHold;
+
+  void setPendingInvoiceEdit(InvoiceEditResume resume, HoldOrderResume hold) {
+    _pendingInvoiceEdit = resume;
+    _pendingInvoiceEditHold = hold;
+    notifyListeners();
+  }
+
+  ({InvoiceEditResume resume, HoldOrderResume hold})? consumePendingInvoiceEdit() {
+    final resume = _pendingInvoiceEdit;
+    final hold = _pendingInvoiceEditHold;
+    if (resume == null || hold == null) return null;
+    _pendingInvoiceEdit = null;
+    _pendingInvoiceEditHold = null;
+    notifyListeners();
+    return (resume: resume, hold: hold);
+  }
+
+  bool get hasPendingInvoiceEdit => _pendingInvoiceEdit != null;
 
   DateTime? _paymentMetaLastRefresh;
 
@@ -1098,6 +1136,12 @@ class SalesSessionProvider extends ChangeNotifier {
     categories = [];
     brands = [];
     paymentTypes = [];
+    salesTolovsizPaymentEnabled = false;
+    salesListEditEnabled = true;
+    enableEditSaleDate = true;
+    _salesSettingsLoaded = false;
+    _pendingInvoiceEdit = null;
+    _pendingInvoiceEditHold = null;
     usdRate = 1;
     categoryId = null;
     brandId = null;

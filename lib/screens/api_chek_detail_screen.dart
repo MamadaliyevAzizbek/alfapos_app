@@ -14,6 +14,8 @@ import '../widgets/product_tile.dart';
 import '../utils/platform_layout.dart';
 import '../utils/sale_receipt_reprint_print.dart';
 import '../utils/sale_return_utils.dart';
+import '../utils/invoice_edit_utils.dart';
+import '../utils/invoice_edit_flow.dart';
 
 /// API dan kelgan chek batafsil — to'liq chek ko'rinishi (Hisobotlar, Tranzaksiyalar, Mijoz detali).
 class ApiChekDetailScreen extends StatefulWidget {
@@ -205,10 +207,45 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
 
     final alreadyReturned = isSaleAlreadyReturned(widget.sale, invoiceDetail: inv);
     final showReturnButton = canShowReturnSaleButton(widget.sale, invoiceDetail: inv);
+    final showEditButton = canShowInvoiceEditButton(widget.sale, invoiceDetail: inv);
+    final showDateEditButton = canShowInvoiceDateEditButton(widget.sale, invoiceDetail: inv);
+    final isEdited = widget.sale['is_invoice_edited'] == 1 ||
+        widget.sale['is_invoice_edited'] == true ||
+        widget.sale['is_invoice_edited'] == '1';
+    final editSource = (widget.sale['invoice_edit_source_invoice_id'] ?? '').toString().trim();
 
     return Scaffold(
       appBar: AppBar(
         title: Text("Chek #$posTitle"),
+        actions: [
+          if (showEditButton)
+            IconButton(
+              tooltip: 'Tahrirlash',
+              icon: const Icon(Icons.edit_rounded),
+              onPressed: () async {
+                await InvoiceEditFlow.startFullEdit(
+                  context,
+                  widget.sale,
+                  invoiceDetail: inv,
+                  popCurrentRoute: true,
+                );
+              },
+            ),
+          if (showDateEditButton)
+            IconButton(
+              tooltip: 'Sanani tahrirlash',
+              icon: const Icon(Icons.calendar_month_rounded),
+              onPressed: () async {
+                final ok = await InvoiceEditFlow.editSaleDate(
+                  context,
+                  widget.sale,
+                  invoiceDetail: inv,
+                  popCurrentRoute: true,
+                );
+                if (ok && mounted) setState(() {});
+              },
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -224,6 +261,23 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
             Text('Sotuvchi: $sellerName', style: const TextStyle(fontSize: 14)),
             if (clientName.toString().trim().isNotEmpty)
               Text('Mijoz: ${clientName.toString().trim()}', style: const TextStyle(fontSize: 14)),
+            if (isEdited) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: Text(
+                  editSource.isNotEmpty
+                      ? 'Tahrirlangan chek (avvalgi: $editSource)'
+                      : 'Tahrirlangan chek',
+                  style: TextStyle(fontSize: 13, color: Colors.blue.shade900, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
             if (alreadyReturned) ...[
               const SizedBox(height: 12),
               Container(
@@ -341,6 +395,50 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     side: const BorderSide(color: AppTheme.primary, width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
+
+            if (showEditButton) ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => InvoiceEditFlow.startFullEdit(
+                    context,
+                    widget.sale,
+                    invoiceDetail: inv,
+                    popCurrentRoute: true,
+                  ),
+                  icon: const Icon(Icons.edit_rounded, size: 22),
+                  label: const Text('Chekni tahrirlash'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
+            if (showDateEditButton) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final ok = await InvoiceEditFlow.editSaleDate(
+                      context,
+                      widget.sale,
+                      invoiceDetail: inv,
+                      popCurrentRoute: true,
+                    );
+                    if (ok && mounted) setState(() {});
+                  },
+                  icon: const Icon(Icons.calendar_month_rounded, size: 22),
+                  label: const Text('Sanani tahrirlash'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),

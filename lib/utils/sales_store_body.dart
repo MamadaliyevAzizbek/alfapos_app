@@ -54,6 +54,8 @@ class SalesStoreBody {
     int? branchId,
     int? orderId,
     String? invoiceId,
+    int? editOrderId,
+    String? editReason,
     List<Map<String, dynamic>>? payments,
     int dueAmount = 0,
     int? profit,
@@ -92,12 +94,17 @@ class SalesStoreBody {
     if (cashRegisterId != null) body['cashRagisterId'] = cashRegisterId;
     if (registerLogId != null) body['register_log_id'] = registerLogId;
     if (branchId != null) body['selectedBranchID'] = branchId;
-    if (orderId != null) {
+    if (editOrderId != null) {
+      body['editOrderId'] = editOrderId;
+      if (editReason != null && editReason.isNotEmpty) body['editReason'] = editReason;
+    } else if (orderId != null) {
       body['orderID'] = orderId;
       body['orderId'] = orderId;
       body['id'] = orderId;
     }
-    if (invoiceId != null && invoiceId.isNotEmpty) body['invoice_id'] = invoiceId;
+    if (editOrderId == null && invoiceId != null && invoiceId.isNotEmpty) {
+      body['invoice_id'] = invoiceId;
+    }
     if (!isHold && payments != null) body['payments'] = payments;
     return body;
   }

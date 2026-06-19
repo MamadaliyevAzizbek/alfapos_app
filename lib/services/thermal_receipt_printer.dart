@@ -344,10 +344,12 @@ class ThermalReceiptPrinter {
           ? Future<bool>.value(openCashDrawer)
           : PrinterSettings.isCashDrawerOpenOnPrintEnabled(),
       PrinterSettings.cashDrawerPin(),
+      PrinterSettings.selectedPrinterName(),
     ]);
     final resolvedDesign = settings[0] as ReceiptDesignConfig;
     final drawerEnabled = settings[1] as bool;
     final drawerPin = settings[2] as CashDrawerPin;
+    final printerName = settings[3] as String?;
     final posPin =
         drawerPin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
 
@@ -357,6 +359,7 @@ class ThermalReceiptPrinter {
       openCashDrawer: drawerEnabled,
       cashDrawerPin: posPin,
       compactRestaurant: ThermalReceiptFormatter.looksLikeRestaurantReceipt(lines),
+      printerName: printerName,
     );
   }
 

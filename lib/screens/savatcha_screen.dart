@@ -48,6 +48,7 @@ import '../services/sales_keyboard_shortcuts_settings.dart';
 import '../services/sales_stock_limit_settings.dart';
 import '../services/sales_cart_profit_display_settings.dart';
 import '../utils/cart_stock_limit.dart';
+import '../utils/cash_register_utils.dart';
 import '../utils/sales_store_body.dart';
 import '../services/category_order_storage.dart';
 import '../services/desktop_sales_layout_settings.dart';
@@ -56,6 +57,8 @@ import '../services/product_display_settings.dart';
 import '../utils/category_order_sort.dart';
 import '../utils/product_catalog_sort.dart';
 import '../utils/hold_cart_action.dart';
+import '../utils/invoice_edit_utils.dart';
+import '../utils/pos_navigation.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 import '../widgets/sales_customer_search.dart';
 import 'yangi_mijoz_screen.dart';
@@ -64,8 +67,6 @@ import 'yangi_mijoz_screen.dart';
 /// Savatcha o'zi diska saqlanmaydi (faqat sessiya davomida xotirada).
 class SavatchaScreen extends StatefulWidget {
   final VoidCallback? onLogout;
-  /// Desktop: sidebar «Tranzaksiyalar» bo‘limiga o‘tish.
-  final VoidCallback? onNavigateToTransactions;
   /// Desktop IndexedStack: boshqa tabda bo‘lsa katalog autofokus ishlamasin.
   final bool isTabActive;
   final VoidCallback? onOpenSectionMenu;
@@ -74,7 +75,6 @@ class SavatchaScreen extends StatefulWidget {
   const SavatchaScreen({
     super.key,
     this.onLogout,
-    this.onNavigateToTransactions,
     this.isTabActive = true,
     this.onOpenSectionMenu,
     this.onGlobalSync,
@@ -106,6 +106,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   String _sellerName = '';
   int? _activeHoldOrderId;
   String? _activeHoldInvoiceId;
+  int? _invoiceEditOrderId;
+  String? _invoiceEditReason;
+  String? _invoiceEditSourceInvoiceId;
   int _savedOrdersCount = 0;
   CartItem? _expandedCartLine;
   CartItem? _cartQtyFocusItem;
@@ -118,6 +121,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   final List<SalesWindowSnapshot> _salesWindows = [SalesWindowSnapshot.empty()];
   int _activeSalesWindowIndex = 0;
   bool _applyingSalesWindow = false;
+
+  bool get _isInvoiceEditMode => _invoiceEditOrderId != null;
 
   Future<void> _onRefresh() async {
     if (isDesktopPosLayout) {
@@ -326,6 +331,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (mounted) {
         setState(() {});
         _refocusCatalogSearch();
+        unawaited(_applyPendingInvoiceEditIfAny());
       }
     });
   }
@@ -394,6 +400,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void _onSalesSessionChanged() {
     _syncDiscountPercentField();
     unawaited(_reloadCategoryOrder());
+    if (_sales.hasPendingInvoiceEdit) {
+      unawaited(_applyPendingInvoiceEditIfAny());
+    }
     if (mounted) setState(() {});
     if (_barcodeSearchInFlight) return;
     final pending = _sales.takePendingBarcodeProduct();
@@ -446,6 +455,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       isReturnMode: _isReturnMode,
       holdOrderId: _activeHoldOrderId,
       holdInvoiceId: _activeHoldInvoiceId,
+      invoiceEditOrderId: _invoiceEditOrderId,
+      invoiceEditReason: _invoiceEditReason,
+      invoiceEditSourceInvoiceId: _invoiceEditSourceInvoiceId,
     );
   }
 
@@ -457,6 +469,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _selectedClient = window.client;
       _activeHoldOrderId = window.holdOrderId;
       _activeHoldInvoiceId = window.holdInvoiceId;
+      _invoiceEditOrderId = window.invoiceEditOrderId;
+      _invoiceEditReason = window.invoiceEditReason;
+      _invoiceEditSourceInvoiceId = window.invoiceEditSourceInvoiceId;
       _expandedCartLine = null;
       _cartQtyFocusItem = null;
 
@@ -849,6 +864,128 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   int get _cartProfitTotal =>
       _cartGrandTotal - SalesStoreBody.estimateCostUzs(_cart.items);
 
+  String _cartProfitPercentLabel() {
+    if (_cartGrandTotal <= 0) return 'Foyda: 0%';
+    final pct = _cartProfitTotal / _cartGrandTotal * 100;
+    return 'Foyda: ${pct.toStringAsFixed(1)}%';
+  }
+
+  Widget _mobileCartTotalBar() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: SalesCartProfitDisplaySettings.visible,
+      builder: (context, showProfit, _) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: _isReturnMode ? const Color(0xFFE65100) : AppTheme.primary,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Text(
+                _isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (_cartCatalogTotal > 0 && _cartCatalogTotal != _cartGrandTotal)
+                    Text(
+                      formatThousands(_cartCatalogTotal),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 13,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  Text(
+                    formatThousands(_cartGrandTotal),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (showProfit && !_isReturnMode) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      _cartProfitPercentLabel(),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _mobileCashRegisterBar() {
+    final registers = _sales.cashRegisters;
+    if (registers.length <= 1) return const SizedBox.shrink();
+
+    Map<String, dynamic> selected = registers.first;
+    final selectedId = _sales.cashRegisterId;
+    for (final r in registers) {
+      if (cashRegisterParseId(r['id']) == selectedId) {
+        selected = r;
+        break;
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: DropdownButtonFormField<Map<String, dynamic>>(
+        value: selected,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: 'Kassa',
+          prefixIcon: const Icon(Icons.point_of_sale_rounded, color: AppTheme.textSecondary),
+          filled: true,
+          fillColor: AppTheme.cardBg,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        items: registers
+            .map(
+              (r) => DropdownMenuItem<Map<String, dynamic>>(
+                value: r,
+                child: Text(cashRegisterDisplayTitle(r), overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
+        onChanged: (r) {
+          if (r == null) return;
+          _sales.selectCashRegister(r);
+          unawaited(_refreshSavedOrdersCount());
+          setState(() {});
+        },
+      ),
+    );
+  }
+
+  Widget _mobileCustomerSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: SalesCustomerSearch(
+        selected: _selectedClient,
+        onSelected: _onCustomerSelected,
+        onAddNew: () => _addCustomer(context),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isDesktopPosLayout) {
@@ -956,6 +1093,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
               ],
             ),
           ),
+          _mobileCashRegisterBar(),
+          if (items.isNotEmpty) _mobileCustomerSection(),
           Expanded(
             child: GestureDetector(
               onTap: () {
@@ -1057,6 +1196,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _mobileCartTotalBar(),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -1085,6 +1226,32 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
+                        onPressed: () => _showDiscountDialog(context),
+                        icon: Icon(
+                          Icons.percent_rounded,
+                          size: 22,
+                          color: _sales.cartDiscountPercent != 0 ? AppTheme.primary : null,
+                        ),
+                        label: Text(
+                          _sales.cartDiscountPercent != 0
+                              ? 'Chegirma ${_sales.cartDiscountPercent}%'
+                              : 'Chegirma',
+                          style: TextStyle(
+                            color: _sales.cartDiscountPercent != 0 ? AppTheme.primary : null,
+                            fontWeight: _sales.cartDiscountPercent != 0 ? FontWeight.w600 : null,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
                         onPressed: () => _showDesktopFilterSheet(context),
                         icon: Icon(
                           Icons.tune_rounded,
@@ -1106,22 +1273,28 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton(
-                        onPressed: () => _openPayment(context),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(Strings.keyingisi),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_forward_rounded, size: 18),
-                          ],
-                        ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => _openPayment(context),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                  ],
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(Strings.keyingisi),
+                        SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_rounded, size: 18),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1263,6 +1436,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _setCartLineUnitPrice(item, price != null && price == def ? null : price);
     }
     setState(() {});
+  }
+
+  void _openSalesListForCurrentRegister() {
+    PosNavigation.openTransactionsSection?.call();
   }
 
   void _openScanner(BuildContext context) {
@@ -1425,7 +1602,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             ? () => _sales.loadMoreProducts()
             : null,
         onClearCart: _clearCart,
-        onSalesList: widget.onNavigateToTransactions,
+        onSalesList: _openSalesListForCurrentRegister,
         onProductTap: (p) => _addProductToCart(p),
         cartQtyFocusNonce: _cartQtyFocusNonce,
         cartQtyFocusItem: _cartQtyFocusItem,
@@ -1664,6 +1841,70 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
   }
 
+  void _clearInvoiceEditState() {
+    _invoiceEditOrderId = null;
+    _invoiceEditReason = null;
+    _invoiceEditSourceInvoiceId = null;
+  }
+
+  Future<void> _applyPendingInvoiceEditIfAny() async {
+    final pending = _sales.consumePendingInvoiceEdit();
+    if (pending == null) return;
+    await _resumeInvoiceEdit(pending.resume, pending.hold);
+  }
+
+  Future<void> _resumeInvoiceEdit(InvoiceEditResume resume, HoldOrderResume hold) async {
+    _cart.clear();
+    _activeHoldOrderId = null;
+    _activeHoldInvoiceId = null;
+    _isReturnMode = false;
+    for (final item in hold.items) {
+      _cart.add(CartItem(
+        product: item.product,
+        quantity: item.quantity,
+        sellByPack: item.sellByPack,
+        salePriceOverride: item.salePriceOverride,
+      ));
+    }
+    _invoiceEditOrderId = resume.editOrderId;
+    _invoiceEditReason = resume.editReason;
+    _invoiceEditSourceInvoiceId = resume.sourceInvoiceId;
+    _selectedClient = hold.customer;
+    unawaited(ClientsProvider.instance.fetchCustomerGroups().then((groups) {
+      if (!mounted) return;
+      CustomerGroupDiscount.applyCustomerPricingToCart(
+        _cart.items,
+        hold.customer,
+        groups: groups,
+      );
+      CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
+      setState(() {});
+    }));
+    final pct = hold.discountPercent ?? resume.discountPercent ?? 0;
+    _sales.setCartDiscountPercent(pct);
+    for (final item in _cart.items) {
+      CartDiscountPercent.syncBaseFromCurrent(item);
+      if (pct != 0 && item.hasSalePriceOverride) {
+        item.unitPriceBaseForCartPercent = item.unitPriceForLine / ((100 + pct) / 100);
+      }
+      CartDiscountPercent.applyToItem(item, pct);
+    }
+    _syncDiscountPercentField();
+    if (mounted) {
+      setState(() {});
+      _captureActiveSalesWindow();
+      final src = resume.sourceInvoiceId;
+      final label = src != null && src.isNotEmpty
+          ? (src.toUpperCase().startsWith('POS') ? src : 'POS$src')
+          : '#${resume.editOrderId}';
+      AppNotify.info(
+        context,
+        'Chek tahrirlash: $label — o‘zgartirishlarni kiritib to‘lang',
+      );
+      _refocusCatalogSearch();
+    }
+  }
+
   Future<void> _desktopBarcodeSearchAndAdd(String q) async {
     if (_barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
@@ -1705,6 +1946,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   Future<void> _holdCart(BuildContext context) async {
+    if (_isInvoiceEditMode) {
+      AppNotify.warning(context, 'Chek tahrirlash rejimida pauza qilib bo‘lmaydi');
+      return;
+    }
     final items = _cart.items;
     final ok = await HoldCartAction.savePausedCart(
       context: context,
@@ -1989,8 +2234,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void _openPayment(BuildContext context) {
     final items = _cart.items;
     if (items.isEmpty) return;
-    final orderId = _activeHoldOrderId;
-    final invoiceId = _activeHoldInvoiceId;
+    final orderId = _isInvoiceEditMode ? null : _activeHoldOrderId;
+    final invoiceId = _isInvoiceEditMode ? null : _activeHoldInvoiceId;
+    final editOrderId = _invoiceEditOrderId;
+    final editReason = _invoiceEditReason;
     final client = _selectedClient;
 
     void afterPayment() {
@@ -1999,6 +2246,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _expandedCartLine = null;
       _activeHoldOrderId = null;
       _activeHoldInvoiceId = null;
+      _clearInvoiceEditState();
       _selectedClient = null;
       _setCartDiscountPercent(0);
       _isReturnMode = false;
@@ -2024,6 +2272,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         initialClient: client,
         initialOrderId: orderId,
         initialInvoiceId: invoiceId,
+        editOrderId: editOrderId,
+        editReason: editReason,
         isReturnCheckout: _isReturnMode,
       ).then((result) {
         _catalogSearchRefocusSuspend--;
@@ -2051,6 +2301,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           initialClient: client,
           initialOrderId: orderId,
           initialInvoiceId: invoiceId,
+          editOrderId: editOrderId,
+          editReason: editReason,
           onCustomerChanged: _onCustomerSelected,
         ),
       ),

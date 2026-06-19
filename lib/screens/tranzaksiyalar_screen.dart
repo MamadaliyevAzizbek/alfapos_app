@@ -1,17 +1,29 @@
 import 'package:flutter/material.dart';
 import '../core/api_sync_throttle.dart';
 import '../core/constants.dart';
+import '../core/seller_preferences.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../services/api_service.dart';
+import '../utils/current_employee_sales_filter.dart';
+import '../utils/invoice_edit_flow.dart';
+import '../utils/invoice_edit_utils.dart';
+import '../utils/platform_layout.dart';
 import 'api_chek_detail_screen.dart';
 import 'desktop/desktop_shell_scope.dart';
 
 class TranzaksiyalarScreen extends StatefulWidget {
   final int tabIndex;
   final int currentIndex;
+  /// Desktop POS: faqat joriy login xodimining cheklari.
+  final bool filterByCurrentEmployee;
 
-  const TranzaksiyalarScreen({super.key, this.tabIndex = 3, this.currentIndex = 0});
+  const TranzaksiyalarScreen({
+    super.key,
+    this.tabIndex = 3,
+    this.currentIndex = 0,
+    this.filterByCurrentEmployee = false,
+  });
 
   @override
   State<TranzaksiyalarScreen> createState() => _TranzaksiyalarScreenState();
@@ -23,6 +35,11 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   List<Map<String, dynamic>> _apiSales = [];
   bool _apiLoading = false;
   String? _apiError;
+  int? _employeeFilterUserId;
+  String _employeeFilterName = '';
+
+  bool get _filterByEmployee =>
+      widget.filterByCurrentEmployee || (isDesktopPosLayout && widget.tabIndex == 6);
 
   @override
   void initState() {
@@ -86,6 +103,15 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     final to = now.toIso8601String().substring(0, 10);
     final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
 
+    int? employeeId;
+    String sellerName = '';
+    if (_filterByEmployee) {
+      employeeId = await CurrentEmployeeSalesFilter.resolveEmployeeFilterId();
+      sellerName = (await getSellerName()).trim();
+      _employeeFilterUserId = employeeId;
+      _employeeFilterName = sellerName;
+    }
+
     Map<String, dynamic>? res;
     try {
       final body = ReportsApi.salesListBody(
@@ -95,6 +121,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
         rowOffset: 0,
         columnKey: 'id',
         columnSortedBy: 'DESC',
+        employeeId: employeeId,
       );
       if (searchValue != null && searchValue.trim().isNotEmpty) {
         body['searchValue'] = searchValue.trim();
@@ -111,17 +138,26 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
         final inner = res['data'] as Map;
         rows = inner['datarows'] as List<dynamic>? ?? inner['rows'] as List<dynamic>? ?? [];
       }
-      final mapped = rows
+      var mapped = rows
           .where((e) => e is Map)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
-      // Faqat chek qatorlari; "Umumiy" jami qatorini olib tashlash
-      _apiSales = mapped.where((m) {
+      mapped = mapped.where((m) {
         final id = m['invoice_id'] ?? m['order_id'] ?? m['id'];
         if (id == null) return false;
         final s = id.toString().trim().toLowerCase();
         return s.isNotEmpty && !s.contains('umumiy');
       }).toList();
+      if (_filterByEmployee) {
+        mapped = mapped
+            .where((m) => CurrentEmployeeSalesFilter.saleBelongsToUser(
+                  m,
+                  userId: employeeId ?? _employeeFilterUserId,
+                  sellerName: sellerName.isNotEmpty ? sellerName : _employeeFilterName,
+                ))
+            .toList();
+      }
+      _apiSales = mapped;
       _apiError = null;
     } else {
       _apiSales = [];
@@ -159,8 +195,35 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       ),
       body: Column(
         children: [
+          if (_filterByEmployee)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline_rounded, color: Colors.blue.shade800, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _employeeFilterName.isNotEmpty && _employeeFilterName != 'Sotuvchi'
+                            ? "Faqat sizning cheklaringiz: $_employeeFilterName"
+                            : "Faqat sizning cheklaringiz",
+                        style: TextStyle(fontSize: 13, color: Colors.blue.shade900, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(16, _filterByEmployee ? 12 : 16, 16, 0),
             child: TextField(
               controller: _searchController,
               onChanged: (v) => setState(() => _searchQuery = v),
@@ -252,9 +315,19 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                       itemCount: _filteredSales.length,
                       itemBuilder: (context, index) {
                         final sale = _filteredSales[index];
+                        final showEdit = canShowInvoiceEditButton(sale);
+                        final showDateEdit = canShowInvoiceDateEditButton(sale);
                         return _ApiSaleTile(
                           sale: sale,
+                          showEditButton: showEdit,
+                          showDateEditButton: showDateEdit,
                           onTap: () => _showApiSaleDetail(context, sale),
+                          onEdit: showEdit
+                              ? () => _startEditSale(context, sale)
+                              : null,
+                          onEditDate: showDateEdit
+                              ? () => _editSaleDate(context, sale)
+                              : null,
                         );
                       },
                     ),
@@ -301,13 +374,40 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     );
     if (returned == true && mounted) _loadApiSales();
   }
+
+  Future<void> _startEditSale(BuildContext context, Map<String, dynamic> sale) async {
+    final ok = await InvoiceEditFlow.startFullEdit(context, sale);
+    if (ok && mounted) {
+      ApiSyncThrottle.invalidate('transactions_sales_list');
+    }
+  }
+
+  Future<void> _editSaleDate(BuildContext context, Map<String, dynamic> sale) async {
+    final ok = await InvoiceEditFlow.editSaleDate(context, sale);
+    if (ok && mounted) {
+      ApiSyncThrottle.invalidate('transactions_sales_list');
+      await _loadApiSales();
+      if (mounted) setState(() {});
+    }
+  }
 }
 
 class _ApiSaleTile extends StatelessWidget {
   final Map<String, dynamic> sale;
   final VoidCallback onTap;
+  final bool showEditButton;
+  final bool showDateEditButton;
+  final VoidCallback? onEdit;
+  final VoidCallback? onEditDate;
 
-  const _ApiSaleTile({required this.sale, required this.onTap});
+  const _ApiSaleTile({
+    required this.sale,
+    required this.onTap,
+    this.showEditButton = false,
+    this.showDateEditButton = false,
+    this.onEdit,
+    this.onEditDate,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -321,25 +421,93 @@ class _ApiSaleTile extends StatelessWidget {
     final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
     final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '';
 
+    final isEdited = sale['is_invoice_edited'] == 1 ||
+        sale['is_invoice_edited'] == true ||
+        sale['is_invoice_edited'] == '1';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Colors.teal.shade50,
-          child: Icon(Icons.cloud_done_rounded, color: Colors.teal.shade700, size: 22),
+          backgroundColor: isEdited ? Colors.blue.shade50 : Colors.teal.shade50,
+          child: Icon(
+            isEdited ? Icons.edit_note_rounded : Icons.receipt_long_rounded,
+            color: isEdited ? Colors.blue.shade700 : Colors.teal.shade700,
+            size: 22,
+          ),
         ),
-        title: Text(
-          "Chek #${idStr.startsWith('POS') ? idStr : 'POS$idStr'}",
-          style: const TextStyle(fontWeight: FontWeight.w600),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                "Chek #${idStr.startsWith('POS') ? idStr : 'POS$idStr'}",
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            if (isEdited)
+              Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: Text(
+                  'Tahrir',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.blue.shade800),
+                ),
+              ),
+          ],
         ),
         subtitle: Text([if (dateStr.isNotEmpty) dateStr, if (customer.isNotEmpty) customer].join(' • ')),
-        trailing: Text(
-          "${formatThousands(totalInt)} UZS",
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            color: AppTheme.primary,
-            fontSize: 15,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "${formatThousands(totalInt)} UZS",
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.primary,
+                fontSize: 15,
+              ),
+            ),
+            if (showEditButton || showDateEditButton) ...[
+              const SizedBox(width: 4),
+              PopupMenuButton<String>(
+                tooltip: 'Amallar',
+                icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 22),
+                onSelected: (value) {
+                  if (value == 'edit') onEdit?.call();
+                  if (value == 'date') onEditDate?.call();
+                },
+                itemBuilder: (ctx) => [
+                  if (showEditButton)
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_rounded, size: 20),
+                          SizedBox(width: 10),
+                          Text('Chekni tahrirlash'),
+                        ],
+                      ),
+                    ),
+                  if (showDateEditButton)
+                    const PopupMenuItem(
+                      value: 'date',
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_month_rounded, size: 20),
+                          SizedBox(width: 10),
+                          Text('Sanani tahrirlash'),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
         ),
         onTap: onTap,
       ),

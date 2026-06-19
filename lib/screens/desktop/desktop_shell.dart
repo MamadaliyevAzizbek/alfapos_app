@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../services/api_service.dart';
 import '../../services/app_data_sync.dart';
 import '../../widgets/auth_network_image.dart';
+import '../../utils/pos_navigation.dart';
 import 'desktop_shell_scope.dart';
 import 'asosiy_desktop_screen.dart';
 import '../hisobotlar_screen.dart';
@@ -48,7 +49,20 @@ class _DesktopShellState extends State<DesktopShell> {
   @override
   void initState() {
     super.initState();
+    PosNavigation.openSalesSection = () => _go(salesSectionIndex);
+    PosNavigation.openTransactionsSection = () => _go(6);
     WidgetsBinding.instance.addPostFrameCallback((_) => syncSellerNameFromApi());
+  }
+
+  @override
+  void dispose() {
+    if (PosNavigation.openSalesSection != null) {
+      PosNavigation.openSalesSection = null;
+    }
+    if (PosNavigation.openTransactionsSection != null) {
+      PosNavigation.openTransactionsSection = null;
+    }
+    super.dispose();
   }
 
   void _go(int i) => setState(() {
@@ -84,7 +98,6 @@ class _DesktopShellState extends State<DesktopShell> {
         return SavatchaScreen(
           isTabActive: _index == 3,
           onLogout: widget.onLogout,
-          onNavigateToTransactions: () => _go(6),
           onOpenSectionMenu: _openSectionMenu,
           onGlobalSync: _onGlobalSync,
         );
@@ -93,7 +106,11 @@ class _DesktopShellState extends State<DesktopShell> {
       case 5:
         return const XarajatlarScreen();
       case 6:
-        return TranzaksiyalarScreen(tabIndex: 6, currentIndex: _index);
+        return TranzaksiyalarScreen(
+          tabIndex: 6,
+          currentIndex: _index,
+          filterByCurrentEmployee: true,
+        );
       case 7:
         return const HisobotlarScreen();
       case 8:

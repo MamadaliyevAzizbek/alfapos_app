@@ -9,6 +9,9 @@ class SalesWindowSnapshot {
   final bool isReturnMode;
   final int? holdOrderId;
   final String? holdInvoiceId;
+  final int? invoiceEditOrderId;
+  final String? invoiceEditReason;
+  final String? invoiceEditSourceInvoiceId;
 
   const SalesWindowSnapshot({
     this.cartItems = const [],
@@ -17,6 +20,9 @@ class SalesWindowSnapshot {
     this.isReturnMode = false,
     this.holdOrderId,
     this.holdInvoiceId,
+    this.invoiceEditOrderId,
+    this.invoiceEditReason,
+    this.invoiceEditSourceInvoiceId,
   });
 
   factory SalesWindowSnapshot.empty() => const SalesWindowSnapshot();
@@ -29,7 +35,11 @@ class SalesWindowSnapshot {
     bool? isReturnMode,
     int? holdOrderId,
     String? holdInvoiceId,
+    int? invoiceEditOrderId,
+    String? invoiceEditReason,
+    String? invoiceEditSourceInvoiceId,
     bool clearHold = false,
+    bool clearInvoiceEdit = false,
   }) {
     return SalesWindowSnapshot(
       cartItems: cartItems ?? this.cartItems,
@@ -38,6 +48,10 @@ class SalesWindowSnapshot {
       isReturnMode: isReturnMode ?? this.isReturnMode,
       holdOrderId: clearHold ? null : (holdOrderId ?? this.holdOrderId),
       holdInvoiceId: clearHold ? null : (holdInvoiceId ?? this.holdInvoiceId),
+      invoiceEditOrderId: clearInvoiceEdit ? null : (invoiceEditOrderId ?? this.invoiceEditOrderId),
+      invoiceEditReason: clearInvoiceEdit ? null : (invoiceEditReason ?? this.invoiceEditReason),
+      invoiceEditSourceInvoiceId:
+          clearInvoiceEdit ? null : (invoiceEditSourceInvoiceId ?? this.invoiceEditSourceInvoiceId),
     );
   }
 }
