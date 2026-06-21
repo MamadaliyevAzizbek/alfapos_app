@@ -61,6 +61,8 @@ import '../utils/invoice_edit_utils.dart';
 import '../utils/pos_navigation.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 import '../widgets/sales_customer_search.dart';
+import '../models/chergirma_result.dart';
+import 'chergirma_screen.dart';
 import 'yangi_mijoz_screen.dart';
 
 /// Savatcha: mahsulotlar API dan (ProductsProvider). Sotuv POST /sales/store orqali, chek ID API javobidan.
@@ -308,7 +310,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         await _products.loadFromStorage(refreshInBackground: true);
         await _sales.init(localFirst: true);
         _sales.applyCatalogStock();
-        unawaited(_sales.reloadFilterLists());
+        await _sales.reloadFilterLists();
         unawaited(CategoriesProvider.instance.loadFromStorage(refreshInBackground: false));
         unawaited(_refreshSavedOrdersCount());
         unawaited(ThermalReceiptPrinter.warmup());
@@ -439,7 +441,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   void _syncDiscountPercentField() {
     if (!isDesktopPosLayout) return;
-    final p = _sales.cartDiscountPercent;
+    final p = CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent);
     final text = p != 0 ? '$p' : '';
     if (_discountPercentController.text != text) {
       _discountPercentController.text = text;
@@ -790,9 +792,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   List<Product> get _filteredProducts =>
       product_search.filterProductsByQuery(_products.items, _query);
 
-  /// Desktop: filtrsiz ko‘rish — to‘liq mahalliy katalog (Mahsulotlar bo‘limi).
+  /// Desktop: kategoriya/brend tanlanganida server filtri, aks holda mahalliy katalog.
   List<Product> get _desktopBrowseProducts {
     final hasCatBrand = _sales.categoryId != null || _sales.brandId != null;
+    List<Product> list;
+
     if (hasCatBrand) {
       final seen = <String>{};
       final merged = <Product>[];
@@ -803,26 +807,27 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         if (p.id.isEmpty || !seen.add(p.id)) continue;
         merged.add(p);
       }
-      var list = ProductCatalogFilter.apply(
-        merged,
-        categoryId: _sales.categoryId,
-        brandId: _sales.brandId,
-        categories: _sales.categories,
-        brands: _sales.brands,
-      );
-      if (_sales.hideZeroStock) {
-        list = list.where((p) => p.hasStock).toList();
+      if (!_sales.productsLoading && _sales.salesProducts.isNotEmpty) {
+        list = List<Product>.from(_sales.salesProducts);
+      } else {
+        list = ProductCatalogFilter.apply(
+          merged,
+          categoryId: _sales.categoryId,
+          brandId: _sales.brandId,
+          categories: _sales.categories,
+          brands: _sales.brands,
+        );
       }
-      return _sortCatalogProducts(list);
+    } else if (_products.items.isNotEmpty) {
+      list = ProductsProvider.instance.withCatalogStockAll(_products.items);
+    } else {
+      list = _sales.catalogProductsVisible;
     }
-    if (_products.items.isNotEmpty) {
-      var list = ProductsProvider.instance.withCatalogStockAll(_products.items);
-      if (_sales.hideZeroStock) {
-        list = list.where((p) => p.hasStock).toList();
-      }
-      return _sortCatalogProducts(list);
+
+    if (_sales.hideZeroStock) {
+      list = list.where((p) => p.hasStock).toList();
     }
-    return _sales.catalogProductsVisible;
+    return _sortCatalogProducts(list);
   }
 
   List<Product> get _desktopCatalogProducts => _desktopCatalogProductsFor(_query);
@@ -1234,7 +1239,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                         ),
                         label: Text(
                           _sales.cartDiscountPercent != 0
-                              ? 'Chegirma ${_sales.cartDiscountPercent}%'
+                              ? 'Chegirma ${CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent)}%'
                               : 'Chegirma',
                           style: TextStyle(
                             color: _sales.cartDiscountPercent != 0 ? AppTheme.primary : null,
@@ -1562,13 +1567,19 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         brandFilterId: _sales.brandId,
         filterCategories: _sales.categories,
         filterBrands: _sales.brands,
-        onCategoryFilterChanged: (v) {
-          _sales.setCategoryFilter(v);
-          setState(() {});
+        onCategoryFilterChanged: (v) async {
+          if (_sales.categories.isEmpty) {
+            await _sales.reloadFilterLists();
+          }
+          await _sales.setCategoryFilter(v);
+          if (mounted) setState(() {});
         },
-        onBrandFilterChanged: (v) {
-          _sales.setBrandFilter(v);
-          setState(() {});
+        onBrandFilterChanged: (v) async {
+          if (_sales.brands.isEmpty) {
+            await _sales.reloadFilterLists();
+          }
+          await _sales.setBrandFilter(v);
+          if (mounted) setState(() {});
         },
         onFilterTap: () => _runWithSuspendedCatalogSearchRefocus(
           () => _showDesktopFilterSheet(context),
@@ -2055,55 +2066,71 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   Future<void> _showDiscountDialog(BuildContext context) {
     if (isDesktopPosLayout) {
-      return _showDesktopPaymentDiscountDialog(context);
+      return _showDesktopDiscountDialog(context);
     }
-    return _showPercentDiscountDialog(context);
+    return _openChergirmaScreen(context);
   }
 
-  Future<void> _showPercentDiscountDialog(BuildContext context) {
-    final c = TextEditingController(
-      text: _sales.cartDiscountPercent != 0 ? '${_sales.cartDiscountPercent}' : '',
-    );
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Foiz (%)'),
-        content: TextField(
-          controller: c,
-          keyboardType: const TextInputType.numberWithOptions(signed: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^-?\d{0,3}$')),
-          ],
-          decoration: const InputDecoration(
-            labelText: 'Foiz',
-            suffixText: '%',
-            helperText: '+20 qo‘shadi, -20 ayiradi',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(Strings.bekorQilish)),
-          FilledButton(
-            onPressed: () {
-              final p = int.tryParse(c.text.trim()) ?? 0;
-              _setCartDiscountPercent(p.clamp(-100, 100));
-              Navigator.pop(ctx);
-            },
-            child: const Text(Strings.saqlash),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showDesktopPaymentDiscountDialog(BuildContext context) async {
+  Future<void> _openChergirmaScreen(BuildContext context) async {
     final cartTotal = _cartGrandTotal;
     if (cartTotal <= 0) {
       AppNotify.info(context, 'Savat bo\'sh');
       return;
     }
 
-    final payController = TextEditingController(
-      text: formatThousands(cartTotal),
+    final r = await Navigator.push<ChergirmaResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChergirmaScreen(
+          totalUzs: cartTotal,
+          distributeToCartLines: true,
+        ),
+      ),
+    );
+    if (r != null && mounted) {
+      _applyChergirmaResult(r);
+    }
+  }
+
+  void _applyChergirmaResult(ChergirmaResult r) {
+    switch (r.mode) {
+      case ChergirmaMode.clear:
+        _clearCartDiscount();
+        break;
+      case ChergirmaMode.percent:
+        _setCartDiscountPercent(r.value.clamp(-100, 100));
+        break;
+      case ChergirmaMode.discountUzs:
+        _applyPaymentDiscount(_cartGrandTotal - r.value);
+        break;
+      case ChergirmaMode.customerPays:
+        _applyPaymentDiscount(r.value);
+        break;
+    }
+  }
+
+  void _clearCartDiscount() {
+    _sales.setCartDiscountPercent(0);
+    for (final item in _cart.items) {
+      CartDiscountPercent.applyToItem(item, 0);
+      _cart.updateSalePriceOverride(item, item.salePriceOverride);
+    }
+    _syncDiscountPercentField();
+    setState(() {});
+  }
+
+  Future<void> _showDesktopDiscountDialog(BuildContext context) async {
+    final cartTotal = _cartGrandTotal;
+    if (cartTotal <= 0) {
+      AppNotify.info(context, 'Savat bo\'sh');
+      return;
+    }
+
+    var byPercent = _sales.cartDiscountPercent != 0;
+    final valueController = TextEditingController(
+      text: byPercent
+          ? '${CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent)}'
+          : formatThousands(cartTotal),
     );
 
     await showDialog<void>(
@@ -2111,14 +2138,63 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
-            final paid = parseFormattedSum(payController.text) ?? cartTotal;
-            final clampedPaid = paid.clamp(0, cartTotal);
-            final discount = cartTotal - clampedPaid;
+            int? percentValue() {
+              final t = valueController.text.trim();
+              if (t.isEmpty) return null;
+              return int.tryParse(t);
+            }
+
+            int? sumValue() => parseFormattedSum(valueController.text);
+
+            final paid = (sumValue() ?? cartTotal).clamp(0, cartTotal);
+            final sumDiscount = cartTotal - paid;
+
+            final pct = percentValue() ?? 0;
+            final percentDiscount = CartDiscountPercent.previewDiscountUzs(cartTotal, pct);
+
+            final previewDiscount = byPercent ? percentDiscount : sumDiscount;
+
+            bool canSave() {
+              if (byPercent) {
+                final v = percentValue();
+                return v != null && v >= 0 && v <= 100;
+              }
+              final v = sumValue();
+              return v != null && v >= 0 && v <= cartTotal;
+            }
+
+            void setUnit(bool percent) {
+              setDialogState(() {
+                byPercent = percent;
+                valueController.text = percent
+                    ? (_sales.cartDiscountPercent != 0
+                        ? '${CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent)}'
+                        : '')
+                    : formatThousands(cartTotal);
+              });
+            }
+
+            Widget unitToggle() {
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppTheme.cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.divider),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _discountUnitSegment('%', byPercent, () => setUnit(true)),
+                    _discountUnitSegment("so'm", !byPercent, () => setUnit(false)),
+                  ],
+                ),
+              );
+            }
 
             return AlertDialog(
-              title: const Text('To\'lov summasi'),
+              title: Text(byPercent ? 'Chegirma (foiz)' : 'Chegirma (summa)'),
               content: SizedBox(
-                width: 400,
+                width: 420,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2134,59 +2210,92 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                       ],
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: payController,
-                      autofocus: true,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [ThousandsInputFormatter()],
-                      onChanged: (_) => setDialogState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Mijoz to\'laydi',
-                        suffixText: 'so\'m',
-                        helperText: 'Farq avtomatik chegirma bo\'lib qatorlarga taqsimlanadi',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryLight,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Chegirma'),
-                          Text(
-                            '${formatThousands(discount)} so\'m',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primary,
-                              fontSize: 16,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: valueController,
+                            autofocus: true,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: byPercent
+                                ? [FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}'))]
+                                : [ThousandsInputFormatter()],
+                            onChanged: (_) => setDialogState(() {}),
+                            decoration: InputDecoration(
+                              labelText: byPercent ? 'Chegirma foizi' : 'Mijoz to\'laydi',
+                              suffixText: byPercent ? '%' : 'so\'m',
+                              helperText: byPercent
+                                  ? 'Masalan: 10 — 10% chegirma'
+                                  : 'Farq avtomatik chegirma bo\'lib qatorlarga taqsimlanadi',
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 8),
+                        unitToggle(),
+                      ],
                     ),
+                    if (previewDiscount > 0) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryLight,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Chegirma'),
+                            Text(
+                              '${formatThousands(previewDiscount)} so\'m',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primary,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               actions: [
                 TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _clearCartDiscount();
+                  },
+                  child: const Text('Tozalash'),
+                ),
+                TextButton(
                   onPressed: () => Navigator.pop(ctx),
                   child: const Text(Strings.bekorQilish),
                 ),
                 FilledButton(
-                  onPressed: () {
-                    final amount = parseFormattedSum(payController.text);
-                    if (amount == null) return;
-                    if (amount < 0 || amount > cartTotal) {
-                      AppNotify.error(ctx, '0 dan $cartTotal gacha summa kiriting');
-                      return;
-                    }
-                    Navigator.pop(ctx);
-                    _applyPaymentDiscount(amount);
-                  },
+                  onPressed: canSave()
+                      ? () {
+                          if (byPercent) {
+                            final p = percentValue();
+                            if (p == null) return;
+                            Navigator.pop(ctx);
+                            _setCartDiscountPercent(
+                              CartDiscountPercent.discountPercentFromUi(p),
+                            );
+                            return;
+                          }
+                          final amount = sumValue();
+                          if (amount == null) return;
+                          if (amount < 0 || amount > cartTotal) {
+                            AppNotify.error(ctx, '0 dan $cartTotal gacha summa kiriting');
+                            return;
+                          }
+                          Navigator.pop(ctx);
+                          _applyPaymentDiscount(amount);
+                        }
+                      : null,
                   child: const Text(Strings.saqlash),
                 ),
               ],
@@ -2194,6 +2303,30 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           },
         );
       },
+    );
+  }
+
+  Widget _discountUnitSegment(String label, bool selected, VoidCallback onTap) {
+    return Material(
+      color: selected ? AppTheme.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: Container(
+          width: 52,
+          height: 56,
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              color: selected ? Colors.white : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 

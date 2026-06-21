@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../models/chergirma_result.dart';
+import '../utils/cart_discount_percent.dart';
 import '../widgets/pos_modal_actions.dart';
 
 class ChergirmaScreen extends StatefulWidget {
@@ -35,8 +36,13 @@ class _ChergirmaScreenState extends State<ChergirmaScreen> {
 
   int? get _percentValue {
     final t = _valueController.text.trim();
-    if (t.isEmpty || t == '-') return null;
+    if (t.isEmpty) return null;
     return int.tryParse(t);
+  }
+
+  int get _percentPreviewDiscount {
+    final v = _percentValue ?? 0;
+    return CartDiscountPercent.previewDiscountUzs(widget.totalUzs, v);
   }
 
   int? get _sumValue => parseFormattedSum(_valueController.text);
@@ -49,7 +55,7 @@ class _ChergirmaScreenState extends State<ChergirmaScreen> {
   bool get _canSave {
     if (_byPercent) {
       final v = _percentValue;
-      return v != null && v >= -100 && v <= 100;
+      return v != null && v >= 0 && v <= 100;
     }
     final v = _sumValue;
     if (v == null) return false;
@@ -70,7 +76,10 @@ class _ChergirmaScreenState extends State<ChergirmaScreen> {
     if (_byPercent) {
       final v = _percentValue;
       if (v == null) return;
-      Navigator.pop(context, ChergirmaResult.percent(v.clamp(-100, 100)));
+      Navigator.pop(
+        context,
+        ChergirmaResult.percent(CartDiscountPercent.discountPercentFromUi(v)),
+      );
       return;
     }
     final v = _sumValue;
@@ -135,13 +144,9 @@ class _ChergirmaScreenState extends State<ChergirmaScreen> {
                         height: _fieldHeight,
                         child: TextField(
                           controller: _valueController,
-                          keyboardType: _byPercent
-                              ? const TextInputType.numberWithOptions(signed: true)
-                              : TextInputType.number,
+                          keyboardType: TextInputType.number,
                           inputFormatters: _byPercent
-                              ? [
-                                  FilteringTextInputFormatter.allow(RegExp(r'^-?\d{0,3}')),
-                                ]
+                              ? [FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}'))]
                               : [ThousandsInputFormatter()],
                           onChanged: (_) => setState(() {}),
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -178,8 +183,33 @@ class _ChergirmaScreenState extends State<ChergirmaScreen> {
                 if (_byPercent) ...[
                   const SizedBox(height: 8),
                   const Text(
-                    '+20 qo‘shadi, -20 ayiradi',
+                    'Masalan: 10 — 10% chegirma',
                     style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                  ),
+                ],
+                if (_byPercent && _percentPreviewDiscount > 0) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Chegirma', style: TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          "${formatThousands(_percentPreviewDiscount)} so'm",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
                 if (showPayPreview && _sumValue != null) ...[
@@ -228,7 +258,7 @@ class _ChergirmaScreenState extends State<ChergirmaScreen> {
   }
 
   List<Widget> _percentQuickChips() {
-    return [-20, -10, 15, 30, 50, 75]
+    return [5, 10, 15, 20, 30, 50]
         .map(
           (p) => _quickChip(
             '$p%',

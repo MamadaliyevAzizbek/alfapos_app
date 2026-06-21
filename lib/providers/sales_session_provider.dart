@@ -92,6 +92,9 @@ class SalesSessionProvider extends ChangeNotifier {
   bool _backgroundSyncInFlight = false;
   bool get backgroundSyncInFlight => _backgroundSyncInFlight;
 
+  /// Filtr o‘zgarganda yuklash band bo‘lsa — tugagach qayta yuklash.
+  bool _pendingLoadReset = false;
+
   /// Mahsulotlar bo‘limi yangilanganda sotuv kartochkalaridagi miqdorni moslashtirish.
   void applyCatalogStock() {
     if (salesProducts.isEmpty) return;
@@ -419,9 +422,12 @@ class SalesSessionProvider extends ChangeNotifier {
 
     final cid = (await getCompanyId())?.trim();
     var list = <Map<String, dynamic>>[];
-    try {
-      list = FilterOptionsParser.parseIdNameList(await ProductsApi.postCategoriesList());
-    } catch (_) {}
+    for (var attempt = 0; attempt < 2 && list.isEmpty; attempt++) {
+      if (attempt > 0) await Future<void>.delayed(const Duration(milliseconds: 500));
+      try {
+        list = FilterOptionsParser.parseIdNameList(await ProductsApi.postCategoriesList());
+      } catch (_) {}
+    }
 
     if (list.isEmpty) {
       await CategoriesProvider.instance.resetForCompanyChange();
@@ -472,15 +478,18 @@ class SalesSessionProvider extends ChangeNotifier {
       }
     }
 
-    for (final list in [
-      await trySource(ProductsApi.postBrandsList()),
-      await trySource(ProductsApi.getBrands()),
-      await trySource(ProductsApi.getFilterOptions(), brandsOnly: true),
-      await trySource(ProductsApi.getSupportingData(), brandsOnly: true),
-    ]) {
-      if (list.isNotEmpty) {
-        final cid = (await getCompanyId())?.trim();
-        return _filterIdNameByCompany(list, cid);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await Future<void>.delayed(const Duration(milliseconds: 500));
+      for (final list in [
+        await trySource(ProductsApi.postBrandsList()),
+        await trySource(ProductsApi.getBrands()),
+        await trySource(ProductsApi.getFilterOptions(), brandsOnly: true),
+        await trySource(ProductsApi.getSupportingData(), brandsOnly: true),
+      ]) {
+        if (list.isNotEmpty) {
+          final cid = (await getCompanyId())?.trim();
+          return _filterIdNameByCompany(list, cid);
+        }
       }
     }
     return [];
@@ -584,7 +593,15 @@ class SalesSessionProvider extends ChangeNotifier {
   }
 
   Future<void> loadProducts({bool reset = false, String? searchValue}) async {
-    if (productsLoading) return;
+    if (productsLoading) {
+      if (reset) {
+        _pendingLoadReset = true;
+        _offset = 0;
+        hasMoreProducts = true;
+        if (searchValue != null) _lastSearch = searchValue.trim();
+      }
+      return;
+    }
     if (reset) {
       _offset = 0;
       hasMoreProducts = true;
@@ -645,6 +662,10 @@ class SalesSessionProvider extends ChangeNotifier {
     } finally {
       productsLoading = false;
       notifyListeners();
+      if (_pendingLoadReset) {
+        _pendingLoadReset = false;
+        await loadProducts(reset: true);
+      }
     }
   }
 
@@ -733,14 +754,20 @@ class SalesSessionProvider extends ChangeNotifier {
     }
   }
 
-  void setCategoryFilter(String? id) {
+  Future<void> setCategoryFilter(String? id) async {
     categoryId = id;
-    loadProducts(reset: true);
+    salesProducts = [];
+    productsError = null;
+    notifyListeners();
+    await loadProducts(reset: true);
   }
 
-  void setBrandFilter(String? id) {
+  Future<void> setBrandFilter(String? id) async {
     brandId = id;
-    loadProducts(reset: true);
+    salesProducts = [];
+    productsError = null;
+    notifyListeners();
+    await loadProducts(reset: true);
   }
 
   void setCartDiscountPercent(int percent) {
@@ -777,7 +804,7 @@ class SalesSessionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void applySalesFilters({
+  Future<void> applySalesFilters({
     String? category,
     String? brand,
     required bool hideZero,
@@ -785,7 +812,7 @@ class SalesSessionProvider extends ChangeNotifier {
     required bool sellPurchase,
     required bool showPurchaseOnCards,
     required bool showUsdOnCards,
-  }) {
+  }) async {
     final catChanged = categoryId != category;
     final brandChanged = brandId != brand;
     categoryId = category;
@@ -798,14 +825,16 @@ class SalesSessionProvider extends ChangeNotifier {
     showPurchasePrice = showPurchaseOnCards;
     showUsdEquivalent = showUsdOnCards;
     if (catChanged || brandChanged) {
-      loadProducts(reset: true);
+      salesProducts = [];
+      productsError = null;
+      notifyListeners();
+      await loadProducts(reset: true);
     } else {
       notifyListeners();
     }
   }
 
-  void clearSalesFilters() {
-    applySalesFilters(
+  Future<void> clearSalesFilters() => applySalesFilters(
       category: null,
       brand: null,
       hideZero: false,
@@ -814,7 +843,6 @@ class SalesSessionProvider extends ChangeNotifier {
       showPurchaseOnCards: false,
       showUsdOnCards: false,
     );
-  }
 
   /// +20 → jami 20% oshadi, -20 → jami 20% kamayadi.
   int applyDiscountToTotal(int rawTotal) {

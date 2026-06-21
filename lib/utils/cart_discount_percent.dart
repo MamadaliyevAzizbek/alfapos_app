@@ -85,4 +85,24 @@ class CartDiscountPercent {
   static int catalogLinesTotal(Iterable<CartItem> items) {
     return items.fold<int>(0, (s, e) => s + (e.defaultLineUnitPrice * e.quantity).round());
   }
+
+  /// UI chegirma foizi (0–100) → ichki format (−100…0).
+  static int discountPercentFromUi(int uiPercent) {
+    if (uiPercent <= 0) return 0;
+    return -uiPercent.clamp(0, 100);
+  }
+
+  /// Ichki foiz (−100…0) → UI ko‘rinishi (0–100).
+  static int discountPercentToUi(int internalPercent) {
+    if (internalPercent >= 0) return 0;
+    return internalPercent.abs().clamp(0, 100);
+  }
+
+  /// UI foizi bo‘yicha taxminiy chegirma summasi (so‘m).
+  static int previewDiscountUzs(int cartTotal, int uiPercent) {
+    if (uiPercent <= 0 || cartTotal <= 0) return 0;
+    final internal = discountPercentFromUi(uiPercent);
+    final newTotal = roundPercentPrice(cartTotal * (100 + internal) / 100.0, internal);
+    return cartTotal - newTotal;
+  }
 }

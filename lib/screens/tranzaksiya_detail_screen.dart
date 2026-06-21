@@ -1175,7 +1175,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   String? get _mobileChergirmaSubtitle {
     final pct = _cartDiscountPercentDisplay;
-    if (pct != 0) return '$pct%';
+    if (pct != 0) return '${CartDiscountPercent.discountPercentToUi(pct)}%';
     final catalog = CartDiscountPercent.catalogLinesTotal(widget.items);
     final discount = catalog - _totalRaw;
     if (discount > 0) return '${_fmt(discount)} so\'m';

@@ -142,7 +142,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     unawaited(SalesStockLimitSettings.setEnabled(_enforceStockLimit));
     final cat = isDesktopPosLayout ? _categoryId : null;
     final brand = isDesktopPosLayout ? _brandId : null;
-    _sales.applySalesFilters(
+    unawaited(_sales.applySalesFilters(
       category: cat,
       brand: brand,
       hideZero: _hideZeroStock,
@@ -150,7 +150,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
       sellPurchase: _sellAtPurchase,
       showPurchaseOnCards: _showPurchasePrice,
       showUsdOnCards: _showUsdEquivalent,
-    );
+    ));
     Navigator.pop(context, true);
   }
 
@@ -158,7 +158,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     unawaited(SalesStockLimitSettings.setEnabled(_enforceStockLimit));
     final cat = isDesktopPosLayout ? _categoryId : null;
     final brand = isDesktopPosLayout ? _brandId : null;
-    _sales.applySalesFilters(
+    unawaited(_sales.applySalesFilters(
       category: cat,
       brand: brand,
       hideZero: _hideZeroStock,
@@ -166,7 +166,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
       sellPurchase: _sellAtPurchase,
       showPurchaseOnCards: _showPurchasePrice,
       showUsdOnCards: _showUsdEquivalent,
-    );
+    ));
   }
 
   @override

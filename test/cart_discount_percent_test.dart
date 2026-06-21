@@ -56,4 +56,12 @@ void main() {
     expect(CartDiscountPercent.roundPercentPrice(1050, 5), 2000);
     expect(CartDiscountPercent.roundPercentPrice(240000, 20), 240000);
   });
+
+  test('UI chegirma foizi faqat ayirish', () {
+    expect(CartDiscountPercent.discountPercentFromUi(10), -10);
+    expect(CartDiscountPercent.discountPercentFromUi(0), 0);
+    expect(CartDiscountPercent.discountPercentToUi(-10), 10);
+    expect(CartDiscountPercent.discountPercentToUi(20), 0);
+    expect(CartDiscountPercent.previewDiscountUzs(100000, 10), 10000);
+  });
 }
