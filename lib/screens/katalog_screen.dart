@@ -80,8 +80,14 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     _categoriesSub = _categories.stream.listen((_) {
       if (mounted) unawaited(_reloadCategoryOrder());
     });
-    _products.loadFromStorage();
+    unawaited(_bootstrapCatalog());
     unawaited(_reloadCategoryOrder());
+  }
+
+  Future<void> _bootstrapCatalog() async {
+    await _products.loadFromStorage(refreshInBackground: false);
+    await _products.ensureFullCatalogLoaded();
+    if (mounted) setState(() {});
   }
 
   Future<void> _reloadCategoryOrder() async {
@@ -122,7 +128,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
 
   @override
   Future<void> onDesktopShellSync() async {
-    await _products.refreshFromServer(force: true);
+    await _products.ensureFullCatalogLoaded(force: true);
     await _categories.loadFromApi();
     if (mounted) setState(() {});
   }

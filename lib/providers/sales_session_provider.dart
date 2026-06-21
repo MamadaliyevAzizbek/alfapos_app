@@ -127,7 +127,7 @@ class SalesSessionProvider extends ChangeNotifier {
     if (products.isEmpty) return false;
 
     salesProducts = ProductsProvider.instance.withCatalogStockAll(products);
-    _offset = salesProducts.length;
+    _offset = 0;
     hasMoreProducts = true;
     productsError = null;
     notifyListeners();
@@ -576,7 +576,7 @@ class SalesSessionProvider extends ChangeNotifier {
   Future<void> syncRemainingProductsInBackground() async {
     if (_backgroundSyncInFlight || productsLoading) return;
     var guard = 0;
-    while (hasMoreProducts && guard < 50) {
+    while (hasMoreProducts && guard < 500) {
       guard++;
       await loadProducts(reset: false);
       if (productsError != null) break;

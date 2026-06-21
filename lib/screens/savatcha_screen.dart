@@ -139,16 +139,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (mounted) setState(() {});
   }
 
-  /// Mahsulotlar (Katalog) bilan bir xil manba — to'liq mahalliy katalog.
+  /// Mahsulotlar (Katalog) bilan bir xil manba — to'liq mahalliy + sotuv katalogi.
   List<Product> _catalogProductsForSearch() {
-    final catalog = ProductsProvider.instance.withCatalogStockAll(_products.items);
-    if (catalog.isNotEmpty) return _sortCatalogProducts(catalog);
-    if (_sales.salesProducts.isNotEmpty) {
-      return _sortCatalogProducts(
-        ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts),
-      );
-    }
-    return catalog;
+    final merged = _mergeUniqueProducts([
+      ...ProductsProvider.instance.withCatalogStockAll(_products.items),
+      ...ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts),
+    ]);
+    return _sortCatalogProducts(merged);
   }
 
   bool get _salesFiltersActive {
@@ -172,7 +169,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   @override
   Future<void> onDesktopShellSync() async {
     if (!isDesktopPosLayout) return;
-    await _products.refreshFromServer(force: true);
+    await _products.ensureFullCatalogLoaded(force: true);
     _sales.applyCatalogStock();
     await _refreshSavedOrdersCount();
     await _reloadDesktopSalesLayoutMode();
@@ -307,10 +304,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (!mounted) return;
       if (isDesktopPosLayout) {
         _desktopSalesLayoutMode = await DesktopSalesLayoutSettings.getMode();
-        await _products.loadFromStorage(refreshInBackground: true);
+        await _products.loadFromStorage(refreshInBackground: false);
         await _sales.init(localFirst: true);
         _sales.applyCatalogStock();
         await _sales.reloadFilterLists();
+        unawaited(_products.ensureFullCatalogLoaded().then((_) {
+          _sales.applyCatalogStock();
+          if (mounted) setState(() {});
+        }));
         unawaited(CategoriesProvider.instance.loadFromStorage(refreshInBackground: false));
         unawaited(_refreshSavedOrdersCount());
         unawaited(ThermalReceiptPrinter.warmup());
@@ -789,24 +790,43 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     });
   }
 
+  List<Product> _mergeUniqueProducts(Iterable<Product> sources) {
+    final seen = <String>{};
+    final merged = <Product>[];
+    for (final p in sources) {
+      if (p.id.isEmpty || !seen.add(p.id)) continue;
+      merged.add(p);
+    }
+    return merged;
+  }
+
+  List<Product> _mergeSearchResults(String query, List<Product> local) {
+    final q = query.trim();
+    if (q.isEmpty) return local;
+    if (_sales.lastSearch != q || _sales.salesProducts.isEmpty) return local;
+
+    final seen = local.map((p) => p.id).toSet();
+    final merged = [...local];
+    for (final p in _sales.salesProducts) {
+      if (!product_search.productMatchesSearchQuery(p, q)) continue;
+      if (seen.add(p.id)) merged.add(p);
+    }
+    return product_search.sortProductsBySearchRelevance(merged, q);
+  }
+
   List<Product> get _filteredProducts =>
       product_search.filterProductsByQuery(_products.items, _query);
 
-  /// Desktop: kategoriya/brend tanlanganida server filtri, aks holda mahalliy katalog.
+  /// Desktop: kategoriya/brend tanlanganida server filtri, aks holda to'liq katalog.
   List<Product> get _desktopBrowseProducts {
     final hasCatBrand = _sales.categoryId != null || _sales.brandId != null;
     List<Product> list;
 
     if (hasCatBrand) {
-      final seen = <String>{};
-      final merged = <Product>[];
-      for (final p in [
+      final merged = _mergeUniqueProducts([
         ..._sales.salesProducts,
         ...ProductsProvider.instance.withCatalogStockAll(_products.items),
-      ]) {
-        if (p.id.isEmpty || !seen.add(p.id)) continue;
-        merged.add(p);
-      }
+      ]);
       if (!_sales.productsLoading && _sales.salesProducts.isNotEmpty) {
         list = List<Product>.from(_sales.salesProducts);
       } else {
@@ -818,10 +838,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           brands: _sales.brands,
         );
       }
-    } else if (_products.items.isNotEmpty) {
-      list = ProductsProvider.instance.withCatalogStockAll(_products.items);
     } else {
-      list = _sales.catalogProductsVisible;
+      list = _mergeUniqueProducts([
+        ...ProductsProvider.instance.withCatalogStockAll(_products.items),
+        ..._sales.salesProducts,
+      ]);
+      if (list.isEmpty) list = _sales.catalogProductsVisible;
     }
 
     if (_sales.hideZeroStock) {
@@ -835,7 +857,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   List<Product> _desktopCatalogProductsFor(String searchQuery) {
     final q = searchQuery.trim();
     if (q.isNotEmpty) {
-      return product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
+      final local = product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
+      return _mergeSearchResults(q, local);
     }
     if (_desktopSalesLayoutMode == DesktopSalesLayoutMode.restaurant) {
       if (_restaurantCategoryId != null) return _restaurantCategoryProducts;
@@ -844,7 +867,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return _desktopBrowseProducts;
   }
 
-  /// Desktop: nom bo'yicha mahalliy qidiruv (Katalog kabi); shtrix — alohida.
+  /// Desktop: nom/SKU — mahalliy + server qidiruv; shtrix — alohida.
   Future<void> _desktopSearchProducts(String query) async {
     final q = query.trim();
     if (q.isEmpty) {
@@ -857,7 +880,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
     if (product_search.looksLikeBarcodeInput(q)) {
       await _desktopBarcodeSearchAndAdd(q);
+      return;
     }
+
+    _sales.setSearchQuery(q);
+    await _sales.loadProducts(reset: true, searchValue: q);
+    if (mounted) setState(() {});
   }
 
   int get _cartRawTotal => _cart.items.fold<int>(0, (s, e) => s + e.total);

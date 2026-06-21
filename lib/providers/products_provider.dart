@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../core/api_client.dart';
+import '../core/api_pacing.dart';
 import '../core/api_sync_throttle.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
@@ -73,6 +74,20 @@ class ProductsProvider extends ChangeNotifier {
       unawaited(_refreshCatalogFromApi());
     }
     unawaited(_drainSyncQueue());
+  }
+
+  /// Barcha mahsulotlar yuklanganiga ishonch hosil qilish (sahifalab).
+  Future<void> ensureFullCatalogLoaded({bool force = false}) async {
+    if (force) {
+      ApiSyncThrottle.invalidate('products_full_catalog');
+      await loadFromApi();
+      return;
+    }
+    if (_items.isEmpty || !_loaded) {
+      await loadFromApi();
+      return;
+    }
+    await _refreshCatalogFromApi();
   }
 
   /// Navbatdagi mahsulotlarni serverga yuboradi, keyin serverdan to‘liq katalog.
@@ -772,14 +787,28 @@ class ProductsProvider extends ChangeNotifier {
     _loadError = null;
     try {
       await _ensureUnitsLoaded();
-      final res = await ProductsApi.getProductsList(body: {
-        'rowLimit': 5000,
-        'rowOffset': 0,
-      });
-      _lastRawProducts = res;
-      final rows = _extractList(res);
       final previousById = {for (final p in _items) p.id: p};
-      _items = rows
+      const pageSize = 500;
+      var offset = 0;
+      var guard = 0;
+      final allRows = <dynamic>[];
+
+      while (guard < 500) {
+        guard++;
+        final res = await ProductsApi.getProductsList(body: {
+          'rowLimit': pageSize,
+          'rowOffset': offset,
+        });
+        if (offset == 0) _lastRawProducts = res;
+        final rows = _extractList(res);
+        if (rows.isEmpty) break;
+        allRows.addAll(rows);
+        offset += rows.length;
+        if (rows.length < pageSize) break;
+        await ApiPacing.staggerPause(ApiPacing.productPageStep);
+      }
+
+      _items = allRows
           .map((e) {
             try {
               var p = Product.fromApiJson(
