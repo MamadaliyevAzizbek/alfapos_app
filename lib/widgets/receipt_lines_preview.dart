@@ -8,6 +8,7 @@ import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_large_text.dart';
+import '../utils/thermal_receipt_product_title_text.dart';
 
 const _previewText = TextStyle(
   color: Colors.black,
@@ -79,6 +80,26 @@ class ThermalReceiptPreview extends StatelessWidget {
   }
 
   Widget _line(String line, {bool hasQueueNumber = false}) {
+    if (ThermalReceiptProductTitleText.isGapLine(line)) {
+      return const SizedBox(height: 2);
+    }
+
+    if (ThermalReceiptProductTitleText.isTitleLine(line)) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 1),
+        child: ReceiptStrikethroughText.richLine(
+          ThermalReceiptProductTitleText.unwrap(line),
+          style: _previewText.copyWith(
+            fontSize: ThermalReceiptProductTitleText.previewFontSize,
+            fontWeight: FontWeight.w800,
+            height: 1.2,
+          ),
+          textAlign: TextAlign.start,
+          bold: true,
+        ),
+      );
+    }
+
     if (ThermalReceiptCompactText.isAnyCompactLine(line)) {
       final text = ThermalReceiptCompactText.unwrap(line);
       final bold = ThermalReceiptCompactText.isCompactBoldLine(line);

@@ -4,6 +4,7 @@ import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
+import 'thermal_receipt_product_title_text.dart';
 
 /// Termal chek mahsulot qatori (Alfapos.pdf ko‘rinishi).
 class ThermalReceiptProductLine {
@@ -263,16 +264,24 @@ class ThermalReceiptFormatter {
     var n = 0;
     for (final p in d.products) {
       n++;
-      for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
-        p.name,
-        numbered: config.numberedProducts,
-        index: n,
-      )) {
-        _appendLeftLine(lines, nameLine);
-      }
       if (d.isRestaurantLayout) {
+        for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
+          p.name,
+          numbered: config.numberedProducts,
+          index: n,
+        )) {
+          lines.add(ThermalReceiptProductTitleText.line(nameLine));
+        }
+        lines.add(ThermalReceiptProductTitleText.gapLine());
         _appendLeftLine(lines, _restaurantProductLine(p));
       } else {
+        for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
+          p.name,
+          numbered: config.numberedProducts,
+          index: n,
+        )) {
+          _appendLeftLine(lines, nameLine);
+        }
         final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
         final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
         lines.addAll(

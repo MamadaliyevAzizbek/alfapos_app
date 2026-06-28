@@ -6,6 +6,7 @@ import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import '../utils/receipt_store_title.dart';
 import '../utils/thermal_receipt_large_text.dart';
+import '../utils/thermal_receipt_product_title_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 import 'receipt_logo_image.dart';
@@ -293,8 +294,15 @@ class ReceiptWidget extends StatelessWidget {
               design.numberedProducts
                   ? '${i + 1}) ${productRows[i].productName}'
                   : productRows[i].productName,
-              style: headerStyle,
+              style: isRestaurantLayout
+                  ? headerStyle.copyWith(
+                      fontSize: ThermalReceiptProductTitleText.onScreenFontSize,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    )
+                  : headerStyle,
             ),
+            if (isRestaurantLayout) const SizedBox(height: 2),
             if (isRestaurantLayout)
               _restaurantProductLineWidget(productRows[i], textStyle)
             else

@@ -10,6 +10,7 @@ import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
+import '../utils/thermal_receipt_product_title_text.dart';
 import 'printer_paper_profile.dart';
 
 /// API dan parse qilingan matn qatorlarini ESC/POS ga aylantirish.
@@ -90,6 +91,28 @@ class EscPosReceiptBuilder {
         }
         continue;
       }
+      if (ThermalReceiptProductTitleText.isGapLine(line)) {
+        bytes.addAll(g.feed(1));
+        continue;
+      }
+
+      if (ThermalReceiptProductTitleText.isTitleLine(line)) {
+        final text = ThermalReceiptProductTitleText.unwrap(line);
+        bytes.addAll(
+          g.textEncoded(
+            EscPosTextCodec.encodeSync(text, codePage: codePage),
+            styles: PosStyles(
+              codeTable: codeTable,
+              fontType: PosFontType.fontA,
+              align: PosAlign.left,
+              bold: true,
+            ),
+            maxCharsPerLine: maxWidth,
+          ),
+        );
+        continue;
+      }
+
       if (ThermalReceiptCompactText.isAnyCompactLine(line)) {
         final text = ThermalReceiptCompactText.unwrap(line);
         final bold = ThermalReceiptCompactText.isCompactBoldLine(line);
