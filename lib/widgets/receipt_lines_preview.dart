@@ -37,7 +37,7 @@ class ThermalReceiptPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compactRestaurant = ThermalReceiptFormatter.looksLikeRestaurantReceipt(lines);
+    final hasQueueNumber = ThermalReceiptFormatter.hasRestaurantQueueLine(lines);
     if (lines.isEmpty && !_showLogo) {
       return SizedBox(
         width: width,
@@ -48,7 +48,7 @@ class ThermalReceiptPreview extends StatelessWidget {
     return Container(
       key: ValueKey('receipt_preview_${design.logoFilePath}_${design.showLogo}'),
       width: width,
-      padding: EdgeInsets.all(compactRestaurant ? 6 : 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: const Color(0xFFE2E8F0)),
@@ -58,7 +58,7 @@ class ThermalReceiptPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_showLogo && !compactRestaurant) ...[
+          if (_showLogo) ...[
             Center(
               child: ReceiptLogoImage(
                 path: design.logoFilePath!,
@@ -70,20 +70,20 @@ class ThermalReceiptPreview extends StatelessWidget {
           ],
           for (final line in lines)
             if (line.isEmpty)
-              SizedBox(height: compactRestaurant ? 2 : 6)
+              const SizedBox(height: 6)
             else
-              _line(line, compactRestaurant: compactRestaurant),
+              _line(line, hasQueueNumber: hasQueueNumber),
         ],
       ),
     );
   }
 
-  Widget _line(String line, {bool compactRestaurant = false}) {
+  Widget _line(String line, {bool hasQueueNumber = false}) {
     if (ThermalReceiptCompactText.isAnyCompactLine(line)) {
       final text = ThermalReceiptCompactText.unwrap(line);
       final bold = ThermalReceiptCompactText.isCompactBoldLine(line);
       return Padding(
-        padding: EdgeInsets.symmetric(vertical: compactRestaurant ? 0 : 1),
+        padding: const EdgeInsets.symmetric(vertical: 1),
         child: ReceiptStrikethroughText.richLine(
           text,
           style: _previewText.copyWith(
@@ -98,12 +98,12 @@ class ThermalReceiptPreview extends StatelessWidget {
 
     if (ThermalReceiptLargeText.isLargeLine(line)) {
       return Padding(
-        padding: EdgeInsets.symmetric(vertical: compactRestaurant ? 2 : 10),
+        padding: EdgeInsets.symmetric(vertical: hasQueueNumber ? 2 : 10),
         child: Text(
           ThermalReceiptLargeText.unwrap(line),
           textAlign: TextAlign.center,
           style: _previewText.copyWith(
-            fontSize: compactRestaurant ? 36 : ThermalReceiptLargeText.previewFontSize,
+            fontSize: hasQueueNumber ? 36 : ThermalReceiptLargeText.previewFontSize,
             fontWeight: FontWeight.w700,
             height: 1.05,
           ),

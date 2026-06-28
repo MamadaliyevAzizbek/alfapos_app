@@ -70,8 +70,7 @@ class EscPosReceiptBuilder {
       bytes.addAll(g.drawer(pin: cashDrawerPin));
     }
 
-    if (!compactRestaurant &&
-        cfg.showLogo &&
+    if (cfg.showLogo &&
         cfg.logoFilePath != null &&
         cfg.logoFilePath!.isNotEmpty) {
       final logoMaxW = paperSize == PaperSize.mm58 ? 320 : paperSize.width;

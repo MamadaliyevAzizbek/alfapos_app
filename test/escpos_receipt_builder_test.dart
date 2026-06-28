@@ -67,6 +67,7 @@ void main() {
         discountAmount: '0',
         totalAmount: '50,000',
         queueNumber: 42,
+        isRestaurantLayout: true,
       ),
       config: config,
     );

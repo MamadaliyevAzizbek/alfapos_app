@@ -110,7 +110,7 @@ void main() {
     );
   });
 
-  test('restaurant layout uses compact queue and product table', () {
+  test('restaurant layout matches shop receipt with queue number only', () {
     final config = ReceiptDesignConfig.defaults.copyWith(
       showRestaurantQueueNumber: true,
       restaurantQueueLabel: 'Navbat raqami',
@@ -146,24 +146,18 @@ void main() {
       config: config,
     );
     expect(lines.any((l) => l.contains('Navbat raqami')), isTrue);
-    expect(lines.any((l) => l.contains('Restoran')), isFalse);
-    expect(lines.any((l) => l.contains('Kassir')), isFalse);
-    expect(lines.any((l) => l.contains('Chek raqami')), isFalse);
-    expect(lines.any((l) => l.contains('Naqd pul')), isFalse);
-    expect(lines.any((l) {
-      if (!ThermalReceiptCompactText.isCompactBoldLine(l)) return false;
-      final text = ThermalReceiptCompactText.unwrap(l);
-      return text.contains('Umumiy') && text.contains('20,000');
-    }), isTrue);
+    expect(lines.any((l) => l.contains('Kassir')), isTrue);
+    expect(lines.any((l) => l.contains('Chek raqami')), isTrue);
+    expect(lines.any((l) => l.contains('Naqd pul')), isTrue);
+    expect(lines.any((l) => l.contains('Umumiy summa')), isTrue);
     expect(lines.any(ThermalReceiptLargeText.isLargeLine), isTrue);
     expect(
       lines.any((l) => ThermalReceiptLargeText.isLargeLine(l) && ThermalReceiptLargeText.unwrap(l) == '7'),
       isTrue,
     );
-    expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isTrue);
-    expect(lines.any((l) => l.contains('Choy')), isTrue);
-    expect(lines.any((l) => l.contains('1 шт') || l.contains('1шт')), isTrue);
-    expect(lines.any((l) => l.startsWith('1) Choy')), isFalse);
-    expect(lines.any((l) => l.contains('x 10,000')), isFalse);
+    expect(lines.any((l) => l.contains('1) Choy') || l.contains('Choy')), isTrue);
+    expect(lines.any((l) => l.contains('1 dona x 10,000=10,000')), isTrue);
+    expect(lines.any((l) => l.contains("so'm")), isFalse);
+    expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isFalse);
   });
 }

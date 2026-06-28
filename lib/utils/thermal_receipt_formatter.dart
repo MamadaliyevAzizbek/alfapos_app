@@ -2,7 +2,6 @@ import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
-import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
 
@@ -53,7 +52,7 @@ class ThermalReceiptPrintData {
   final bool isPrecheck;
   final int? queueNumber;
 
-  /// Restoran rejimida ixcham jadval ko‘rinishi (Mahsulot|Miqdor|Narx|Summa).
+  /// Restoran rejimida navbat raqami ko‘rsatiladi (qolgan qismi do‘kon chekiday).
   final bool isRestaurantLayout;
 
   const ThermalReceiptPrintData({
@@ -242,107 +241,12 @@ class ThermalReceiptFormatter {
     ThermalReceiptPrintData d, {
     ReceiptDesignConfig config = ReceiptDesignConfig.defaults,
   }) {
-    if (d.isRestaurantLayout) {
-      return _toRestaurantPrintLines(d, config: config);
-    }
     return _toStandardPrintLines(d, config: config);
   }
 
-  static List<String> _toRestaurantPrintLines(
-    ThermalReceiptPrintData d, {
-    required ReceiptDesignConfig config,
-  }) {
-    final lines = <String>[];
-    String som(String amount) => _withSom(amount, suffix: config.currencySuffix);
-
-    void center(String s) => lines.add('^${s.trim()}');
-    void left(String s) {
-      for (final part in ThermalReceiptLineWrap.wrapLine(s)) {
-        lines.add(part);
-      }
-    }
-
-    if (config.showDateTime) {
-      center(_fmtDateTime(d.dateTime));
-    }
-
-    if (!d.isPrecheck &&
-        d.queueNumber != null &&
-        d.queueNumber! > 0 &&
-        config.showRestaurantQueueNumber) {
-      center(config.restaurantQueueLabel);
-      lines.add(ThermalReceiptLargeText.line('${d.queueNumber}'));
-    }
-
-    if (d.isPrecheck) {
-      center(config.precheckBanner);
-    }
-
-    if (config.showClientLine &&
-        d.clientName != null &&
-        d.clientName!.trim().isNotEmpty) {
-      left('${config.clientLabel}: ${d.clientName!.trim()}');
-    }
-
-    lines.add(ThermalReceiptLineWrap.restaurantTableHeader());
-
-    var n = 0;
-    for (final p in d.products) {
-      n++;
-      final name = config.numberedProducts ? '$n. ${p.name}' : p.name;
-      lines.add(
-        ThermalReceiptLineWrap.restaurantTableProductRow(
-          name: name,
-          quantity: _restaurantQty(p.quantity),
-          unitPrice: formatAmountForReceipt(
-            p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
-          ),
-          lineTotal: formatAmountForReceipt(
-            p.lineTotal.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
-          ),
-        ),
-      );
-    }
-
-    lines.add(
-      ThermalReceiptLineWrap.restaurantTotalRow(
-        'Umumiy',
-        som(formatAmountForReceipt(d.totalAmount)),
-      ),
-    );
-
-    if (d.isPrecheck) {
-      left("To'lov hali amalga oshirilmagan");
-    }
-
-    return ThermalReceiptLineWrap.wrapAll(lines);
-  }
-
-  /// Restoran ixcham jadvali bo‘yicha chop etish qatorlarini aniqlash.
-  static bool looksLikeRestaurantReceipt(List<String> lines) {
-    for (final line in lines) {
-      final text = ThermalReceiptCompactText.isCompactLine(line)
-          ? ThermalReceiptCompactText.unwrap(line)
-          : (line.startsWith('^') ? line.substring(1) : line);
-      if (text.contains('Mahsulot') &&
-          text.contains('Miqdor') &&
-          text.contains('Summa')) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  static String _restaurantQty(String raw) {
-    final t = raw.trim().replaceAll('×', 'x').replaceAll('’', "'");
-    if (t.contains('x')) {
-      final parts = t.split(RegExp(r'\s*x\s*', caseSensitive: false));
-      return parts.first.trim();
-    }
-    return t
-        .replaceAll(RegExp(r'\bdona\b', caseSensitive: false), 'шт')
-        .replaceAll(RegExp(r'\bDona\b'), 'шт');
-  }
+  /// Navbat raqami (katta matn) bo‘yicha restoran chekini aniqlash.
+  static bool hasRestaurantQueueLine(List<String> lines) =>
+      lines.any(ThermalReceiptLargeText.isLargeLine);
 
   static List<String> _toStandardPrintLines(
     ThermalReceiptPrintData d, {
@@ -353,14 +257,54 @@ class ThermalReceiptFormatter {
       kThermalChars80mm,
       from: config.itemSeparator,
     );
-    String som(String amount) => _withSom(amount, suffix: config.currencySuffix);
 
-    void center(String s) => lines.add('^${s.trim()}');
-    void left(String s) {
-      for (final part in ThermalReceiptLineWrap.wrapLine(s)) {
-        lines.add(part);
+    _appendReceiptHeaderAndMeta(lines, d, config: config);
+
+    var n = 0;
+    for (final p in d.products) {
+      n++;
+      for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
+        p.name,
+        numbered: config.numberedProducts,
+        index: n,
+      )) {
+        _appendLeftLine(lines, nameLine);
+      }
+      if (d.isRestaurantLayout) {
+        _appendLeftLine(lines, _restaurantProductLine(p));
+      } else {
+        final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
+        final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
+        lines.addAll(
+          ThermalReceiptLineWrap.formatTwoColumnRows(
+            qtyPart,
+            sumPart,
+            rightWidth: kReceiptAmountColumnWidth,
+          ),
+        );
+      }
+      if (config.showItemSeparator) {
+        lines.add(sep);
       }
     }
+
+    _appendReceiptPaymentsDiscountTotal(lines, d, config: config, sep: sep);
+
+    return ThermalReceiptLineWrap.wrapAll(lines);
+  }
+
+  static void _appendLeftLine(List<String> lines, String s) {
+    for (final part in ThermalReceiptLineWrap.wrapLine(s)) {
+      lines.add(part);
+    }
+  }
+
+  static void _appendReceiptHeaderAndMeta(
+    List<String> lines,
+    ThermalReceiptPrintData d, {
+    required ReceiptDesignConfig config,
+  }) {
+    void center(String s) => lines.add('^${s.trim()}');
 
     final title = ReceiptStoreTitle.resolve(
       design: config,
@@ -373,6 +317,7 @@ class ThermalReceiptFormatter {
     lines.add('');
 
     if (!d.isPrecheck &&
+        d.isRestaurantLayout &&
         d.queueNumber != null &&
         d.queueNumber! > 0 &&
         config.showRestaurantQueueNumber) {
@@ -388,55 +333,44 @@ class ThermalReceiptFormatter {
     if (d.isPrecheck) {
       center(config.precheckBanner);
       lines.add('');
-      left("${config.receiptNumberLabel}: to'lov oldin");
+      _appendLeftLine(lines, "${config.receiptNumberLabel}: to'lov oldin");
     } else if (d.receiptNumber.isNotEmpty) {
-      left('${config.receiptNumberLabel}: ${d.receiptNumber}');
+      _appendLeftLine(lines, '${config.receiptNumberLabel}: ${d.receiptNumber}');
     }
-    left('${config.sellerLabel}: ${d.sellerName}');
+    _appendLeftLine(lines, '${config.sellerLabel}: ${d.sellerName}');
     if (config.showSellerPhone &&
         d.sellerPhone != null &&
         d.sellerPhone!.trim().isNotEmpty) {
-      left('${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
+      _appendLeftLine(lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
     }
     if (config.showClientLine &&
         d.clientName != null &&
         d.clientName!.trim().isNotEmpty) {
-      left('${config.clientLabel}: ${d.clientName!.trim()}');
+      _appendLeftLine(lines, '${config.clientLabel}: ${d.clientName!.trim()}');
     }
     if (config.showClientPhone &&
         d.clientPhone != null &&
         d.clientPhone!.trim().isNotEmpty) {
-      left('${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
+      _appendLeftLine(lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
     }
     if (config.showClientAddress &&
         d.clientAddress != null &&
         d.clientAddress!.trim().isNotEmpty) {
-      left('${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
+      _appendLeftLine(lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
     }
     lines.add('');
+  }
 
-    var n = 0;
-    for (final p in d.products) {
-      n++;
-      for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
-        p.name,
-        numbered: config.numberedProducts,
-        index: n,
-      )) {
-        left(nameLine);
-      }
-      final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
-      final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
-      lines.addAll(
-        ThermalReceiptLineWrap.formatTwoColumnRows(
-          qtyPart,
-          sumPart,
-          rightWidth: kReceiptAmountColumnWidth,
-        ),
-      );
-      if (config.showItemSeparator) {
-        lines.add(sep);
-      }
+  static void _appendReceiptPaymentsDiscountTotal(
+    List<String> lines,
+    ThermalReceiptPrintData d, {
+    required ReceiptDesignConfig config,
+    required String sep,
+  }) {
+    String amountLabel(String raw) {
+      final formatted = formatAmountForReceipt(raw);
+      if (d.isRestaurantLayout) return formatted;
+      return _withSom(formatted, suffix: config.currencySuffix);
     }
 
     if (!d.isPrecheck) {
@@ -444,7 +378,7 @@ class ThermalReceiptFormatter {
         lines.addAll(
           ThermalReceiptLineWrap.formatTwoColumnRows(
             pay.method,
-            som(formatAmountForReceipt(pay.amount)),
+            amountLabel(pay.amount),
             rightWidth: kReceiptAmountColumnWidth,
           ),
         );
@@ -456,7 +390,7 @@ class ThermalReceiptFormatter {
       lines.addAll(
         ThermalReceiptLineWrap.formatTwoColumnRows(
           config.discountLabel,
-          som(discountValue),
+          amountLabel(d.discountAmount),
           rightWidth: kReceiptAmountColumnWidth,
         ),
       );
@@ -469,22 +403,20 @@ class ThermalReceiptFormatter {
     lines.addAll(
       ThermalReceiptLineWrap.formatTwoColumnRows(
         config.totalLabel,
-        som(formatAmountForReceipt(d.totalAmount)),
+        amountLabel(d.totalAmount),
         rightWidth: kReceiptAmountColumnWidth,
       ),
     );
 
     if (config.showFooter && config.footerText.trim().isNotEmpty) {
       lines.add('');
-      center(config.footerText.trim());
+      lines.add('^${config.footerText.trim()}');
     }
 
     if (d.isPrecheck) {
       lines.add('');
-      left("To'lov hali amalga oshirilmagan");
+      _appendLeftLine(lines, "To'lov hali amalga oshirilmagan");
     }
-
-    return ThermalReceiptLineWrap.wrapAll(lines);
   }
 
   static bool _isTableHeaderBlock(List<String> raw, int i) {
@@ -653,6 +585,28 @@ class ThermalReceiptFormatter {
       return t;
     }
     return '$t $suf';
+  }
+
+  static String _restaurantProductLine(ThermalReceiptProductLine p) {
+    final qty = _normalizeQtyUnit(p.quantity.trim());
+    final price = formatAmountForReceipt(
+      p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+    );
+    final total = formatAmountForReceipt(
+      p.lineTotal.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+    );
+    final catalog = p.catalogUnitPrice == null
+        ? null
+        : formatAmountForReceipt(
+            p.catalogUnitPrice!.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+          );
+    if (catalog != null &&
+        catalog.isNotEmpty &&
+        catalog != price &&
+        _looksNumeric(catalog.replaceAll(',', ''))) {
+      return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price=$total';
+    }
+    return '$qty x $price=$total';
   }
 
   static String _productQtyLine(ThermalReceiptProductLine p, {String suffix = "so'm"}) {
