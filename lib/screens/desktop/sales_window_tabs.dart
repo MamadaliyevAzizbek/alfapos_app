@@ -24,7 +24,7 @@ class SalesWindowTabs extends StatelessWidget {
   static const Color _activeBg = AppTheme.primary;
   static const Color _inactiveBorder = Color(0xFFDDE5F0);
   static const double _height = SalesNavCategoryBrandFilters.navbarFieldHeight;
-  static const double _radius = 12;
+  static const double _radius = 0;
 
   bool get _addEnabled => canAddWindow && windowCount < maxWindows;
 
@@ -118,9 +118,9 @@ class _WindowChip extends StatelessWidget {
               boxShadow: selected
                   ? [
                       BoxShadow(
-                        color: SalesWindowTabs._activeBg.withValues(alpha: 0.22),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                        color: SalesWindowTabs._activeBg.withValues(alpha: 0.15),
+                        blurRadius: 0,
+                        offset: const Offset(0, 1),
                       ),
                     ]
                   : null,

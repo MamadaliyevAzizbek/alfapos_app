@@ -40,6 +40,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
 
   List<String> _printers = [];
   String? _selected;
+  bool _secondaryPrinterEnabled = false;
+  String? _secondarySelected;
   bool _autoPrint = true;
   bool _openCashDrawerOnPrint = true;
   CashDrawerPin _cashDrawerPin = CashDrawerPin.pin2;
@@ -73,6 +75,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
     try {
       final names = await PrinterSettings.discoverPrinters();
       final selected = await PrinterSettings.selectedPrinterName();
+      final secondaryEnabled = await PrinterSettings.isSecondaryPrinterEnabled();
+      final secondarySelected = await PrinterSettings.secondaryPrinterName();
       final auto = await PrinterSettings.isAutoPrintEnabled();
       final cashDrawer = await PrinterSettings.isCashDrawerOpenOnPrintEnabled();
       final drawerPin = await PrinterSettings.cashDrawerPin();
@@ -85,6 +89,13 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       setState(() {
         _printers = names;
         _selected = selected != null && names.contains(selected) ? selected : null;
+        _secondaryPrinterEnabled = secondaryEnabled;
+        _secondarySelected = secondarySelected != null && names.contains(secondarySelected)
+            ? secondarySelected
+            : null;
+        if (_secondarySelected != null && _secondarySelected == _selected) {
+          _secondarySelected = null;
+        }
         _autoPrint = auto;
         _openCashDrawerOnPrint = cashDrawer;
         _cashDrawerPin = drawerPin;
@@ -105,6 +116,19 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
 
   Future<void> _savePrinter() async {
     await PrinterSettings.setSelectedPrinterName(_selected);
+    await PrinterSettings.setSecondaryPrinterEnabled(_secondaryPrinterEnabled);
+    if (_secondaryPrinterEnabled) {
+      if (_secondarySelected == null || _secondarySelected == _selected) {
+        AppNotify.info(
+          context,
+          'Qo‘shimcha printer tanlang — asosiy printerdan farq qilishi kerak',
+        );
+        return;
+      }
+      await PrinterSettings.setSecondaryPrinterName(_secondarySelected);
+    } else {
+      await PrinterSettings.setSecondaryPrinterName(null);
+    }
     await PrinterSettings.setAutoPrintEnabled(_autoPrint);
     await PrinterSettings.setCashDrawerOpenOnPrintEnabled(_openCashDrawerOnPrint);
     await PrinterSettings.setCashDrawerPin(_cashDrawerPin);
@@ -190,7 +214,18 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       AppNotify.info(context, 'Avval printerni tanlang');
       return;
     }
+    if (_secondaryPrinterEnabled &&
+        (_secondarySelected == null || _secondarySelected == _selected)) {
+      AppNotify.info(context, 'Qo‘shimcha printer tanlang yoki o‘chiring');
+      return;
+    }
     await PrinterSettings.setSelectedPrinterName(_selected);
+    await PrinterSettings.setSecondaryPrinterEnabled(_secondaryPrinterEnabled);
+    if (_secondaryPrinterEnabled) {
+      await PrinterSettings.setSecondaryPrinterName(_secondarySelected);
+    } else {
+      await PrinterSettings.setSecondaryPrinterName(null);
+    }
     setState(() => _testing = true);
     final result = await PrinterSettings.testPrint();
     if (!mounted) return;
@@ -200,6 +235,11 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
     } else {
       AppNotify.error(context, result.message);
     }
+  }
+
+  List<String> get _secondaryPrinterOptions {
+    if (_selected == null) return _printers;
+    return _printers.where((n) => n != _selected).toList();
   }
 
   @override
@@ -351,7 +391,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                   value: _selected,
                   isExpanded: true,
                   decoration: InputDecoration(
-                    labelText: 'Printer',
+                    labelText: 'Asosiy printer',
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -365,8 +405,69 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                         ),
                       )
                       .toList(),
-                  onChanged: (v) => setState(() => _selected = v),
+                  onChanged: (v) => setState(() {
+                    _selected = v;
+                    if (_secondarySelected == v) _secondarySelected = null;
+                  }),
                 ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Qo‘shimcha printer (bir vaqtda nusxa)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'To‘lovdan keyin bir xil chek asosiy va qo‘shimcha printerdan parallel chiqadi '
+                  '(masalan, kassa + oshxona). Naqd qutisi faqat asosiy printerda ochiladi.',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+                ),
+                value: _secondaryPrinterEnabled,
+                activeColor: AppTheme.primary,
+                onChanged: _printers.isEmpty
+                    ? null
+                    : (v) => setState(() {
+                          _secondaryPrinterEnabled = v;
+                          if (!v) _secondarySelected = null;
+                        }),
+              ),
+              if (_secondaryPrinterEnabled) ...[
+                const SizedBox(height: 8),
+                if (_secondaryPrinterOptions.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: const Text(
+                      'Qo‘shimcha printer uchun boshqa printer kerak. Avval ikkinchi printerni tizimga ulang.',
+                      style: TextStyle(color: Color(0xFF9A3412), fontSize: 13),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    value: _secondarySelected,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Qo‘shimcha printer',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    hint: const Text('Ikkinchi printerni tanlang'),
+                    items: _secondaryPrinterOptions
+                        .map(
+                          (n) => DropdownMenuItem(
+                            value: n,
+                            child: Text(n, overflow: TextOverflow.ellipsis),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => _secondarySelected = v),
+                  ),
+              ],
               const SizedBox(height: 16),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -422,7 +523,13 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
               Row(
                 children: [
                   OutlinedButton.icon(
-                    onPressed: _testing || _selected == null ? null : _testPrint,
+                    onPressed: _testing ||
+                            _selected == null ||
+                            (_secondaryPrinterEnabled &&
+                                (_secondarySelected == null ||
+                                    _secondarySelected == _selected))
+                        ? null
+                        : _testPrint,
                     icon: _testing
                         ? const SizedBox(
                             width: 18,

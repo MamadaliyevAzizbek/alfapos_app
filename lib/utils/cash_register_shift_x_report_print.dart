@@ -7,8 +7,6 @@ import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../utils/cash_register_utils.dart';
 import '../utils/receipt_store_title.dart';
-import 'thermal_receipt_compact_text.dart';
-import 'thermal_receipt_formatter.dart' show ThermalReceiptFormatter;
 import 'thermal_receipt_line_wrap.dart';
 
 /// Kassa smenasi X-otchoti (smenani yopmasdan kassa hisoboti).
@@ -63,7 +61,6 @@ class CashRegisterShiftXReportPrint {
 
     final lines = <String>[];
     final sep = ThermalReceiptLineWrap.fullSeparator(kThermalChars80mm);
-    const amountCol = ThermalReceiptFormatter.kReceiptAmountColumnWidth;
 
     void center(String s) => lines.add('^${s.trim()}');
     void left(String s) {
@@ -72,28 +69,20 @@ class CashRegisterShiftXReportPrint {
       }
     }
 
-    void twoCol(String label, String value) {
+    void equalsRows(
+      List<({String label, String value})> rows, {
+      Set<int> boldIndices = const {},
+      int? labelWidth,
+      int? valueWidth,
+    }) {
       lines.addAll(
-        ThermalReceiptLineWrap.formatTwoColumnRows(
-          label,
-          value,
-          rightWidth: amountCol,
+        ThermalReceiptLineWrap.formatEqualsRows(
+          rows,
+          boldIndices: boldIndices,
+          labelWidth: labelWidth,
+          valueWidth: valueWidth,
         ),
       );
-    }
-
-    void boldTwoCol(String label, String value) {
-      final rows = ThermalReceiptLineWrap.formatTwoColumnRows(
-        label,
-        value,
-        rightWidth: amountCol,
-      );
-      for (final row in rows) {
-        final text = ThermalReceiptCompactText.isAnyCompactLine(row)
-            ? ThermalReceiptCompactText.unwrap(row)
-            : row;
-        lines.add(ThermalReceiptCompactText.boldLine(text));
-      }
     }
 
     final storeTitle = ReceiptStoreTitle.resolve(
@@ -122,23 +111,43 @@ class CashRegisterShiftXReportPrint {
     }
 
     lines.add(sep);
-    boldTwoCol(
-      'JAMI SAVDO',
-      formatShiftMoney(analytics['total_payment'] ?? analytics['total_sales']),
+    final salesRows = <({String label, String value})>[
+      (
+        label: 'Jami savdo',
+        value: formatShiftMoney(analytics['total_payment'] ?? analytics['total_sales']),
+      ),
+      ...paymentTypes.map(
+        (p) => (
+          label: (p['payment_method'] ?? p['name'] ?? '—').toString(),
+          value: formatShiftMoney(p['total_amount'] ?? p['amount']),
+        ),
+      ),
+    ];
+    final cashRows = <({String label, String value})>[
+      (
+        label: 'Kassa kirim',
+        value: formatShiftMoney(analytics['total_incomes']),
+      ),
+      (
+        label: 'Kassa chiqim',
+        value: formatShiftMoney(analytics['total_expenses']),
+      ),
+    ];
+    final cols = ThermalReceiptLineWrap.equalsColumnWidths([...salesRows, ...cashRows]);
+
+    equalsRows(
+      salesRows,
+      boldIndices: const {0},
+      labelWidth: cols.labelWidth,
+      valueWidth: cols.valueWidth,
     );
-    for (final p in paymentTypes) {
-      twoCol(
-        (p['payment_method'] ?? p['name'] ?? '—').toString(),
-        formatShiftMoney(p['total_amount'] ?? p['amount']),
-      );
-    }
 
     lines.add(sep);
-    twoCol('Kassa kirim', formatShiftMoney(analytics['total_incomes']));
-    twoCol('Kassa chiqim', formatShiftMoney(analytics['total_expenses']));
-
-    lines.add('');
-    center('---');
+    equalsRows(
+      cashRows,
+      labelWidth: cols.labelWidth,
+      valueWidth: cols.valueWidth,
+    );
 
     return ThermalReceiptLineWrap.wrapAll(lines);
   }

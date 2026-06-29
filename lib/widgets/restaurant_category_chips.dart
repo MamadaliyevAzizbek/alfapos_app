@@ -18,7 +18,7 @@ class RestaurantCategoryChips extends StatelessWidget {
   });
 
   static const Color _chipBorder = Color(0xFFDDE5F0);
-  static const double _chipHeight = 48;
+  static const double _chipHeight = 56;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +65,7 @@ class RestaurantCategoryChips extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.zero,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
@@ -74,17 +74,16 @@ class RestaurantCategoryChips extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? AppTheme.primary : Colors.white,
-            borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: selected ? AppTheme.primary : _chipBorder,
               width: 1.2,
             ),
-            boxShadow: selected
+              boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.2),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      blurRadius: 0,
+                      offset: const Offset(0, 1),
                     ),
                   ]
                 : null,

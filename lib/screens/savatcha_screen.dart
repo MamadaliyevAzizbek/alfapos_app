@@ -184,9 +184,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       setState(() {
         _desktopSalesLayoutMode = mode;
         _restaurantCategoryId = null;
-        if (mode == DesktopSalesLayoutMode.restaurant) {
-          _isReturnMode = false;
-        }
       });
     }
   }
@@ -1618,6 +1615,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             onSelected: _onCustomerSelected,
             onAddNew: () => _addCustomer(context),
             iconOnlyAddButton: true,
+            sharpCorners: true,
             searchFocusNode: _customerSearchFocus,
             shortcutKeyLabel: SalesKeyboardShortcutsSettings.resolveKeyLabel(
               _shortcutKeys,

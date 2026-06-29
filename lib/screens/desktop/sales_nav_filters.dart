@@ -131,8 +131,8 @@ class SalesFilterDropdownField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = switch (size) {
-      SalesFilterDropdownSize.compact => 8.0,
-      SalesFilterDropdownSize.navbar => 12.0,
+      SalesFilterDropdownSize.compact => 0.0,
+      SalesFilterDropdownSize.navbar => 0.0,
       SalesFilterDropdownSize.normal => 14.0,
     };
     final labelSize = switch (size) {

@@ -15,10 +15,14 @@ class PrinterSettings {
   static const _autoPrintKey = 'thermal_auto_print_v1';
   static const _cashDrawerKey = 'thermal_cash_drawer_open_v1';
   static const _cashDrawerPinKey = 'thermal_cash_drawer_pin_v1';
+  static const _secondaryPrinterEnabledKey = 'thermal_secondary_printer_enabled_v1';
+  static const _secondaryPrinterNameKey = 'thermal_secondary_printer_name_v1';
   static bool? _autoPrintCache;
   static bool? _cashDrawerCache;
   static CashDrawerPin? _cashDrawerPinCache;
   static String? _printerNameCache;
+  static bool? _secondaryPrinterEnabledCache;
+  static String? _secondaryPrinterNameCache;
 
   /// To'lov oynasi ochilganda — keyingi chop etish SharedPreferences kutmaydi.
   static Future<void> preload() async {
@@ -29,6 +33,11 @@ class PrinterSettings {
     _printerNameCache = prefs.getString('thermal_printer_name_v1')?.trim();
     if (_printerNameCache != null && _printerNameCache!.isEmpty) {
       _printerNameCache = null;
+    }
+    _secondaryPrinterEnabledCache = prefs.getBool(_secondaryPrinterEnabledKey) ?? false;
+    _secondaryPrinterNameCache = prefs.getString(_secondaryPrinterNameKey)?.trim();
+    if (_secondaryPrinterNameCache != null && _secondaryPrinterNameCache!.isEmpty) {
+      _secondaryPrinterNameCache = null;
     }
     await ThermalReceiptPrinter.warmup();
   }
@@ -43,6 +52,56 @@ class PrinterSettings {
       _printerNameCache = name.trim();
       await ThermalReceiptPrinter.rememberPrinterName(name.trim());
     }
+  }
+
+  static Future<bool> isSecondaryPrinterEnabled() async {
+    if (_secondaryPrinterEnabledCache != null) return _secondaryPrinterEnabledCache!;
+    final prefs = await SharedPreferences.getInstance();
+    _secondaryPrinterEnabledCache = prefs.getBool(_secondaryPrinterEnabledKey) ?? false;
+    return _secondaryPrinterEnabledCache!;
+  }
+
+  static Future<void> setSecondaryPrinterEnabled(bool value) async {
+    _secondaryPrinterEnabledCache = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_secondaryPrinterEnabledKey, value);
+  }
+
+  static Future<String?> secondaryPrinterName() async {
+    final cached = _secondaryPrinterNameCache?.trim();
+    if (cached != null && cached.isNotEmpty) return cached;
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_secondaryPrinterNameKey)?.trim();
+    if (name == null || name.isEmpty) return null;
+    _secondaryPrinterNameCache = name;
+    return name;
+  }
+
+  static Future<void> setSecondaryPrinterName(String? name) async {
+    if (name == null || name.trim().isEmpty) {
+      _secondaryPrinterNameCache = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_secondaryPrinterNameKey);
+    } else {
+      _secondaryPrinterNameCache = name.trim();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_secondaryPrinterNameKey, name.trim());
+    }
+  }
+
+  /// Asosiy va (yoqilgan bo‘lsa) qo‘shimcha printer nomlari.
+  static Future<List<String>> activePrinterNames() async {
+    final primary = (await selectedPrinterName())?.trim();
+    if (primary == null || primary.isEmpty) return const [];
+
+    final names = <String>[primary];
+    if (!await isSecondaryPrinterEnabled()) return names;
+
+    final secondary = (await secondaryPrinterName())?.trim();
+    if (secondary == null || secondary.isEmpty || secondary == primary) return names;
+
+    names.add(secondary);
+    return names;
   }
 
   static Future<bool> isAutoPrintEnabled() async {

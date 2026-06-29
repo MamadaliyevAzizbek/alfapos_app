@@ -18,8 +18,12 @@ import 'sales_window_tabs.dart';
 /// Windows / macOS POS: katalog chapda, savatcha o‘ngda (veb POS ko‘rinishi).
 class SavatchaDesktopLayout extends StatelessWidget {
   static const Color _panelBg = Color(0xFFF0F2F5);
-  static const Color _totalBar = Color(0xFF2D3446);
+  static const Color _totalBar = Color(0xFF3C3F4B);
   static const Color _priceGreen = Color(0xFF16A34A);
+  static const Color _paymentBlue = Color(0xFF80A4FF);
+  static const BorderRadius _sharp = BorderRadius.zero;
+  static const double _navRadius = 8;
+  static const BorderRadius _navCorners = BorderRadius.all(Radius.circular(_navRadius));
 
   final TextEditingController searchController;
   final FocusNode? catalogSearchFocus;
@@ -234,11 +238,14 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   static const Color _navBlue = AppTheme.primary;
   static const Color _navInactive = Color(0xFF64748B);
+  static const double _navBtnHeight = 40;
 
-  ButtonStyle get _navLinkStyle => TextButton.styleFrom(
+  ButtonStyle _navTextBtnStyle({bool compact = false}) => TextButton.styleFrom(
         foregroundColor: _navInactive,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
+        minimumSize: const Size(0, _navBtnHeight),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: compact ? 14 : 15),
       );
 
   Widget _buildTopBar(BuildContext context) {
@@ -296,72 +303,37 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 
   Widget _buildTopBarLeading({required bool compact}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (onOpenSectionMenu != null) ...[
-          IconButton(
-            tooltip: 'Bo\'limlar',
-            onPressed: onOpenSectionMenu,
-            visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.menu_rounded, size: compact ? 24 : 26, color: AppTheme.textPrimary),
-          ),
-          SizedBox(width: compact ? 4 : 8),
-        ],
-        Text(
-          "Sotuv bo'limi",
-          style: TextStyle(
-            fontSize: compact ? 16 : 18,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        SizedBox(width: compact ? 12 : 16),
-        Icon(Icons.point_of_sale_rounded, color: _navBlue, size: compact ? 20 : 22),
-        const SizedBox(width: 6),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: compact ? 110 : 140),
-          child: Text(
-            cashRegisterLabel,
-            style: TextStyle(
-              fontSize: compact ? 14 : 15,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textPrimary,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
+    if (onOpenSectionMenu == null) return const SizedBox.shrink();
+    return IconButton(
+      tooltip: 'Bo\'limlar',
+      onPressed: onOpenSectionMenu,
+      visualDensity: VisualDensity.compact,
+      icon: Icon(Icons.menu_rounded, size: compact ? 26 : 28, color: _navBlue),
     );
   }
 
   Widget _buildTopBarActions({required bool compact}) {
-    final linkStyle = compact
-        ? _navLinkStyle.copyWith(
-            padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
-            textStyle: WidgetStateProperty.all(const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          )
-        : _navLinkStyle;
-
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        if (onReturnModeChanged != null && !_isRestaurantMode) _buildPosModeNavCards(compact: compact),
-        if (onOpenShiftDashboard != null)
-          TextButton.icon(
-            onPressed: onOpenShiftDashboard,
-            style: linkStyle,
-            icon: Icon(Icons.account_balance_wallet_outlined, size: compact ? 20 : 22, color: _navInactive),
-            label: const Text('Kassa smenasi'),
+        if (onReturnModeChanged != null) _buildPosModeNavCards(compact: compact),
+        if (onSalesList != null) ...[
+          SizedBox(width: compact ? 8 : 10),
+          SizedBox(
+            height: _navBtnHeight,
+            child: TextButton.icon(
+              onPressed: onSalesList,
+              style: _navTextBtnStyle(compact: compact),
+              icon: Icon(Icons.list_alt_rounded, size: compact ? 18 : 20, color: _navInactive),
+              label: Text("Sotish ro'yxati", style: TextStyle(fontSize: compact ? 14 : 15)),
+            ),
           ),
-        if (onSalesList != null)
-          TextButton.icon(
-            onPressed: onSalesList,
-            style: linkStyle,
-            icon: Icon(Icons.list_alt_rounded, size: compact ? 20 : 22, color: _navInactive),
-            label: const Text("Sotish ro'yxati"),
-          ),
-        if (onGlobalSync != null)
+        ],
+        SizedBox(width: compact ? 8 : 10),
+        _navCashRegisterButton(compact: compact),
+        if (onGlobalSync != null) ...[
+          const SizedBox(width: 4),
           IconButton(
             tooltip: 'Sinxronlash',
             onPressed: globalSyncing ? null : onGlobalSync,
@@ -373,12 +345,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   )
                 : Icon(Icons.sync_rounded, size: compact ? 22 : 24, color: const Color(0xFF2563EB)),
           ),
+        ],
         if (onLogout != null)
           PopupMenuButton<String>(
             tooltip: 'Hisob',
             offset: const Offset(0, 48),
             color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: const RoundedRectangleBorder(borderRadius: _sharp),
             icon: Icon(Icons.person_outline_rounded, color: _navBlue, size: compact ? 24 : 26),
             onSelected: (value) {
               if (value == 'logout') onLogout!();
@@ -400,6 +373,37 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
+  Widget _navCashRegisterButton({required bool compact}) {
+    return Tooltip(
+      message: 'Kassa smenasi',
+      child: SizedBox(
+        height: _navBtnHeight,
+        child: OutlinedButton.icon(
+          onPressed: onOpenShiftDashboard,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _navInactive,
+            backgroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
+            minimumSize: const Size(0, _navBtnHeight),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            side: const BorderSide(color: Color(0xFFDDE5F0)),
+            shape: const RoundedRectangleBorder(borderRadius: _navCorners),
+          ),
+          icon: Icon(Icons.point_of_sale_outlined, size: compact ? 18 : 20, color: _navInactive),
+          label: Text(
+            cashRegisterLabel,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 14 : 15,
+              fontWeight: FontWeight.w600,
+              color: _navInactive,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPosModeNavCards({bool compact = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -411,7 +415,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           onTap: () => onReturnModeChanged?.call(false),
           compact: compact,
         ),
-        SizedBox(width: compact ? 8 : 12),
+        SizedBox(width: compact ? 10 : 14),
         _navModeCard(
           label: 'Qaytarishlar',
           icon: Icons.replay_rounded,
@@ -431,45 +435,56 @@ class SavatchaDesktopLayout extends StatelessWidget {
     bool compact = false,
   }) {
     if (selected) {
-      return Material(
-        elevation: 3,
-        shadowColor: _navBlue.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(10),
-        color: _navBlue,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 16, vertical: compact ? 9 : 10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: Colors.white, size: compact ? 18 : 20),
-                SizedBox(width: compact ? 6 : 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: compact ? 14 : 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+      return SizedBox(
+        height: _navBtnHeight,
+        child: Material(
+          elevation: 2,
+          shadowColor: _navBlue.withValues(alpha: 0.28),
+          borderRadius: _navCorners,
+          color: _navBlue,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: _navCorners,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 16),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: Colors.white, size: compact ? 18 : 20),
+                  SizedBox(width: compact ? 6 : 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: compact ? 14 : 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       );
     }
 
-    return TextButton.icon(
-      onPressed: onTap,
-      style: compact
-          ? _navLinkStyle.copyWith(
-              padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
-            )
-          : _navLinkStyle,
-      icon: Icon(icon, size: compact ? 20 : 22, color: _navInactive),
-      label: Text(label, style: TextStyle(fontSize: compact ? 14 : 15)),
+    return SizedBox(
+      height: _navBtnHeight,
+      child: TextButton.icon(
+        onPressed: onTap,
+        style: _navTextBtnStyle(compact: compact).copyWith(
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+        ),
+        icon: Icon(icon, size: compact ? 18 : 20, color: _navInactive),
+        label: Text(
+          label,
+          style: TextStyle(
+            fontSize: compact ? 14 : 15,
+            fontWeight: FontWeight.w600,
+            color: _navInactive,
+          ),
+        ),
+      ),
     );
   }
 
@@ -525,13 +540,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       filled: true,
                       fillColor: Colors.white,
                       prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppTheme.divider),
+                      enabledBorder: const OutlineInputBorder(
+                        borderRadius: _sharp,
+                        borderSide: BorderSide(color: AppTheme.divider),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+                      focusedBorder: const OutlineInputBorder(
+                        borderRadius: _sharp,
+                        borderSide: BorderSide(color: AppTheme.primary, width: 2),
                       ),
                       contentPadding: const EdgeInsets.fromLTRB(0, 14, 40, 14),
                     ),
@@ -637,7 +652,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: _sharp,
             border: Border.all(color: AppTheme.divider),
           ),
           child: DropdownButtonHideUnderline(
@@ -673,7 +688,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: _sharp,
           border: Border.all(color: AppTheme.divider),
         ),
         alignment: Alignment.centerLeft,
@@ -689,16 +704,16 @@ class SavatchaDesktopLayout extends StatelessWidget {
   Widget _buildCatalogFilterButton() {
     return Material(
       color: const Color(0xFFEAF2FF),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: _sharp,
       child: InkWell(
         onTap: onFilterTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: _sharp,
         child: Container(
           width: 48,
           height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: _sharp,
             border: Border.all(color: const Color(0xFF93C5FD), width: 1.3),
           ),
           child: Stack(
@@ -744,16 +759,16 @@ class SavatchaDesktopLayout extends StatelessWidget {
                     const SizedBox(width: 8),
                     Material(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: _sharp,
                       child: InkWell(
                         onTap: onClearCart,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: _sharp,
                         child: Container(
                           width: 48,
                           height: 48,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: _sharp,
                             border: Border.all(color: Colors.red.shade200),
                           ),
                           child: Icon(Icons.delete_outline_rounded, size: 22, color: Colors.red.shade400),
@@ -766,10 +781,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF3E0),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFFCC80)),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFFF3E0),
+                      border: Border.fromBorderSide(BorderSide(color: Color(0xFFFFCC80))),
                     ),
                     child: const Text(
                       'Mahsulot tanlang va qaytarish qiling. Mijoz tanlab «Qarz» to\'lovi bilan qaytarilsa, qarzi kamayadi.',
@@ -822,12 +836,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   ),
           ),
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            decoration: BoxDecoration(
-              color: _totalBar,
-              borderRadius: BorderRadius.circular(6),
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            color: _totalBar,
             child: Row(
               children: [
                 Row(
@@ -837,7 +847,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   children: [
                     Text(
                       isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
                     ),
                     if (!isReturnMode) ...[
                       const SizedBox(width: 6),
@@ -863,15 +873,15 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       ),
                     Text(
                       formatThousands(cartGrandTotal),
-                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700),
+                      style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700),
                     ),
                     if (showCartProfit && !isReturnMode) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         _cartProfitPercentLabel(),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.78),
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -881,60 +891,36 @@ class SavatchaDesktopLayout extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
+          ColoredBox(
+            color: Colors.white,
             child: SizedBox(
-              height: 88,
+              height: 84,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!isReturnMode) _footerSavedOrdersAction(),
-                  if (!isReturnMode)
+                  if (!isReturnMode) ...[
+                    _footerSavedOrdersAction(),
+                    _footerDivider(),
                     _footerAction(
-                      Icons.pause_circle_outline_rounded,
+                      Icons.pause_rounded,
                       "To'xtatish",
                       cartItems.isEmpty || holdCartInFlight ? null : onHoldCart,
                       tooltip: holdCartInFlight ? 'Saqlanmoqda...' : 'Buyurtmani saqlash',
                       loading: holdCartInFlight,
                     ),
-                  if (!isReturnMode) _footerAction(Icons.percent_rounded, 'Chegirma', onDiscount),
-                  _footerAction(Icons.send_rounded, 'Kunlik hisobot', onDailyReport),
+                    _footerDivider(),
+                    _footerAction(Icons.percent_rounded, 'Chegirma', onDiscount),
+                    _footerDivider(),
+                  ],
+                  _footerAction(
+                    Icons.send_outlined,
+                    'Kunlik hisobot',
+                    onDailyReport,
+                    iconColor: const Color(0xFF26A69A),
+                  ),
                   Expanded(
                     flex: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: Material(
-                        color: isReturnMode ? const Color(0xFFE65100) : AppTheme.primary,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
-                          onTap: cartItems.isEmpty ? null : onPayment,
-                          borderRadius: BorderRadius.circular(10),
-                          child: Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  isReturnMode ? 'Qaytarish qilish' : "To'lov qilish",
-                                  style: TextStyle(
-                                    color: cartItems.isEmpty ? Colors.white54 : Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 17,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Icon(
-                                  isReturnMode
-                                      ? Icons.assignment_return_rounded
-                                      : Icons.keyboard_double_arrow_right_rounded,
-                                  size: 26,
-                                  color: cartItems.isEmpty ? Colors.white54 : Colors.white,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    child: _footerPaymentButton(),
                   ),
                 ],
               ),
@@ -945,24 +931,69 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
+  Widget _footerDivider() => const ColoredBox(
+        color: Color(0xFFE2E8F0),
+        child: SizedBox(width: 1),
+      );
+
+  Widget _footerPaymentButton() {
+    final enabled = cartItems.isNotEmpty;
+    final bg = isReturnMode ? const Color(0xFFE65100) : _paymentBlue;
+    final fg = enabled ? Colors.white : Colors.white54;
+
+    return Material(
+      color: bg,
+      child: InkWell(
+        onTap: enabled ? onPayment : null,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: fg, width: 2),
+              ),
+              child: Icon(
+                isReturnMode ? Icons.assignment_return_rounded : Icons.keyboard_double_arrow_right_rounded,
+                size: 20,
+                color: fg,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isReturnMode ? 'Qaytarish qilish' : "To'lov qilish",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: fg,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _footerSavedOrdersAction() {
     return Expanded(
       child: Tooltip(
         message: "Saqlangan buyurtmalar ro'yxati",
         child: Material(
-          color: Colors.transparent,
+          color: Colors.white,
           child: InkWell(
             onTap: onOpenSavedOrders,
-            borderRadius: BorderRadius.circular(8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      const Icon(Icons.recycling_rounded, size: 28, color: AppTheme.textSecondary),
+                      const Icon(Icons.recycling_rounded, size: 26, color: AppTheme.primary),
                       if (savedOrdersCount > 0)
                         Positioned(
                           right: -8,
@@ -987,7 +1018,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   const Text(
                     'Savatcha',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
                   ),
                 ],
               ),
@@ -1004,34 +1035,35 @@ class SavatchaDesktopLayout extends StatelessWidget {
     VoidCallback? onTap, {
     String? tooltip,
     bool loading = false,
+    Color? iconColor,
   }) {
     final enabled = onTap != null && !loading;
-    final fg = enabled ? AppTheme.textSecondary : AppTheme.textSecondary.withValues(alpha: 0.4);
+    final fg = iconColor ?? (enabled ? AppTheme.textSecondary : AppTheme.textSecondary.withValues(alpha: 0.4));
+    final textFg = enabled ? AppTheme.textSecondary : AppTheme.textSecondary.withValues(alpha: 0.4);
     final content = Material(
-      color: Colors.transparent,
+      color: Colors.white,
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (loading)
                 SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: fg),
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: textFg),
                 )
               else
-                Icon(icon, size: 28, color: fg),
+                Icon(icon, size: 26, color: fg),
               const SizedBox(height: 6),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: fg),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textFg),
               ),
             ],
           ),
@@ -1081,13 +1113,12 @@ class _DesktopProductCard extends StatelessWidget {
       color: Colors.white,
       elevation: 0,
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: AppTheme.divider),
+      shape: const RoundedRectangleBorder(
+        borderRadius: SavatchaDesktopLayout._sharp,
+        side: BorderSide(color: AppTheme.divider),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1392,17 +1423,17 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppTheme.divider),
+              border: const OutlineInputBorder(
+                borderRadius: SavatchaDesktopLayout._sharp,
+                borderSide: BorderSide(color: AppTheme.divider),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppTheme.divider),
+              enabledBorder: const OutlineInputBorder(
+                borderRadius: SavatchaDesktopLayout._sharp,
+                borderSide: BorderSide(color: AppTheme.divider),
               ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+              focusedBorder: const OutlineInputBorder(
+                borderRadius: SavatchaDesktopLayout._sharp,
+                borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
               ),
             ),
             onChanged: _applyQuantityInput,
@@ -1503,17 +1534,17 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
             filled: true,
             fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppTheme.divider),
+            border: const OutlineInputBorder(
+              borderRadius: SavatchaDesktopLayout._sharp,
+              borderSide: BorderSide(color: AppTheme.divider),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppTheme.divider),
+            enabledBorder: const OutlineInputBorder(
+              borderRadius: SavatchaDesktopLayout._sharp,
+              borderSide: BorderSide(color: AppTheme.divider),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+            focusedBorder: const OutlineInputBorder(
+              borderRadius: SavatchaDesktopLayout._sharp,
+              borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
             ),
           ),
           onChanged: _applyPriceInput,
@@ -1608,15 +1639,13 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   }) {
     return Material(
       color: selected ? AppTheme.primary.withValues(alpha: 0.06) : Colors.white,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: SavatchaDesktopLayout._sharp,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
         child: Container(
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: selected ? AppTheme.primary : AppTheme.divider,
               width: selected ? 1.5 : 1,
@@ -1658,7 +1687,6 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
         child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: widget.expanded ? AppTheme.primary.withValues(alpha: 0.35) : AppTheme.divider,
           ),
@@ -1672,10 +1700,6 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 onTap: widget.onToggleExpand,
                 splashFactory: NoSplash.splashFactory,
                 highlightColor: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.vertical(
-                  top: const Radius.circular(8),
-                  bottom: Radius.circular(widget.expanded ? 0 : 8),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
                   child: Row(
@@ -1719,7 +1743,6 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                 decoration: const BoxDecoration(
                   color: Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(7)),
                   border: Border(top: BorderSide(color: AppTheme.divider)),
                 ),
                 child: Column(

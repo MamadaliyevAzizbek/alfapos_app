@@ -128,6 +128,72 @@ class ThermalReceiptLineWrap {
     return '${left.padRight(leftMax)}${' ' * gap}${right.padLeft(rightWidth)}';
   }
 
+  static ({int labelWidth, int valueWidth}) equalsColumnWidths(
+    List<({String label, String value})> rows,
+  ) {
+    var labelW = 0;
+    var valueW = 0;
+    for (final r in rows) {
+      if (r.label.length > labelW) labelW = r.label.length;
+      if (r.value.length > valueW) valueW = r.value.length;
+    }
+    return (labelWidth: labelW, valueWidth: valueW.clamp(6, 18));
+  }
+
+  /// X-otchot: `Jami savdo = 64 000` — `=` belgisi va summalar tekis.
+  static List<String> formatEqualsRows(
+    List<({String label, String value})> rows, {
+    int totalWidth = kThermalChars80mm,
+    int compactWidth = ThermalReceiptCompactText.chars80mm,
+    Set<int> boldIndices = const {},
+    int? labelWidth,
+    int? valueWidth,
+  }) {
+    if (rows.isEmpty) return [];
+
+    const sep = ' = ';
+    const sepLen = 3;
+
+    var labelW = labelWidth ?? 0;
+    var valueW = valueWidth ?? 0;
+    if (labelWidth == null || valueWidth == null) {
+      for (final r in rows) {
+        if (r.label.length > labelW) labelW = r.label.length;
+        if (r.value.length > valueW) valueW = r.value.length;
+      }
+    }
+    valueW = valueW.clamp(6, 18);
+
+    var charWidth = totalWidth;
+    var compact = false;
+    if (labelW + sepLen + valueW > charWidth) {
+      charWidth = compactWidth;
+      compact = true;
+    }
+    if (labelW + sepLen + valueW > charWidth) {
+      labelW = (charWidth - sepLen - valueW).clamp(10, labelW);
+    }
+
+    final out = <String>[];
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      var label = r.label;
+      if (label.length > labelW) {
+        label = label.substring(0, labelW);
+      }
+      final text = '${label.padRight(labelW)}$sep${r.value.padLeft(valueW)}';
+      final bold = boldIndices.contains(i);
+      if (compact) {
+        out.add(
+          bold ? ThermalReceiptCompactText.boldLine(text) : ThermalReceiptCompactText.line(text),
+        );
+      } else {
+        out.add(bold ? ThermalReceiptCompactText.boldLine(text) : text);
+      }
+    }
+    return out;
+  }
+
   /// Eski API — bitta qator (yangi formatTwoColumnRows ishlatiladi).
   static String formatTwoColumns(
     String left,

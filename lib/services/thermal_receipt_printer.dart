@@ -148,17 +148,72 @@ class ThermalReceiptPrinter {
             : 'Printer topilmadi',
       );
     }
-    final result = await RawPrinterSend.send(bytes, printerName: printer);
+
+    final targets = await PrinterSettings.activePrinterNames();
+    if (targets.isEmpty) {
+      return ThermalPrintResult.fail(
+        directOnly
+            ? 'Printer tanlanmagan. Sozlamalar → printerni tanlang.'
+            : 'Printer topilmadi',
+      );
+    }
+
+    final sends = <Future<ThermalPrintResult>>[];
+    for (final name in targets) {
+      final isPrimary = name == targets.first;
+      final payload = isPrimary
+          ? bytes
+          : await _buildEscPosBytes(
+              lines,
+              openCashDrawer: false,
+              design: design,
+            );
+      sends.add(RawPrinterSend.send(payload, printerName: name));
+    }
+
+    final results = await Future.wait(sends);
+    final result = _combinePrintResults(results, targets);
     if (result.ok) {
       await rememberPrinterName(printer);
+      final secondary = targets.length > 1 ? targets[1] : null;
+      if (secondary != null) {
+        await PrinterSettings.setSecondaryPrinterName(secondary);
+      }
     }
     if (kDebugMode) {
       // ignore: avoid_print
       print(
-        '[PrintPerf] printLocalReceipt build=${buildMs}ms send=${totalSw.elapsedMilliseconds - buildMs}ms total=${totalSw.elapsedMilliseconds}ms',
+        '[PrintPerf] printLocalReceipt build=${buildMs}ms send=${totalSw.elapsedMilliseconds - buildMs}ms total=${totalSw.elapsedMilliseconds}ms printers=${targets.length}',
       );
     }
     return result;
+  }
+
+  static ThermalPrintResult _combinePrintResults(
+    List<ThermalPrintResult> results,
+    List<String> printerNames,
+  ) {
+    if (results.isEmpty) {
+      return ThermalPrintResult.fail('Printer topilmadi');
+    }
+    if (results.every((r) => r.ok)) {
+      if (printerNames.length == 1) return results.first;
+      return ThermalPrintResult.ok(
+        'Chek yuborildi (${printerNames.join(', ')})',
+      );
+    }
+
+    final parts = <String>[];
+    for (var i = 0; i < results.length; i++) {
+      final name = i < printerNames.length ? printerNames[i] : 'Printer ${i + 1}';
+      final res = results[i];
+      if (!res.ok) parts.add('$name: ${res.message}');
+    }
+    final okCount = results.where((r) => r.ok).length;
+    if (okCount > 0) {
+      return ThermalPrintResult.fail('Qisman chop etildi — ${parts.join('; ')}');
+    }
+    return ThermalPrintResult.fail(parts.join('; '));
   }
 
   /// Mahalliy widget skrinshoti (oldindan chek va h.k.).

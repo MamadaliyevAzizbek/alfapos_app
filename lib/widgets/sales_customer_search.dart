@@ -16,6 +16,8 @@ class SalesCustomerSearch extends StatefulWidget {
   final bool largeButtons;
   /// POS savatcha: faqat «+» tugmasi (matnsiz).
   final bool iconOnlyAddButton;
+  /// Desktop sotuv: o‘tkir burchaklar (border-radius yo‘q).
+  final bool sharpCorners;
   /// Tashqi fokus (masalan F2 tezkor klavish).
   final FocusNode? searchFocusNode;
   /// Tezkor klavish belgisi (masalan F2).
@@ -28,6 +30,7 @@ class SalesCustomerSearch extends StatefulWidget {
     required this.onAddNew,
     this.largeButtons = false,
     this.iconOnlyAddButton = false,
+    this.sharpCorners = false,
     this.searchFocusNode,
     this.shortcutKeyLabel,
   });
@@ -122,9 +125,14 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final cornerRadius = widget.sharpCorners ? BorderRadius.zero : BorderRadius.circular(8);
+    final fieldFill = widget.sharpCorners ? Colors.white : const Color(0xFFF0F2F5);
+    final fieldBorder = widget.sharpCorners
+        ? const BorderSide(color: AppTheme.divider)
+        : BorderSide.none;
     final selected = widget.selected;
     if (selected != null) {
-      return _SelectedCustomerCard(client: selected, onClear: _clear);
+      return _SelectedCustomerCard(client: selected, onClear: _clear, borderRadius: cornerRadius);
     }
 
     return Column(
@@ -151,7 +159,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
                     decoration: InputDecoration(
                       hintText: 'Mijozlarni qidirish',
                       filled: true,
-                      fillColor: const Color(0xFFF0F2F5),
+                      fillColor: fieldFill,
                       prefixIcon: const Icon(Icons.person_search_rounded, color: AppTheme.textSecondary, size: 22),
                       suffixIcon: _loading
                           ? const Padding(
@@ -176,15 +184,15 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
                                 )
                               : null,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                        borderRadius: cornerRadius,
+                        borderSide: fieldBorder,
                       ),
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                        borderRadius: cornerRadius,
+                        borderSide: fieldBorder,
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: cornerRadius,
                         borderSide: const BorderSide(color: AppTheme.primary, width: 2),
                       ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
@@ -203,7 +211,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
                       style: FilledButton.styleFrom(
                         padding: EdgeInsets.zero,
                         minimumSize: Size(_fieldHeight, _fieldHeight),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(borderRadius: cornerRadius),
                         elevation: 0,
                       ),
                       child: Icon(Icons.person_add_alt_1_rounded, size: widget.largeButtons ? 22 : 20),
@@ -221,7 +229,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
                       style: FilledButton.styleFrom(
                         padding: EdgeInsets.symmetric(horizontal: widget.largeButtons ? 18 : 14),
                         minimumSize: widget.largeButtons ? const Size(0, 52) : null,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        shape: RoundedRectangleBorder(borderRadius: cornerRadius),
                         elevation: 0,
                       ),
                     ),
@@ -234,7 +242,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
             constraints: const BoxConstraints(maxHeight: 240),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: cornerRadius,
               border: Border.all(color: AppTheme.divider),
               boxShadow: [
                 BoxShadow(
@@ -327,8 +335,13 @@ class _CustomerResultRow extends StatelessWidget {
 class _SelectedCustomerCard extends StatelessWidget {
   final Client client;
   final VoidCallback onClear;
+  final BorderRadius borderRadius;
 
-  const _SelectedCustomerCard({required this.client, required this.onClear});
+  const _SelectedCustomerCard({
+    required this.client,
+    required this.onClear,
+    this.borderRadius = const BorderRadius.all(Radius.circular(8)),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -336,7 +349,7 @@ class _SelectedCustomerCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: borderRadius,
         border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
       ),
       child: Row(
