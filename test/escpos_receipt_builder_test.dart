@@ -126,4 +126,14 @@ void main() {
     final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines);
     expect(bytes, isNotEmpty);
   });
+
+  test('standard receipt leaves extra bottom feed before cut', () async {
+    final bytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
+    );
+    final feedIndex = bytes.lastIndexOf(0x64);
+    expect(feedIndex, greaterThan(0));
+    expect(bytes[feedIndex - 1], 0x1B);
+    expect(bytes[feedIndex + 1], 4);
+  });
 }

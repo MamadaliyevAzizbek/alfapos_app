@@ -448,6 +448,9 @@ class ThermalReceiptFormatter {
       lines.add('');
       _appendLeftLine(lines, "To'lov hali amalga oshirilmagan");
     }
+
+    // Bottom buffer so the last total/footer line is fully advanced before cut.
+    lines.add('');
   }
 
   static bool _isTableHeaderBlock(List<String> raw, int i) {

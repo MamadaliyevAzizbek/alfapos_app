@@ -24,8 +24,11 @@ abstract class PrinterPaperProfile {
       ];
 
   /// Kesishdan oldin minimal feed (cut() ichidagi 5 qator emas).
-  static List<int> minimalCutBytes({bool partial = true}) => [
-        27, 100, 2, // ESC d 2
+  static List<int> minimalCutBytes({
+    bool partial = true,
+    int feedLines = 2,
+  }) => [
+        27, 100, feedLines.clamp(0, 255), // ESC d n
         if (partial) ...[29, 86, 1] else ...[29, 86, 0], // GS V 1 yoki GS V 0
       ];
 }

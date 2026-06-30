@@ -147,6 +147,25 @@ void main() {
     expect(dashPositions.length, 1);
   });
 
+  test('receipt lines end with bottom buffer after total', () {
+    final lines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: 'AI-CHA',
+        dateTime: DateTime(2026, 6, 30, 14, 25, 31),
+        receiptNumber: 'POS258512',
+        sellerName: 'Kassir',
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '1'),
+        ],
+        totalAmount: '1',
+      ),
+    );
+
+    expect(lines, isNotEmpty);
+    expect(lines.last, isEmpty);
+    expect(lines.any((l) => l.contains('Umumiy summa')), isTrue);
+  });
+
   test('restaurant layout matches shop receipt with queue number only', () {
     final config = ReceiptDesignConfig.defaults.copyWith(
       showRestaurantQueueNumber: true,

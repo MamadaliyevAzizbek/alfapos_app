@@ -17,6 +17,9 @@ import 'printer_paper_profile.dart';
 class EscPosReceiptBuilder {
   EscPosReceiptBuilder._();
 
+  static const int _standardBottomFeedLines = 4;
+  static const int _compactBottomFeedLines = 3;
+
   static CapabilityProfile? _cachedProfile;
   static String? _cachedLogoPath;
   static img.Image? _cachedLogoImage;
@@ -237,9 +240,14 @@ class EscPosReceiptBuilder {
     }
 
     if (compactLayout) {
-      bytes.addAll(PrinterPaperProfile.minimalCutBytes());
+      bytes.addAll(
+        PrinterPaperProfile.minimalCutBytes(
+          feedLines: _compactBottomFeedLines,
+        ),
+      );
     } else {
-      bytes.addAll(g.feed(2));
+      // Totals/footer sometimes reached the cutter too early on some XPrinter models.
+      bytes.addAll(g.feed(_standardBottomFeedLines));
       bytes.addAll(g.cut());
     }
     return bytes;
