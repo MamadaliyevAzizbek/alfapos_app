@@ -30,6 +30,16 @@ class EscPosReceiptBuilder {
     await _profile();
   }
 
+  /// Faqat naqd qutisini ochish (chekdan alohida — ikki printerda ishonchli ishlaydi).
+  static Future<List<int>> buildCashDrawerPulse({
+    PosDrawer cashDrawerPin = PosDrawer.pin2,
+    PaperSize paperSize = PaperSize.mm80,
+  }) async {
+    final profile = await _profile();
+    final g = Generator(paperSize, profile, spaceBetweenRows: 0);
+    return <int>[...g.reset(), ...g.drawer(pin: cashDrawerPin)];
+  }
+
   static Future<List<int>> buildFromLines(
     List<String> lines, {
     PaperSize paperSize = PaperSize.mm80,

@@ -382,40 +382,62 @@ class ThermalReceiptFormatter {
       return _withSom(formatted, suffix: config.currencySuffix);
     }
 
+    const summarySep = ' - ';
+    final summaryRows = <({String label, String value})>[];
+
     if (!d.isPrecheck) {
       for (final pay in d.payments) {
-        lines.addAll(
-          ThermalReceiptLineWrap.formatTwoColumnRows(
-            pay.method,
-            amountLabel(pay.amount),
-            rightWidth: kReceiptAmountColumnWidth,
-          ),
-        );
+        summaryRows.add((label: pay.method, value: amountLabel(pay.amount)));
       }
     }
 
     final discountValue = formatAmountForReceipt(d.discountAmount);
     if (discountValue != '0' && discountValue.isNotEmpty) {
+      summaryRows.add((label: config.discountLabel, value: amountLabel(d.discountAmount)));
+    }
+
+    if (summaryRows.isNotEmpty) {
+      final totalRows = <({String label, String value})>[
+        (label: config.totalLabel, value: amountLabel(d.totalAmount)),
+      ];
+      final cols = ThermalReceiptLineWrap.equalsColumnWidths([...summaryRows, ...totalRows]);
       lines.addAll(
-        ThermalReceiptLineWrap.formatTwoColumnRows(
-          config.discountLabel,
-          amountLabel(d.discountAmount),
-          rightWidth: kReceiptAmountColumnWidth,
+        ThermalReceiptLineWrap.formatEqualsRows(
+          summaryRows,
+          separator: summarySep,
+          labelWidth: cols.labelWidth,
+          valueWidth: cols.valueWidth,
         ),
       );
+
       if (config.showItemSeparator) {
         lines.add(sep);
       }
-    } else if (config.showItemSeparator) {
-      lines.add(sep);
+
+      lines.addAll(
+        ThermalReceiptLineWrap.formatEqualsRows(
+          totalRows,
+          separator: summarySep,
+          labelWidth: cols.labelWidth,
+          valueWidth: cols.valueWidth,
+          boldIndices: const {0},
+        ),
+      );
+    } else {
+      final totalRows = <({String label, String value})>[
+        (label: config.totalLabel, value: amountLabel(d.totalAmount)),
+      ];
+      if (config.showItemSeparator) {
+        lines.add(sep);
+      }
+      lines.addAll(
+        ThermalReceiptLineWrap.formatEqualsRows(
+          totalRows,
+          separator: summarySep,
+          boldIndices: const {0},
+        ),
+      );
     }
-    lines.addAll(
-      ThermalReceiptLineWrap.formatTwoColumnRows(
-        config.totalLabel,
-        amountLabel(d.totalAmount),
-        rightWidth: kReceiptAmountColumnWidth,
-      ),
-    );
 
     if (config.showFooter && config.footerText.trim().isNotEmpty) {
       lines.add('');

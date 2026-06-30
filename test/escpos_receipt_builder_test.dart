@@ -97,6 +97,15 @@ void main() {
     expect(withDrawer.length, greaterThan(withoutDrawer.length));
   });
 
+  test('standalone cash drawer pulse builds ESC/POS bytes', () async {
+    final pulse = await EscPosReceiptBuilder.buildCashDrawerPulse(
+      cashDrawerPin: PosDrawer.pin2,
+    );
+    expect(pulse, isNotEmpty);
+    expect(pulse.contains(0x1B), isTrue);
+    expect(pulse.contains(0x70), isTrue);
+  });
+
   test('compact auto-scale lines build for printer', () async {
     final lines = [
       ThermalReceiptCompactText.line(

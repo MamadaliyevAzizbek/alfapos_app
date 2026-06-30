@@ -110,6 +110,43 @@ void main() {
     );
   });
 
+  test('payment and total use aligned dash rows on receipt', () {
+    final lines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: 'AI-CHA',
+        dateTime: DateTime(2026, 6, 30, 14, 25, 31),
+        receiptNumber: 'POS258512',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Stakan 400g',
+            quantity: '1 шт',
+            unitPrice: '1',
+            lineTotal: '1',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '1'),
+        ],
+        totalAmount: '1',
+        queueNumber: 112,
+        isRestaurantLayout: true,
+      ),
+    );
+
+    String plain(String line) => ThermalReceiptCompactText.isAnyCompactLine(line)
+        ? ThermalReceiptCompactText.unwrap(line)
+        : line;
+
+    final summary = lines.map(plain).where((l) => l.contains(' - ')).toList();
+    expect(summary.length, greaterThanOrEqualTo(2));
+    expect(summary.any((l) => l.contains('Naqd pul') && l.contains('1')), isTrue);
+    expect(summary.any((l) => l.contains('Umumiy summa') && l.contains('1')), isTrue);
+
+    final dashPositions = summary.map((l) => l.indexOf(' - ')).toSet();
+    expect(dashPositions.length, 1);
+  });
+
   test('restaurant layout matches shop receipt with queue number only', () {
     final config = ReceiptDesignConfig.defaults.copyWith(
       showRestaurantQueueNumber: true,

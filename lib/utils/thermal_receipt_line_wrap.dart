@@ -140,7 +140,7 @@ class ThermalReceiptLineWrap {
     return (labelWidth: labelW, valueWidth: valueW.clamp(6, 18));
   }
 
-  /// X-otchot: `Jami savdo = 64 000` — `=` belgisi va summalar tekis.
+  /// Tekis qator: `Jami savdo = 64 000` yoki chekda `Naqd pul - 1 000`.
   static List<String> formatEqualsRows(
     List<({String label, String value})> rows, {
     int totalWidth = kThermalChars80mm,
@@ -148,11 +148,12 @@ class ThermalReceiptLineWrap {
     Set<int> boldIndices = const {},
     int? labelWidth,
     int? valueWidth,
+    String separator = ' = ',
   }) {
     if (rows.isEmpty) return [];
 
-    const sep = ' = ';
-    const sepLen = 3;
+    final sep = separator;
+    final sepLen = sep.length;
 
     var labelW = labelWidth ?? 0;
     var valueW = valueWidth ?? 0;

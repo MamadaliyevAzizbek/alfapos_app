@@ -133,12 +133,6 @@ class ThermalReceiptPrinter {
     ReceiptDesignConfig? design,
   }) async {
     final totalSw = Stopwatch()..start();
-    final bytes = await _buildEscPosBytes(
-      lines,
-      openCashDrawer: openCashDrawer,
-      design: design,
-    );
-    final buildMs = totalSw.elapsedMilliseconds;
     final printer =
         await savedPrinterName() ?? await _resolveSystemPrinterName();
     if (printer == null || printer.isEmpty) {
@@ -158,23 +152,42 @@ class ThermalReceiptPrinter {
       );
     }
 
-    final sends = <Future<ThermalPrintResult>>[];
-    for (final name in targets) {
-      final isPrimary = name == targets.first;
-      final payload = isPrimary
-          ? bytes
-          : await _buildEscPosBytes(
-              lines,
-              openCashDrawer: false,
-              design: design,
-            );
-      sends.add(RawPrinterSend.send(payload, printerName: name));
+    final drawerSettings = await Future.wait([
+      openCashDrawer != null
+          ? Future<bool>.value(openCashDrawer)
+          : PrinterSettings.isCashDrawerOpenOnPrintEnabled(),
+      PrinterSettings.cashDrawerPin(),
+      PrinterSettings.cashDrawerPrinterName(targets),
+    ]);
+    final drawerEnabled = drawerSettings[0] as bool;
+    final drawerPin = drawerSettings[1] as CashDrawerPin;
+    final drawerPrinter = drawerSettings[2] as String?;
+    final posPin =
+        drawerPin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
+
+    // Chekda drawer buyrug‘i yo‘q — alohida yuboriladi (parallel chopda yo‘qolmasligi uchun).
+    final receiptBytes = await _buildEscPosBytes(
+      lines,
+      openCashDrawer: false,
+      design: design,
+    );
+    final buildMs = totalSw.elapsedMilliseconds;
+
+    if (drawerEnabled && drawerPrinter != null && drawerPrinter.isNotEmpty) {
+      final pulse = await EscPosReceiptBuilder.buildCashDrawerPulse(
+        cashDrawerPin: posPin,
+      );
+      await RawPrinterSend.send(pulse, printerName: drawerPrinter);
     }
 
-    final results = await Future.wait(sends);
+    final results = <ThermalPrintResult>[];
+    for (final name in targets) {
+      results.add(await RawPrinterSend.send(receiptBytes, printerName: name));
+    }
+
     final result = _combinePrintResults(results, targets);
     if (result.ok) {
-      await rememberPrinterName(printer);
+      await rememberPrinterName(targets.first);
       final secondary = targets.length > 1 ? targets[1] : null;
       if (secondary != null) {
         await PrinterSettings.setSecondaryPrinterName(secondary);
@@ -183,7 +196,7 @@ class ThermalReceiptPrinter {
     if (kDebugMode) {
       // ignore: avoid_print
       print(
-        '[PrintPerf] printLocalReceipt build=${buildMs}ms send=${totalSw.elapsedMilliseconds - buildMs}ms total=${totalSw.elapsedMilliseconds}ms printers=${targets.length}',
+        '[PrintPerf] printLocalReceipt build=${buildMs}ms send=${totalSw.elapsedMilliseconds - buildMs}ms total=${totalSw.elapsedMilliseconds}ms printers=${targets.length} drawer=${drawerEnabled && drawerPrinter != null}',
       );
     }
     return result;

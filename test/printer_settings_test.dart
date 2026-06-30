@@ -7,6 +7,9 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await PrinterSettings.setSelectedPrinterName(null);
+    await PrinterSettings.setSecondaryPrinterEnabled(false);
+    await PrinterSettings.setSecondaryPrinterName(null);
   });
 
   test('cash drawer opens on print by default', () async {
@@ -18,9 +21,29 @@ void main() {
     expect(await PrinterSettings.isCashDrawerOpenOnPrintEnabled(), isFalse);
     await PrinterSettings.setCashDrawerPin(CashDrawerPin.pin5);
     expect(await PrinterSettings.cashDrawerPin(), CashDrawerPin.pin5);
+    await PrinterSettings.setCashDrawerPrinterTarget(CashDrawerPrinterTarget.secondary);
+    expect(await PrinterSettings.cashDrawerPrinterTarget(), CashDrawerPrinterTarget.secondary);
+  });
+
+  test('cash drawer printer resolves from active printers', () async {
+    await PrinterSettings.setSelectedPrinterName('Kassa XP-80');
+    await PrinterSettings.setSecondaryPrinterEnabled(true);
+    await PrinterSettings.setSecondaryPrinterName('Oshxona XP-80');
+    await PrinterSettings.setCashDrawerPrinterTarget(CashDrawerPrinterTarget.primary);
+    expect(
+      await PrinterSettings.cashDrawerPrinterName(['Kassa XP-80', 'Oshxona XP-80']),
+      'Kassa XP-80',
+    );
+    await PrinterSettings.setCashDrawerPrinterTarget(CashDrawerPrinterTarget.secondary);
+    expect(
+      await PrinterSettings.cashDrawerPrinterName(['Kassa XP-80', 'Oshxona XP-80']),
+      'Oshxona XP-80',
+    );
   });
 
   test('secondary printer setting persists', () async {
+    await PrinterSettings.setSecondaryPrinterEnabled(false);
+    await PrinterSettings.setSecondaryPrinterName(null);
     expect(await PrinterSettings.isSecondaryPrinterEnabled(), isFalse);
     await PrinterSettings.setSecondaryPrinterEnabled(true);
     await PrinterSettings.setSecondaryPrinterName('Kitchen XP-80');

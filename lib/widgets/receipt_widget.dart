@@ -327,56 +327,16 @@ class ReceiptWidget extends StatelessWidget {
             ],
             const SizedBox(height: 6),
           ],
-          if (!isPrecheck)
-            for (final row in paymentRows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(row.methodName, style: textStyle)),
-                    Text(
-                      _amountText(row.sum, som, isRestaurantLayout),
-                      style: textStyle,
-                      softWrap: false,
-                    ),
-                  ],
-                ),
-              ),
-          if (discount > 0) ...[
-            Row(
-              children: [
-                Expanded(child: Text(design.discountLabel, style: textStyle)),
-                Text(_amountText(discount, som, isRestaurantLayout), style: textStyle, softWrap: false),
-              ],
-            ),
-            if (design.showItemSeparator) ...[
-              const SizedBox(height: 4),
-              Text(
-                ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
-                style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
-              ),
-            ],
-          ] else if (design.showItemSeparator) ...[
-            const SizedBox(height: 4),
-            Text(
-              ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
-              style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
-            ),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  design.totalLabel,
-                  style: headerStyle,
-                ),
-              ),
-              Text(
-                _amountText(totalSum, som, isRestaurantLayout),
-                style: headerStyle,
-                softWrap: false,
-              ),
-            ],
+          ..._buildReceiptSummarySection(
+            design: design,
+            paymentRows: paymentRows,
+            discount: discount,
+            totalSum: totalSum,
+            som: som,
+            isPrecheck: isPrecheck,
+            isRestaurantLayout: isRestaurantLayout,
+            textStyle: textStyle,
+            headerStyle: headerStyle,
           ),
           if (!isPrecheck) ...[
             if (design.showBarcode) ...[
@@ -438,6 +398,88 @@ class ReceiptWidget extends StatelessWidget {
         decorationColor: Colors.grey.shade700,
         color: Colors.grey.shade600,
       );
+
+  static List<Widget> _buildReceiptSummarySection({
+    required ReceiptDesignConfig design,
+    required List<ReceiptPaymentRow> paymentRows,
+    required int discount,
+    required int totalSum,
+    required String som,
+    required bool isPrecheck,
+    required bool isRestaurantLayout,
+    required TextStyle textStyle,
+    required TextStyle headerStyle,
+  }) {
+    final summaryRows = <({String label, String value})>[
+      if (!isPrecheck)
+        for (final row in paymentRows)
+          (
+            label: row.methodName,
+            value: _amountText(row.sum, som, isRestaurantLayout),
+          ),
+      if (discount > 0)
+        (
+          label: design.discountLabel,
+          value: _amountText(discount, som, isRestaurantLayout),
+        ),
+    ];
+    final totalRow = (
+      label: design.totalLabel,
+      value: _amountText(totalSum, som, isRestaurantLayout),
+    );
+    final cols = summaryRows.isEmpty
+        ? ThermalReceiptLineWrap.equalsColumnWidths([totalRow])
+        : ThermalReceiptLineWrap.equalsColumnWidths([...summaryRows, totalRow]);
+
+    return [
+      if (summaryRows.isNotEmpty)
+        ..._buildSummaryLines(
+          summaryRows,
+          textStyle,
+          labelWidth: cols.labelWidth,
+          valueWidth: cols.valueWidth,
+        ),
+      if (design.showItemSeparator) ...[
+        const SizedBox(height: 4),
+        Text(
+          ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+          style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+        ),
+      ],
+      ..._buildSummaryLines(
+        [totalRow],
+        headerStyle,
+        labelWidth: cols.labelWidth,
+        valueWidth: cols.valueWidth,
+        bold: true,
+      ),
+    ];
+  }
+
+  static List<Widget> _buildSummaryLines(
+    List<({String label, String value})> rows,
+    TextStyle style, {
+    bool bold = false,
+    int? labelWidth,
+    int? valueWidth,
+  }) {
+    if (rows.isEmpty) return const [];
+    final cols = labelWidth != null && valueWidth != null
+        ? (labelWidth: labelWidth, valueWidth: valueWidth)
+        : ThermalReceiptLineWrap.equalsColumnWidths(rows);
+    final textStyle = bold ? style.copyWith(fontWeight: FontWeight.w700) : style;
+    return [
+      for (final row in rows)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Text(
+            '${row.label.padRight(cols.labelWidth)} - ${row.value.padLeft(cols.valueWidth)}',
+            style: textStyle,
+            softWrap: false,
+          ),
+        ),
+    ];
+  }
 
   static String _amountText(int amount, String som, bool restaurantLayout) {
     final formatted = _fmt(amount);

@@ -45,6 +45,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   bool _autoPrint = true;
   bool _openCashDrawerOnPrint = true;
   CashDrawerPin _cashDrawerPin = CashDrawerPin.pin2;
+  CashDrawerPrinterTarget _cashDrawerPrinterTarget = CashDrawerPrinterTarget.primary;
   bool _loading = true;
   bool _testing = false;
 
@@ -80,6 +81,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final auto = await PrinterSettings.isAutoPrintEnabled();
       final cashDrawer = await PrinterSettings.isCashDrawerOpenOnPrintEnabled();
       final drawerPin = await PrinterSettings.cashDrawerPin();
+      final drawerPrinterTarget = await PrinterSettings.cashDrawerPrinterTarget();
       final salesMode = await DesktopSalesLayoutSettings.getMode();
       final showSku = await ProductDisplaySettings.getShowSkuInTitle();
       final productSort = await ProductCatalogSortSettings.getMode();
@@ -99,6 +101,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _autoPrint = auto;
         _openCashDrawerOnPrint = cashDrawer;
         _cashDrawerPin = drawerPin;
+        _cashDrawerPrinterTarget = drawerPrinterTarget;
         _salesLayoutMode = salesMode;
         _showSkuInProductTitle = showSku;
         _productCatalogSortMode = productSort;
@@ -132,6 +135,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
     await PrinterSettings.setAutoPrintEnabled(_autoPrint);
     await PrinterSettings.setCashDrawerOpenOnPrintEnabled(_openCashDrawerOnPrint);
     await PrinterSettings.setCashDrawerPin(_cashDrawerPin);
+    await PrinterSettings.setCashDrawerPrinterTarget(_cashDrawerPrinterTarget);
     if (!mounted) return;
     AppNotify.success(context, 'Printer sozlamalari saqlandi');
   }
@@ -418,8 +422,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle: const Text(
-                  'To‘lovdan keyin bir xil chek asosiy va qo‘shimcha printerdan parallel chiqadi '
-                  '(masalan, kassa + oshxona). Naqd qutisi faqat asosiy printerda ochiladi.',
+                  'To‘lovdan keyin bir xil chek asosiy va qo‘shimcha printerdan ketma-ket chiqadi '
+                  '(masalan, kassa + oshxona). Naqd qutisi tanlangan printerda ochiladi.',
                   style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
                 ),
                 value: _secondaryPrinterEnabled,
@@ -518,6 +522,44 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                     setState(() => _cashDrawerPin = v.first);
                   },
                 ),
+                if (_secondaryPrinterEnabled && _secondarySelected != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Naqd qutisi qaysi printerda',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary.withValues(alpha: 0.85),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<CashDrawerPrinterTarget>(
+                    segments: const [
+                      ButtonSegment(
+                        value: CashDrawerPrinterTarget.primary,
+                        label: Text('Asosiy'),
+                      ),
+                      ButtonSegment(
+                        value: CashDrawerPrinterTarget.secondary,
+                        label: Text('Qo‘shimcha'),
+                      ),
+                    ],
+                    selected: {_cashDrawerPrinterTarget},
+                    onSelectionChanged: (v) {
+                      if (v.isEmpty) return;
+                      setState(() => _cashDrawerPrinterTarget = v.first);
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'DK/RJ kabeli ulangan printerni tanlang. Noto‘g‘ri tanlovda quti ochilmaydi.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary.withValues(alpha: 0.95),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
               ],
               const SizedBox(height: 20),
               Row(

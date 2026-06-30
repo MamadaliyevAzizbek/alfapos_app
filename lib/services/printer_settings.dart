@@ -8,6 +8,12 @@ enum CashDrawerPin {
   pin5,
 }
 
+/// Naqd qutisi qaysi printerga ulangan (DK/RJ port).
+enum CashDrawerPrinterTarget {
+  primary,
+  secondary,
+}
+
 /// Termal printer sozlamalari (SharedPreferences).
 class PrinterSettings {
   PrinterSettings._();
@@ -17,9 +23,11 @@ class PrinterSettings {
   static const _cashDrawerPinKey = 'thermal_cash_drawer_pin_v1';
   static const _secondaryPrinterEnabledKey = 'thermal_secondary_printer_enabled_v1';
   static const _secondaryPrinterNameKey = 'thermal_secondary_printer_name_v1';
+  static const _cashDrawerPrinterTargetKey = 'thermal_cash_drawer_printer_target_v1';
   static bool? _autoPrintCache;
   static bool? _cashDrawerCache;
   static CashDrawerPin? _cashDrawerPinCache;
+  static CashDrawerPrinterTarget? _cashDrawerPrinterTargetCache;
   static String? _printerNameCache;
   static bool? _secondaryPrinterEnabledCache;
   static String? _secondaryPrinterNameCache;
@@ -30,6 +38,8 @@ class PrinterSettings {
     _autoPrintCache = prefs.getBool(_autoPrintKey) ?? true;
     _cashDrawerCache = prefs.getBool(_cashDrawerKey) ?? true;
     _cashDrawerPinCache = _parseCashDrawerPin(prefs.getString(_cashDrawerPinKey));
+    _cashDrawerPrinterTargetCache =
+        _parseCashDrawerPrinterTarget(prefs.getString(_cashDrawerPrinterTargetKey));
     _printerNameCache = prefs.getString('thermal_printer_name_v1')?.trim();
     if (_printerNameCache != null && _printerNameCache!.isEmpty) {
       _printerNameCache = null;
@@ -147,9 +157,44 @@ class PrinterSettings {
     );
   }
 
+  /// Naqd qutisi qaysi printerda ochiladi (qo‘shimcha printer yoqilganda).
+  static Future<CashDrawerPrinterTarget> cashDrawerPrinterTarget() async {
+    if (_cashDrawerPrinterTargetCache != null) return _cashDrawerPrinterTargetCache!;
+    final prefs = await SharedPreferences.getInstance();
+    _cashDrawerPrinterTargetCache =
+        _parseCashDrawerPrinterTarget(prefs.getString(_cashDrawerPrinterTargetKey));
+    return _cashDrawerPrinterTargetCache!;
+  }
+
+  static Future<void> setCashDrawerPrinterTarget(CashDrawerPrinterTarget target) async {
+    _cashDrawerPrinterTargetCache = target;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _cashDrawerPrinterTargetKey,
+      target == CashDrawerPrinterTarget.secondary ? 'secondary' : 'primary',
+    );
+  }
+
+  /// [activePrinterNames] ro‘yxatidan naqd qutisi ochiladigan printerni tanlash.
+  static Future<String?> cashDrawerPrinterName(List<String> activePrinterNames) async {
+    if (activePrinterNames.isEmpty) return null;
+    final target = await cashDrawerPrinterTarget();
+    if (target == CashDrawerPrinterTarget.secondary && activePrinterNames.length > 1) {
+      return activePrinterNames[1];
+    }
+    return activePrinterNames.first;
+  }
+
   static CashDrawerPin _parseCashDrawerPin(String? raw) {
     if (raw?.trim().toLowerCase() == 'pin5') return CashDrawerPin.pin5;
     return CashDrawerPin.pin2;
+  }
+
+  static CashDrawerPrinterTarget _parseCashDrawerPrinterTarget(String? raw) {
+    if (raw?.trim().toLowerCase() == 'secondary') {
+      return CashDrawerPrinterTarget.secondary;
+    }
+    return CashDrawerPrinterTarget.primary;
   }
 
   static Future<bool> isPrinterReady() async {
