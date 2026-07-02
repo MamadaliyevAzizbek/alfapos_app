@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../providers/sales_session_provider.dart';
 import '../../services/sales_stock_limit_settings.dart';
+import '../../services/sales_ui_scale_settings.dart';
 import '../../utils/platform_layout.dart';
 import '../../widgets/ios_style_modals.dart';
 import '../../widgets/pos_modal_actions.dart';
@@ -171,115 +172,150 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final form = _buildForm();
-    final actions = _buildActions();
+    return ValueListenableBuilder<double>(
+      valueListenable: SalesUiScaleSettings.scale,
+      builder: (context, scale, _) {
+        final form = _buildForm();
+        final actions = _buildActions();
 
-    if (widget.compactActions) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: form),
-          const Divider(height: 1),
-          actions,
-        ],
-      );
-    }
-
-    return Align(
-      alignment: Alignment.centerRight,
-      child: SafeArea(
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: 560,
-            height: double.infinity,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(left: BorderSide(color: Color(0xFFE2E8F0))),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0x2E0F172A),
-                  blurRadius: 28,
-                  offset: Offset(-8, 0),
-                ),
-              ],
-            ),
+        if (widget.compactActions) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: SalesUiScaleSettings.textScaler(scale)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 18, 12, 16),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEAF2FF),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.tune_rounded, size: 24, color: AppTheme.primary),
-                      ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Filtr',
-                          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                        ),
-                      ),
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F6FB),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: IconButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
-                          padding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Color(0xFFE2E8F0)),
                 Expanded(child: form),
-                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                const Divider(height: 1),
                 actions,
               ],
             ),
+          );
+        }
+
+        return Align(
+          alignment: Alignment.centerRight,
+          child: SafeArea(
+            child: Material(
+              color: Colors.transparent,
+              child: MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: SalesUiScaleSettings.textScaler(scale)),
+                child: Container(
+                  width: SalesUiScaleSettings.scaled(480),
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(left: BorderSide(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1))),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0x2E0F172A),
+                        blurRadius: SalesUiScaleSettings.scaled(28),
+                        offset: Offset(SalesUiScaleSettings.scaled(-8), 0),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          SalesUiScaleSettings.scaled(24),
+                          SalesUiScaleSettings.scaled(18),
+                          SalesUiScaleSettings.scaled(12),
+                          SalesUiScaleSettings.scaled(16),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: SalesUiScaleSettings.scaled(42),
+                              height: SalesUiScaleSettings.scaled(42),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEAF2FF),
+                                borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(12)),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.tune_rounded,
+                                size: SalesUiScaleSettings.scaled(24),
+                                color: AppTheme.primary,
+                              ),
+                            ),
+                            SizedBox(width: SalesUiScaleSettings.scaled(10)),
+                            Expanded(
+                              child: Text(
+                                'Filtr',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: SalesUiScaleSettings.scaled(44),
+                              height: SalesUiScaleSettings.scaled(44),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3F6FB),
+                                borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(22)),
+                              ),
+                              child: IconButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: const Color(0xFF64748B),
+                                  size: SalesUiScaleSettings.scaled(24),
+                                ),
+                                padding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      Expanded(child: form),
+                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      actions,
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildForm() {
+    final edgePad = SalesUiScaleSettings.scaled(22);
+    final bottomPad = SalesUiScaleSettings.scaled(widget.compactActions ? 12 : 16);
+
     return SingleChildScrollView(
       controller: widget.scrollController,
-      padding: EdgeInsets.fromLTRB(22, 4, 22, widget.compactActions ? 12 : 16),
+      padding: EdgeInsets.fromLTRB(edgePad, SalesUiScaleSettings.scaled(4), edgePad, bottomPad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_loadingLists)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.scaled(8)),
               child: Center(
                 child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                  width: SalesUiScaleSettings.scaled(22),
+                  height: SalesUiScaleSettings.scaled(22),
+                  child: const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
                 ),
               ),
             ),
           if (isDesktopPosLayout) ...[
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
+            Padding(
+              padding: EdgeInsets.only(bottom: SalesUiScaleSettings.scaled(12)),
               child: Text(
                 'Kategoriya va brend — yuqori panelda (kassa nomi yonida).',
-                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textSecondary,
+                  height: 1.35,
+                ),
               ),
             ),
           ],
@@ -287,6 +323,7 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
             desktop: !widget.compactActions,
             child: Column(
               children: [
+                _FilterZoomControl(desktop: !widget.compactActions),
                 _FilterToggle(
                   label: '0 qoldiqni yashirish',
                   value: _hideZeroStock,
@@ -361,22 +398,159 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+      padding: EdgeInsets.fromLTRB(
+        SalesUiScaleSettings.scaled(22),
+        SalesUiScaleSettings.scaled(18),
+        SalesUiScaleSettings.scaled(22),
+        SalesUiScaleSettings.scaled(22),
+      ),
       child: Row(
         children: [
           OutlinedButton(
             onPressed: _clearAndApply,
             style: OutlinedButton.styleFrom(
-              minimumSize: const Size(180, 58),
+              minimumSize: Size(SalesUiScaleSettings.scaled(150), SalesUiScaleSettings.scaled(48)),
               foregroundColor: const Color(0xFFDC2626),
               backgroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFFF87171), width: 1.4),
+              side: BorderSide(color: const Color(0xFFF87171), width: SalesUiScaleSettings.scaled(1.4)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-              textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             child: const Text('Tozalash'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FilterZoomControl extends StatelessWidget {
+  final bool desktop;
+
+  const _FilterZoomControl({required this.desktop});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: SalesUiScaleSettings.scale,
+      builder: (context, scale, _) {
+        final labelStyle = TextStyle(
+          fontSize: desktop ? 16 : 14,
+          color: AppTheme.textPrimary,
+          fontWeight: desktop ? FontWeight.w500 : FontWeight.w400,
+        );
+        final percentStyle = TextStyle(
+          fontSize: desktop ? 17 : 14,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.primary,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        );
+
+        final controls = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ZoomStepButton(
+              icon: Icons.remove_rounded,
+              enabled: SalesUiScaleSettings.canZoomOut,
+              onTap: () => unawaited(SalesUiScaleSettings.zoomOut()),
+              desktop: desktop,
+            ),
+            SizedBox(width: SalesUiScaleSettings.scaled(desktop ? 14 : 10)),
+            SizedBox(
+              width: SalesUiScaleSettings.scaled(desktop ? 72 : 56),
+              child: Text(
+                SalesUiScaleSettings.percentLabel(scale),
+                textAlign: TextAlign.center,
+                style: percentStyle,
+              ),
+            ),
+            SizedBox(width: SalesUiScaleSettings.scaled(desktop ? 14 : 10)),
+            _ZoomStepButton(
+              icon: Icons.add_rounded,
+              enabled: SalesUiScaleSettings.canZoomIn,
+              onTap: () => unawaited(SalesUiScaleSettings.zoomIn()),
+              desktop: desktop,
+            ),
+          ],
+        );
+
+        if (!desktop) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: SalesUiScaleSettings.scaled(12)),
+            child: Row(
+              children: [
+                Expanded(child: Text('Masshtab', style: labelStyle)),
+                controls,
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          margin: EdgeInsets.only(bottom: SalesUiScaleSettings.scaled(10)),
+          padding: EdgeInsets.symmetric(
+            horizontal: SalesUiScaleSettings.scaled(14),
+            vertical: SalesUiScaleSettings.scaled(12),
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(14)),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('Masshtab', style: labelStyle),
+              ),
+              controls,
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ZoomStepButton extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+  final bool desktop;
+
+  const _ZoomStepButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+    required this.desktop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final size = SalesUiScaleSettings.scaled(desktop ? 40.0 : 36.0);
+    final iconSize = SalesUiScaleSettings.scaled(desktop ? 22.0 : 18.0);
+    final color = enabled ? AppTheme.primary : const Color(0xFFCBD5E1);
+    final radius = SalesUiScaleSettings.scaled(12);
+
+    return Material(
+      color: const Color(0xFFF8FAFC),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radius),
+        side: BorderSide(
+          color: enabled ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+          width: SalesUiScaleSettings.scaled(1),
+        ),
+      ),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(radius),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon, size: iconSize, color: color),
+        ),
       ),
     );
   }
@@ -397,61 +571,46 @@ class _FilterToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final labelStyle = TextStyle(
+      fontSize: desktop ? 16 : 14,
+      color: AppTheme.textPrimary,
+      fontWeight: desktop ? FontWeight.w500 : FontWeight.w400,
+    );
+
     final row = Row(
       children: [
         Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: desktop ? 22 : 16,
-              color: AppTheme.textPrimary,
-              fontWeight: desktop ? FontWeight.w500 : FontWeight.w400,
-            ),
-          ),
+          child: Text(label, style: labelStyle),
         ),
-        CupertinoSwitch(
-          value: value,
-          onChanged: onChanged,
+        Transform.scale(
+          scale: 1.1 * SalesUiScaleSettings.scale.value,
+          child: CupertinoSwitch(
+            value: value,
+            onChanged: onChanged,
+          ),
         ),
       ],
     );
 
     if (!desktop) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.scaled(10)),
         child: row,
       );
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.scaled(5)),
+      padding: EdgeInsets.symmetric(
+        horizontal: SalesUiScaleSettings.scaled(14),
+        vertical: SalesUiScaleSettings.scaled(12),
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(14)),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 22,
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Transform.scale(
-            scale: 1.28,
-            child: CupertinoSwitch(
-              value: value,
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      ),
+      child: row,
     );
   }
 }
@@ -469,11 +628,11 @@ class _FilterSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!desktop) return child;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(SalesUiScaleSettings.scaled(18)),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(18)),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1)),
       ),
       child: child,
     );

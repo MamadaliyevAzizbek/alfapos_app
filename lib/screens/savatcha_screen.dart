@@ -46,6 +46,7 @@ import '../utils/hold_order_precheck_excel_export.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../services/sales_keyboard_shortcuts_settings.dart';
 import '../services/sales_stock_limit_settings.dart';
+import '../services/sales_ui_scale_settings.dart';
 import '../services/sales_cart_profit_display_settings.dart';
 import '../utils/cart_stock_limit.dart';
 import '../utils/cash_register_utils.dart';
@@ -288,6 +289,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     unawaited(_loadShortcutKeys());
     unawaited(SalesStockLimitSettings.load());
     unawaited(SalesCartProfitDisplaySettings.load());
+    unawaited(SalesUiScaleSettings.load());
     if (isDesktopPosLayout) {
       FocusManager.instance.addListener(_onDesktopFocusChanged);
       _categoriesSub = CategoriesProvider.instance.stream.listen((_) {

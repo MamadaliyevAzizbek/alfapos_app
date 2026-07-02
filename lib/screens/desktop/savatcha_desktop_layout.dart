@@ -12,6 +12,7 @@ import '../../widgets/restaurant_category_chips.dart';
 import '../../widgets/sales_shortcut_key_badge.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
+import '../../services/sales_ui_scale_settings.dart';
 import 'sales_nav_filters.dart';
 import 'sales_window_tabs.dart';
 
@@ -215,35 +216,46 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _panelBg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildTopBar(context),
-          Expanded(
-            child: Row(
+    return ValueListenableBuilder<double>(
+      valueListenable: SalesUiScaleSettings.scale,
+      builder: (context, scale, _) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: SalesUiScaleSettings.textScaler(scale),
+          ),
+          child: ColoredBox(
+            color: _panelBg,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 6, child: _buildCatalogPanel(context)),
-                Container(width: 1, color: AppTheme.divider),
-                Expanded(flex: 4, child: _buildCartPanel(context)),
+                _buildTopBar(context),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 6, child: _buildCatalogPanel(context)),
+                      Container(width: 1, color: AppTheme.divider),
+                      Expanded(flex: 4, child: _buildCartPanel(context)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   static const Color _navBlue = AppTheme.primary;
   static const Color _navInactive = Color(0xFF64748B);
-  static const double _navBtnHeight = 40;
+
+  double get _navBtnHeight => SalesUiScaleSettings.navbarControlSize();
 
   ButtonStyle _navTextBtnStyle({bool compact = false}) => TextButton.styleFrom(
         foregroundColor: _navInactive,
         padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
-        minimumSize: const Size(0, _navBtnHeight),
+        minimumSize: Size(0, _navBtnHeight),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         textStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: compact ? 14 : 15),
       );
@@ -254,7 +266,10 @@ class SavatchaDesktopLayout extends StatelessWidget {
         color: Colors.white,
         border: Border(bottom: BorderSide(color: AppTheme.divider)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: SalesUiScaleSettings.scaled(16.0),
+        vertical: SalesUiScaleSettings.scaled(10.0),
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 1280;
@@ -280,7 +295,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         ),
                       ),
                       if (onSalesWindowSelected != null && onAddSalesWindow != null)
-                        const SizedBox(width: 16),
+                        SizedBox(width: SalesUiScaleSettings.scaled(16)),
                     ],
                     if (onSalesWindowSelected != null && onAddSalesWindow != null)
                       SalesWindowTabs(
@@ -325,7 +340,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onSalesList,
               style: _navTextBtnStyle(compact: compact),
-              icon: Icon(Icons.list_alt_rounded, size: compact ? 18 : 20, color: _navInactive),
+              icon: Icon(Icons.list_alt_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
               label: Text("Sotish ro'yxati", style: TextStyle(fontSize: compact ? 14 : 15)),
             ),
           ),
@@ -384,12 +399,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
             foregroundColor: _navInactive,
             backgroundColor: Colors.white,
             padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
-            minimumSize: const Size(0, _navBtnHeight),
+            minimumSize: Size(0, _navBtnHeight),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             side: const BorderSide(color: Color(0xFFDDE5F0)),
             shape: const RoundedRectangleBorder(borderRadius: _navCorners),
           ),
-          icon: Icon(Icons.point_of_sale_outlined, size: compact ? 18 : 20, color: _navInactive),
+          icon: Icon(Icons.point_of_sale_outlined, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
           label: Text(
             cashRegisterLabel,
             overflow: TextOverflow.ellipsis,
@@ -450,7 +465,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(icon, color: Colors.white, size: compact ? 18 : 20),
+                  Icon(icon, color: Colors.white, size: SalesUiScaleSettings.navbarIconSize()),
                   SizedBox(width: compact ? 6 : 8),
                   Text(
                     label,
@@ -475,7 +490,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
         style: _navTextBtnStyle(compact: compact).copyWith(
           overlayColor: WidgetStateProperty.all(Colors.transparent),
         ),
-        icon: Icon(icon, size: compact ? 18 : 20, color: _navInactive),
+        icon: Icon(icon, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
         label: Text(
           label,
           style: TextStyle(
@@ -495,12 +510,17 @@ class SavatchaDesktopLayout extends StatelessWidget {
   Widget _buildCatalogPanel(BuildContext context) {
     final initialLoading = productsLoading && catalogProducts.isEmpty;
     final loadingMore = productsLoading && catalogProducts.isNotEmpty;
+    final isRestaurant = _isRestaurantMode;
+    final crossAxisCount = SalesUiScaleSettings.catalogCrossAxisCount(isRestaurant ? 6 : 4);
+    final spacing = SalesUiScaleSettings.scaled(isRestaurant ? 8.0 : 12.0);
+    final edgePad = SalesUiScaleSettings.scaled(12.0);
+    final searchPadV = SalesUiScaleSettings.scaled(14.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, SalesUiScaleSettings.scaled(8.0)),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -548,7 +568,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         borderRadius: _sharp,
                         borderSide: BorderSide(color: AppTheme.primary, width: 2),
                       ),
-                      contentPadding: const EdgeInsets.fromLTRB(0, 14, 40, 14),
+                      contentPadding: EdgeInsets.fromLTRB(0, searchPadV, SalesUiScaleSettings.scaled(40.0), searchPadV),
                     ),
                   ),
                 ),
@@ -592,14 +612,14 @@ class SavatchaDesktopLayout extends StatelessWidget {
                               },
                               child: GridView.builder(
                                 key: ValueKey(
-                                  'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}-${restaurantCategoryId ?? ''}',
+                                  'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}-${restaurantCategoryId ?? ''}-$crossAxisCount',
                                 ),
-                                padding: EdgeInsets.fromLTRB(12, 0, 12, loadingMore ? 40 : 12),
+                                padding: EdgeInsets.fromLTRB(edgePad, 0, edgePad, loadingMore ? SalesUiScaleSettings.scaled(40.0) : edgePad),
                                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 6 : 4,
-                                  mainAxisSpacing: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 8 : 12,
-                                  crossAxisSpacing: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 8 : 12,
-                                  childAspectRatio: salesLayoutMode == DesktopSalesLayoutMode.restaurant ? 0.76 : 0.82,
+                                  crossAxisCount: crossAxisCount,
+                                  mainAxisSpacing: spacing,
+                                  crossAxisSpacing: spacing,
+                                  childAspectRatio: isRestaurant ? 0.76 : 0.82,
                                 ),
                                 itemCount: catalogProducts.length,
                                 itemBuilder: (context, i) => _DesktopProductCard(
@@ -639,6 +659,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 
   Widget _buildCatalogRegisterSelector() {
+    final controlHeight = SalesUiScaleSettings.scaled(48.0);
     final register = _selectedRegister();
     final label = register != null
         ? (register['name'] ?? register['title'] ?? cashRegisterLabel).toString()
@@ -648,8 +669,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
       return ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 140, maxWidth: 200),
         child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: controlHeight,
+          padding: EdgeInsets.symmetric(horizontal: SalesUiScaleSettings.scaled(12.0)),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: _sharp,
@@ -684,8 +705,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(minWidth: 140, maxWidth: 200),
       child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: controlHeight,
+        padding: EdgeInsets.symmetric(horizontal: SalesUiScaleSettings.scaled(12.0)),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: _sharp,
@@ -702,6 +723,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 
   Widget _buildCatalogFilterButton() {
+    final controlSize = SalesUiScaleSettings.scaled(48.0);
     return Material(
       color: const Color(0xFFEAF2FF),
       borderRadius: _sharp,
@@ -709,8 +731,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
         onTap: onFilterTap,
         borderRadius: _sharp,
         child: Container(
-          width: 48,
-          height: 48,
+          width: controlSize,
+          height: controlSize,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: _sharp,
@@ -742,13 +764,17 @@ class SavatchaDesktopLayout extends StatelessWidget {
   }
 
   Widget _buildCartPanel(BuildContext context) {
+    final edgePad = SalesUiScaleSettings.scaled(12.0);
+    final clearBtnSize = SalesUiScaleSettings.scaled(48.0);
+    final clearIconSize = SalesUiScaleSettings.scaled(22.0);
+
     return ColoredBox(
       color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, SalesUiScaleSettings.scaled(8.0)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -764,14 +790,14 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         onTap: onClearCart,
                         borderRadius: _sharp,
                         child: Container(
-                          width: 48,
-                          height: 48,
+                          width: clearBtnSize,
+                          height: clearBtnSize,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             borderRadius: _sharp,
                             border: Border.all(color: Colors.red.shade200),
                           ),
-                          child: Icon(Icons.delete_outline_rounded, size: 22, color: Colors.red.shade400),
+                          child: Icon(Icons.delete_outline_rounded, size: clearIconSize, color: Colors.red.shade400),
                         ),
                       ),
                     ),
@@ -796,7 +822,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           ),
           if (cartItems.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
+              padding: EdgeInsets.fromLTRB(edgePad, 0, edgePad, SalesUiScaleSettings.scaled(2.0)),
               child: Align(
                 alignment: Alignment.centerRight,
                 child: SalesShortcutKeyBadge(
@@ -813,7 +839,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: EdgeInsets.symmetric(horizontal: edgePad),
                     itemCount: cartItems.length,
                     itemBuilder: (context, i) {
                       final line = cartItems[i];
