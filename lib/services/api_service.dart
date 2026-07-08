@@ -704,6 +704,11 @@ class SalesApi {
     return ApiClient.get('/support/sales-settings');
   }
 
+  /// POST /support/sales-settings — sotuv sozlamalarini saqlash (admin).
+  static Future<Map<String, dynamic>> postSalesSettings(Map<String, dynamic> body) async {
+    return ApiClient.post('/support/sales-settings', body: body);
+  }
+
   static Future<Map<String, dynamic>> getBranches() async {
     return ApiClient.get('/sales/branches');
   }

@@ -5,6 +5,7 @@ import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
 import 'thermal_receipt_product_title_text.dart';
+import 'product_weight.dart';
 
 /// Termal chek mahsulot qatori (Alfapos.pdf ko‘rinishi).
 class ThermalReceiptProductLine {
@@ -14,6 +15,8 @@ class ThermalReceiptProductLine {
   final String lineTotal;
   final String? catalogUnitPrice;
   final String? catalogLineTotal;
+  /// Qator og'irligi (kg) — mahsulot `weight` × miqdor.
+  final double? lineWeightKg;
 
   const ThermalReceiptProductLine({
     required this.name,
@@ -22,6 +25,7 @@ class ThermalReceiptProductLine {
     required this.lineTotal,
     this.catalogUnitPrice,
     this.catalogLineTotal,
+    this.lineWeightKg,
   });
 }
 
@@ -50,6 +54,7 @@ class ThermalReceiptPrintData {
   final List<ThermalReceiptPaymentLine> payments;
   final String discountAmount;
   final String totalAmount;
+  final double? totalWeightKg;
   final bool isPrecheck;
   final int? queueNumber;
 
@@ -69,6 +74,7 @@ class ThermalReceiptPrintData {
     this.payments = const [],
     this.discountAmount = '0',
     required this.totalAmount,
+    this.totalWeightKg,
     this.isPrecheck = false,
     this.queueNumber,
     this.isRestaurantLayout = false,
@@ -241,8 +247,9 @@ class ThermalReceiptFormatter {
   static List<String> toPrintLines(
     ThermalReceiptPrintData d, {
     ReceiptDesignConfig config = ReceiptDesignConfig.defaults,
+    int maxWidth = kThermalChars80mm,
   }) {
-    return _toStandardPrintLines(d, config: config);
+    return _toStandardPrintLines(d, config: config, maxWidth: maxWidth);
   }
 
   /// Navbat raqami (katta matn) bo‘yicha restoran chekini aniqlash.
@@ -252,10 +259,11 @@ class ThermalReceiptFormatter {
   static List<String> _toStandardPrintLines(
     ThermalReceiptPrintData d, {
     required ReceiptDesignConfig config,
+    int maxWidth = kThermalChars80mm,
   }) {
     final lines = <String>[];
     final sep = ThermalReceiptLineWrap.fullSeparator(
-      kThermalChars80mm,
+      maxWidth,
       from: config.itemSeparator,
     );
 
@@ -288,6 +296,7 @@ class ThermalReceiptFormatter {
           ThermalReceiptLineWrap.formatTwoColumnRows(
             qtyPart,
             sumPart,
+            totalWidth: maxWidth,
             rightWidth: kReceiptAmountColumnWidth,
           ),
         );
@@ -297,13 +306,13 @@ class ThermalReceiptFormatter {
       }
     }
 
-    _appendReceiptPaymentsDiscountTotal(lines, d, config: config, sep: sep);
+    _appendReceiptPaymentsDiscountTotal(lines, d, config: config, sep: sep, maxWidth: maxWidth);
 
-    return ThermalReceiptLineWrap.wrapAll(lines);
+    return ThermalReceiptLineWrap.wrapAll(lines, maxWidth: maxWidth);
   }
 
-  static void _appendLeftLine(List<String> lines, String s) {
-    for (final part in ThermalReceiptLineWrap.wrapLine(s)) {
+  static void _appendLeftLine(List<String> lines, String s, {int maxWidth = kThermalChars80mm}) {
+    for (final part in ThermalReceiptLineWrap.wrapLine(s, maxWidth: maxWidth)) {
       lines.add(part);
     }
   }
@@ -375,6 +384,7 @@ class ThermalReceiptFormatter {
     ThermalReceiptPrintData d, {
     required ReceiptDesignConfig config,
     required String sep,
+    int maxWidth = kThermalChars80mm,
   }) {
     String amountLabel(String raw) {
       final formatted = formatAmountForReceipt(raw);
@@ -436,6 +446,15 @@ class ThermalReceiptFormatter {
           separator: summarySep,
           boldIndices: const {0},
         ),
+      );
+    }
+
+    if (!d.isRestaurantLayout && d.totalWeightKg != null && d.totalWeightKg! > 0) {
+      lines.add('');
+      _appendLeftLine(
+        lines,
+        'Jami og\'irlik: ${ProductWeight.formatKg(d.totalWeightKg!)}',
+        maxWidth: maxWidth,
       );
     }
 

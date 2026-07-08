@@ -13,6 +13,7 @@ import '../core/theme.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
 import '../utils/product_image_upload.dart';
+import '../utils/product_weight.dart';
 import '../providers/categories_provider.dart';
 import '../services/api_service.dart';
 import 'scanner_screen.dart' show showCompactScanner;
@@ -36,6 +37,7 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
   final List<TextEditingController> _additionalBarcodeControllers = [];
   final List<FocusNode> _additionalBarcodeFocusNodes = [];
   final _descriptionController = TextEditingController();
+  final _weightController = TextEditingController();
   final _costPriceController = TextEditingController();
   final _sellPriceController = TextEditingController();
   final _initialQtyController = TextEditingController();
@@ -77,6 +79,9 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       _barcodeController.text = p.barcode ?? '';
       _replaceAdditionalBarcodeFields(Product.parseAdditionalBarcodes(p.additionalBarcodes));
       _descriptionController.text = p.description ?? '';
+      if (p.weightKg != null && p.weightKg! > 0) {
+        _weightController.text = ProductWeight.formatKg(p.weightKg!).replaceAll(' kg', '');
+      }
       _purchaseCurrency = p.purchasePriceCurrency.toLowerCase();
       _sellingCurrency = p.sellingPriceCurrency.toLowerCase();
       _costPriceController.text = _priceFieldInitial(
@@ -160,6 +165,10 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
             api: full.wholesalePriceApi,
             uzsInt: full.wholesalePriceUzs,
           );
+          if (full.weightKg != null && full.weightKg! > 0) {
+            _weightController.text =
+                ProductWeight.formatKg(full.weightKg!).replaceAll(' kg', '');
+          }
         });
       } catch (_) {}
     });
@@ -293,6 +302,7 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       f.dispose();
     }
     _descriptionController.dispose();
+    _weightController.dispose();
     _costPriceController.dispose();
     _sellPriceController.dispose();
     _initialQtyController.dispose();
@@ -562,6 +572,7 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
             await ProductImageUpload.persistLocalFile(_localImagePath!) ?? _localImagePath;
       }
       final additionalBarcodesRaw = _collectAdditionalBarcodes();
+      final weightKg = ProductWeight.parse(_weightController.text.trim());
       final product = Product(
         id: productId,
         name: name,
@@ -579,6 +590,7 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
         unit: _unit,
         category: _category == Strings.tanlanmagan ? null : _category,
         description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        weightKg: weightKg,
         quantityInPack: _quantityInPack && qtyPerPack > 1,
         quantityPerPack: (_quantityInPack && qtyPerPack > 1) ? qtyPerPack : 0,
         costPricePerPack: (_quantityInPack && qtyPerPack > 1) ? costPerPack : null,
@@ -732,6 +744,16 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
               decoration: const InputDecoration(
                 hintText: Strings.tavsif,
                 alignLabelWithHint: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _weightController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Og\'irlik (kg)',
+                hintText: '0.350',
+                helperText: '1 dona og\'irligi — kilogrammda (ixtiyoriy)',
               ),
             ),
             const SizedBox(height: 12),

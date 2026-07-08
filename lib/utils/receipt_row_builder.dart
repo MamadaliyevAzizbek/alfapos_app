@@ -1,6 +1,7 @@
 import '../core/input_formatters.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../utils/product_weight.dart';
 import '../widgets/receipt_widget.dart';
 
 /// Chek qatorlari — katalog narxi, chegirmali narx va umumiy chegirma.
@@ -22,6 +23,7 @@ class ReceiptRowBuilder {
       sum: actualSum,
       catalogPrice: actualUnit < catalogUnit ? catalogUnit : null,
       catalogSum: actualSum < catalogSum ? catalogSum : null,
+      lineWeightKg: ProductWeight.lineKgFromCartItem(item),
     );
   }
 
@@ -66,6 +68,8 @@ class ReceiptRowBuilder {
     final catalogSum = qtyNum > 0 ? (catalogUnit * qtyNum).round() : catalogUnit;
     final hasUnitDiscount = catalogUnit > 0 && actualUnit < catalogUnit;
     final hasSumDiscount = catalogSum > 0 && lineTotal > 0 && lineTotal < catalogSum;
+    final unitWeight = ProductWeight.parse(r['weight'] ?? r['product_weight']);
+    final lineWeight = ProductWeight.lineKgFromUnit(unitWeight, qtyNum);
 
     return ReceiptRow(
       productName: title,
@@ -74,6 +78,7 @@ class ReceiptRowBuilder {
       sum: lineTotal > 0 ? lineTotal : catalogSum,
       catalogPrice: hasUnitDiscount ? catalogUnit : null,
       catalogSum: hasSumDiscount ? catalogSum : null,
+      lineWeightKg: lineWeight,
     );
   }
 

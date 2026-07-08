@@ -134,7 +134,7 @@ class ThermalReceiptPreview extends StatelessWidget {
 
     final centered = line.startsWith('^');
     final text = centered ? line.substring(1) : line;
-    final isSep = text.startsWith('---');
+    final isSep = RegExp(r'^[-─—_=.]+$').hasMatch(text.trim());
     final isTotal = text.toLowerCase().contains('umumiy summa');
 
     if (isSep) {
@@ -143,6 +143,8 @@ class ThermalReceiptPreview extends StatelessWidget {
         child: Text(
           text,
           style: _previewText.copyWith(fontSize: 12, color: Colors.black54),
+          softWrap: false,
+          overflow: TextOverflow.clip,
         ),
       );
     }

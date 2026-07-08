@@ -28,6 +28,7 @@ import '../utils/sales_products_request_body.dart';
 import '../utils/hold_orders_response.dart';
 import '../utils/sale_store_validation.dart';
 import '../utils/sales_payment_types.dart';
+import '../services/sales_stock_limit_settings.dart';
 import '../utils/tolovsiz_payment.dart';
 import '../utils/sales_store_body.dart';
 import '../utils/cash_register_utils.dart';
@@ -292,6 +293,7 @@ class SalesSessionProvider extends ChangeNotifier {
       salesTolovsizPaymentEnabled = TolovsizPayment.parseEnabledFromSettingsResponse(res);
       salesListEditEnabled = parseSalesListEditEnabled(res);
       enableEditSaleDate = parseEnableEditSaleDate(res);
+      await SalesStockLimitSettings.syncFromSettingsMap(res);
     } catch (_) {}
   }
 

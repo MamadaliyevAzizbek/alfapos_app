@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../providers/sales_session_provider.dart';
-import '../../services/sales_stock_limit_settings.dart';
 import '../../services/sales_ui_scale_settings.dart';
 import '../../utils/platform_layout.dart';
 import '../../widgets/ios_style_modals.dart';
@@ -95,7 +94,6 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   late bool _sellAtPurchase;
   late bool _showPurchasePrice;
   late bool _showUsdEquivalent;
-  late bool _enforceStockLimit;
   bool _loadingLists = false;
 
   SalesSessionProvider get _sales => SalesSessionProvider.instance;
@@ -110,7 +108,6 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
     _sellAtPurchase = _sales.sellAtPurchasePrice;
     _showPurchasePrice = _sales.showPurchasePrice;
     _showUsdEquivalent = _sales.showUsdEquivalent;
-    _enforceStockLimit = SalesStockLimitSettings.enabled.value;
     if (isDesktopPosLayout && (_sales.categories.isEmpty || _sales.brands.isEmpty)) {
       unawaited(_reloadLists());
     }
@@ -140,7 +137,6 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   }
 
   void _apply() {
-    unawaited(SalesStockLimitSettings.setEnabled(_enforceStockLimit));
     final cat = isDesktopPosLayout ? _categoryId : null;
     final brand = isDesktopPosLayout ? _brandId : null;
     unawaited(_sales.applySalesFilters(
@@ -156,7 +152,6 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   }
 
   void _applyLive() {
-    unawaited(SalesStockLimitSettings.setEnabled(_enforceStockLimit));
     final cat = isDesktopPosLayout ? _categoryId : null;
     final brand = isDesktopPosLayout ? _brandId : null;
     unawaited(_sales.applySalesFilters(
@@ -329,15 +324,6 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
                   value: _hideZeroStock,
                   onChanged: (v) => setState(() {
                     _hideZeroStock = v;
-                    if (!widget.compactActions) _applyLive();
-                  }),
-                  desktop: !widget.compactActions,
-                ),
-                _FilterToggle(
-                  label: 'Omborda yetarli bo‘lmaganda sotmaslik',
-                  value: _enforceStockLimit,
-                  onChanged: (v) => setState(() {
-                    _enforceStockLimit = v;
                     if (!widget.compactActions) _applyLive();
                   }),
                   desktop: !widget.compactActions,

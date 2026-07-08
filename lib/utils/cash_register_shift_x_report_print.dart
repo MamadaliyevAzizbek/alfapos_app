@@ -144,6 +144,22 @@ class CashRegisterShiftXReportPrint {
 
     lines.add(sep);
     equalsRows(
+      [
+        (
+          label: 'Sotilgan cheklar soni',
+          value: '${analytics['shift_orders_count'] ?? 0}',
+        ),
+        (
+          label: 'Umumiy og\'irlik (kg)',
+          value: formatShiftWeight(analytics['shift_total_weight']),
+        ),
+      ],
+      labelWidth: cols.labelWidth,
+      valueWidth: cols.valueWidth,
+    );
+
+    lines.add(sep);
+    equalsRows(
       cashRows,
       labelWidth: cols.labelWidth,
       valueWidth: cols.valueWidth,

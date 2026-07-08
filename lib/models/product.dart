@@ -1,4 +1,5 @@
 import '../core/product_image_utils.dart';
+import '../utils/product_weight.dart';
 
 class Product {
   final String id;
@@ -39,6 +40,8 @@ class Product {
   final String wholesalePriceCurrency;
   /// USD yoki o'nlik ulgurji narxi; null bo'lsa [wholesalePriceUzs]
   final num? wholesalePriceApi;
+  /// API: `weight` — 1 dona og'irligi (kg), nullable.
+  final double? weightKg;
 
   const Product({
     required this.id,
@@ -70,6 +73,7 @@ class Product {
     this.purchasePriceApi,
     this.wholesalePriceCurrency = 'uzs',
     this.wholesalePriceApi,
+    this.weightKg,
   });
 
   /// Ombordagi mavjud miqdor (dona).
@@ -225,6 +229,7 @@ class Product {
     final mergedWholesaleApi = wholesalePriceApi ?? local.wholesalePriceApi;
     final mergedWholesaleCur =
         hasWholesalePrice ? wholesalePriceCurrency : local.wholesalePriceCurrency;
+    final mergedWeight = (weightKg != null && weightKg! > 0) ? weightKg : local.weightKg;
 
     return Product(
       id: serverId,
@@ -256,6 +261,7 @@ class Product {
       purchasePriceApi: mergedPurchaseApi,
       wholesalePriceCurrency: mergedWholesaleCur,
       wholesalePriceApi: mergedWholesaleApi,
+      weightKg: mergedWeight,
     );
   }
 
@@ -502,6 +508,7 @@ class Product {
       'wholesalePriceUzs': wholesalePriceUzs,
       'wholesalePriceCurrency': wholesalePriceCurrency,
       'wholesalePriceApi': wholesalePriceApi,
+      'weightKg': weightKg,
     };
   }
 
@@ -737,6 +744,7 @@ class Product {
       wholesalePriceUzs: json['wholesalePriceUzs'] as int?,
       wholesalePriceCurrency: json['wholesalePriceCurrency'] as String? ?? 'uzs',
       wholesalePriceApi: json['wholesalePriceApi'] as num?,
+      weightKg: ProductWeight.parse(json['weightKg'] ?? json['weight']),
     );
   }
 
@@ -1111,6 +1119,7 @@ class Product {
       purchasePriceApi: purchasePriceApi,
       wholesalePriceCurrency: wholesalePriceCurrency,
       wholesalePriceApi: wholesalePriceApi,
+      weightKg: ProductWeight.parse(m['weight'] ?? m['product_weight'] ?? m['weight_kg']),
     );
   }
 }

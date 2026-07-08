@@ -284,7 +284,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _sales.addListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.addListener(_onShortcutSettingsChanged);
-    SalesStockLimitSettings.enabled.addListener(_onStockLimitSettingsChanged);
+    SalesStockLimitSettings.allowNegative.addListener(_onStockLimitSettingsChanged);
     SalesCartProfitDisplaySettings.visible.addListener(_onCartProfitDisplayChanged);
     unawaited(_loadShortcutKeys());
     unawaited(SalesStockLimitSettings.load());
@@ -430,7 +430,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _sales.removeListener(_onSalesSessionChanged);
     CashRegisterShiftProvider.instance.removeListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.removeListener(_onShortcutSettingsChanged);
-    SalesStockLimitSettings.enabled.removeListener(_onStockLimitSettingsChanged);
+    SalesStockLimitSettings.allowNegative.removeListener(_onStockLimitSettingsChanged);
     SalesCartProfitDisplaySettings.visible.removeListener(_onCartProfitDisplayChanged);
     _catalogSearchFocus.dispose();
     _customerSearchFocus.dispose();
@@ -610,7 +610,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (mounted) setState(() {});
   }
 
-  bool get _enforceStockLimit => SalesStockLimitSettings.enabled.value;
+  bool get _allowNegativeStockSales => SalesStockLimitSettings.allowNegative.value;
 
   List<CartItem> _allCartItemsForStockCheck() {
     if (isDesktopPosLayout) {
@@ -633,7 +633,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     num quantity = 1,
     bool sellByPack = false,
   }) {
-    if (!_enforceStockLimit || _isReturnMode) return true;
+    if (_allowNegativeStockSales || _isReturnMode || _isInvoiceEditMode) return true;
     final aligned = ProductsProvider.instance.withCatalogStock(product);
     final ok = CartStockLimit.allowsAdd(
       product: aligned,
@@ -646,7 +646,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   bool _canSetCartLineQuantity(CartItem item, num newQuantity, {bool? sellByPack}) {
-    if (!_enforceStockLimit || _isReturnMode) return true;
+    if (_allowNegativeStockSales || _isReturnMode || _isInvoiceEditMode) return true;
     if (newQuantity <= 0) return true;
     final aligned = ProductsProvider.instance.withCatalogStock(item.product);
     final ok = CartStockLimit.allowsLineQuantity(

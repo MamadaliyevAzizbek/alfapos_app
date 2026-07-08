@@ -3,6 +3,7 @@ import '../models/receipt_design_config.dart';
 import '../providers/sales_session_provider.dart';
 import '../services/receipt_design_storage.dart';
 import '../utils/cash_register_shift_x_report_print.dart';
+import '../utils/thermal_receipt_line_wrap.dart';
 import '../widgets/receipt_widget.dart';
 
 /// Sozlamalar va test uchun namuna mahalliy chek.
@@ -35,6 +36,7 @@ class LocalReceiptSample {
           sum: 4000,
           catalogPrice: 5000,
           catalogSum: 5000,
+          lineWeightKg: 0.35,
         ),
       ],
       paymentRows: const [
@@ -45,7 +47,7 @@ class LocalReceiptSample {
       barcodeData: 'POS12345',
       design: cfg,
     );
-    return widget.toThermalPrintLines();
+    return widget.toThermalPrintLines(lineWidth: kReceiptPreviewChars);
   }
 
   /// Restoran rejimi — katta navbat raqami bilan namuna chek.
@@ -83,7 +85,7 @@ class LocalReceiptSample {
       isRestaurantLayout: true,
       design: cfg,
     );
-    return widget.toThermalPrintLines();
+    return widget.toThermalPrintLines(lineWidth: kReceiptPreviewChars);
   }
 
   /// Kassa smenasi X-otchoti — printerga chiqadigan namuna.

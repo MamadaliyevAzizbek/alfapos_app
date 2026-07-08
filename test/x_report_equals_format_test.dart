@@ -33,15 +33,17 @@ void main() {
     }
 
     final equalsLines = lines.map(plain).where((l) => l.contains(' = ')).toList();
-    expect(equalsLines.length, 5);
+    expect(equalsLines.length, 7);
     expect(equalsLines[0], contains('Jami savdo'));
     expect(equalsLines[0], contains('64 000'));
     expect(equalsLines[1], contains('Naqd pul'));
     expect(equalsLines[1], contains('4 000'));
     expect(equalsLines[2], contains('Plastik'));
     expect(equalsLines[2], contains('60 000'));
-    expect(equalsLines[3], contains('Kassa kirim'));
-    expect(equalsLines[4], contains('Kassa chiqim'));
+    expect(equalsLines[3], contains('Sotilgan che'));
+    expect(equalsLines[4], contains('Umumiy og'));
+    expect(equalsLines[5], contains('Kassa kirim'));
+    expect(equalsLines[6], contains('Kassa chiqim'));
 
     final eqPositions = equalsLines.map((l) => l.indexOf(' = ')).toSet();
     expect(eqPositions.length, 1, reason: 'equals signs should align');

@@ -170,6 +170,22 @@ String formatShiftMoney(dynamic v) {
   return formatThousands(parseAmountFromApi(v));
 }
 
+/// `shift_total_weight` — smena davridagi umumiy kilo (kg).
+double parseShiftWeightFromApi(dynamic v) {
+  if (v == null) return 0;
+  if (v is num) return v.toDouble();
+  final s = v.toString().trim().replaceAll(',', '.');
+  return double.tryParse(s) ?? 0;
+}
+
+String formatShiftWeight(dynamic v) {
+  final n = parseShiftWeightFromApi(v);
+  if (n.abs() <= 0.0000001) return '0 kg';
+  var s = n.toStringAsFixed(3);
+  s = s.replaceFirst(RegExp(r'\.?0+$'), '');
+  return '$s kg';
+}
+
 String shiftOpeningTimeBody() {
   final n = DateTime.now();
   return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')} '

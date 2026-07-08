@@ -526,6 +526,7 @@ class _AnalyticsTab extends StatelessWidget {
                       )),
                   ('Qaytarilgan summa', formatShiftMoney(analytics['shift_returns_total'])),
                   ('Cheklar soni', '${analytics['shift_orders_count'] ?? 0}'),
+                  ('Umumiy og\'irlik (kg)', formatShiftWeight(analytics['shift_total_weight'])),
                   ('O\'rtacha chek', formatShiftMoney(analytics['shift_avg_check'])),
                 ],
               );

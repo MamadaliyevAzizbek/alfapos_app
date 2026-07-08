@@ -5,8 +5,6 @@ import '../core/theme.dart';
 import '../services/product_catalog_sort_settings.dart';
 import '../services/product_display_settings.dart';
 import '../services/sales_cart_profit_display_settings.dart';
-import '../services/sales_stock_limit_settings.dart';
-
 /// Mobil: savdo va mahsulot sozlamalari (desktop bilan bir xil SharedPreferences).
 class SozlamalarScreen extends StatefulWidget {
   const SozlamalarScreen({super.key});
@@ -17,7 +15,6 @@ class SozlamalarScreen extends StatefulWidget {
 
 class _SozlamalarScreenState extends State<SozlamalarScreen> {
   bool _loading = true;
-  bool _enforceStockLimit = true;
   bool _showCartProfit = false;
   bool _showSkuInProductTitle = false;
   ProductCatalogSortMode _productCatalogSortMode = ProductCatalogSortMode.defaultOrder;
@@ -31,13 +28,11 @@ class _SozlamalarScreenState extends State<SozlamalarScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final stock = await SalesStockLimitSettings.getEnabled();
       final profit = await SalesCartProfitDisplaySettings.getVisible();
       final sku = await ProductDisplaySettings.getShowSkuInTitle();
       final sort = await ProductCatalogSortSettings.getMode();
       if (!mounted) return;
       setState(() {
-        _enforceStockLimit = stock;
         _showCartProfit = profit;
         _showSkuInProductTitle = sku;
         _productCatalogSortMode = sort;
@@ -49,16 +44,6 @@ class _SozlamalarScreenState extends State<SozlamalarScreen> {
         AppNotify.error(context, 'Sozlamalar: $e');
       }
     }
-  }
-
-  Future<void> _saveStockLimit(bool value) async {
-    await SalesStockLimitSettings.setEnabled(value);
-    if (!mounted) return;
-    setState(() => _enforceStockLimit = value);
-    AppNotify.success(
-      context,
-      value ? 'Ombor chegarasida sotish yoqildi' : 'Ombor chegarasida sotish o‘chirildi',
-    );
   }
 
   Future<void> _saveCartProfit(bool value) async {
@@ -96,21 +81,6 @@ class _SozlamalarScreenState extends State<SozlamalarScreen> {
                 _sectionTitle('Savdo'),
                 _card(
                   children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Omborda yetarli bo‘lmaganda sotmaslik',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: const Text(
-                        'Mavjud miqdordan ortiq sotishda ogohlantirish chiqadi.',
-                        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
-                      ),
-                      value: _enforceStockLimit,
-                      activeColor: AppTheme.primary,
-                      onChanged: _saveStockLimit,
-                    ),
-                    const Divider(height: 24),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text(

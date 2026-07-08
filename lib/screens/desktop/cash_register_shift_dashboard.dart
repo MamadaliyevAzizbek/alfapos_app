@@ -258,6 +258,7 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
       totalSales: formatShiftMoney(analytics['total_payment'] ?? analytics['total_sales']),
       paymentTypes: paymentTypes,
       ordersCount: '${analytics['shift_orders_count'] ?? 0}',
+      totalWeight: formatShiftWeight(analytics['shift_total_weight']),
       scrollable: widget.compact || widget.mobileLayout,
       large: useLargePanels,
     );
@@ -527,6 +528,7 @@ class _IncomePanel extends StatelessWidget {
   final String totalSales;
   final List<Map<String, dynamic>> paymentTypes;
   final String ordersCount;
+  final String totalWeight;
   final bool scrollable;
   final bool large;
 
@@ -534,6 +536,7 @@ class _IncomePanel extends StatelessWidget {
     required this.totalSales,
     required this.paymentTypes,
     required this.ordersCount,
+    required this.totalWeight,
     this.scrollable = false,
     this.large = false,
   });
@@ -546,6 +549,7 @@ class _IncomePanel extends StatelessWidget {
             )),
         const Divider(),
         _row('Sotilgan cheklar soni', ordersCount, large: large),
+        _row('Umumiy og\'irlik (kg)', totalWeight, large: large),
       ];
 
   @override

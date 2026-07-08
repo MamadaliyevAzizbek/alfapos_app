@@ -7,6 +7,7 @@ import '../models/receipt_design_config.dart';
 import '../utils/receipt_store_title.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
+import '../utils/product_weight.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 import 'receipt_logo_image.dart';
@@ -23,6 +24,8 @@ class ReceiptRow {
   final int? catalogPrice;
   /// Katalog qator jami (chegirma bo'lsa — ustidan chiziladi)
   final int? catalogSum;
+  /// Qator og'irligi (kg).
+  final double? lineWeightKg;
 
   const ReceiptRow({
     required this.productName,
@@ -31,6 +34,7 @@ class ReceiptRow {
     required this.sum,
     this.catalogPrice,
     this.catalogSum,
+    this.lineWeightKg,
   });
 
   bool get hasUnitDiscount =>
@@ -72,6 +76,7 @@ class ReceiptWidget extends StatelessWidget {
   final int? queueNumber;
   final bool isRestaurantLayout;
   final ReceiptDesignConfig design;
+  final int thermalLineWidth;
 
   const ReceiptWidget({
     super.key,
@@ -93,6 +98,7 @@ class ReceiptWidget extends StatelessWidget {
     this.queueNumber,
     this.isRestaurantLayout = false,
     this.design = ReceiptDesignConfig.defaults,
+    this.thermalLineWidth = kThermalChars80mm,
   });
 
   static String _fmt(int n) => formatThousandsComma(n);
@@ -100,7 +106,9 @@ class ReceiptWidget extends StatelessWidget {
   String get _displayTitle =>
       ReceiptStoreTitle.resolve(design: design, branchName: branchName);
 
-  List<String> toThermalPrintLines() {
+  List<String> toThermalPrintLines({int? lineWidth}) {
+    final width = lineWidth ?? thermalLineWidth;
+    final totalWeight = _totalWeightKg();
     return ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
         storeName: branchName,
@@ -120,6 +128,7 @@ class ReceiptWidget extends StatelessWidget {
                 unitPrice: _fmt(r.price),
                 lineTotal: _fmt(r.sum),
                 catalogUnitPrice: r.hasUnitDiscount ? _fmt(r.catalogPrice!) : null,
+                lineWeightKg: r.lineWeightKg,
               ),
             )
             .toList(),
@@ -133,11 +142,26 @@ class ReceiptWidget extends StatelessWidget {
             .toList(),
         discountAmount: _fmt(discount),
         totalAmount: _fmt(totalSum),
+        totalWeightKg: totalWeight,
         queueNumber: queueNumber,
         isRestaurantLayout: isRestaurantLayout,
       ),
       config: design,
+      maxWidth: width,
     );
+  }
+
+  double? _totalWeightKg() {
+    var total = 0.0;
+    var hasAny = false;
+    for (final row in productRows) {
+      final w = row.lineWeightKg;
+      if (w == null || w <= 0) continue;
+      total += w;
+      hasAny = true;
+    }
+    if (!hasAny) return null;
+    return double.parse(total.toStringAsFixed(3));
   }
 
   @override
@@ -321,23 +345,26 @@ class ReceiptWidget extends StatelessWidget {
             if (design.showItemSeparator) ...[
               const SizedBox(height: 4),
               Text(
-                ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+                ThermalReceiptLineWrap.fullSeparator(kReceiptPreviewChars, from: design.itemSeparator),
                 style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+                softWrap: false,
+                overflow: TextOverflow.clip,
               ),
             ],
             const SizedBox(height: 6),
           ],
-          ..._buildReceiptSummarySection(
-            design: design,
-            paymentRows: paymentRows,
-            discount: discount,
-            totalSum: totalSum,
-            som: som,
-            isPrecheck: isPrecheck,
-            isRestaurantLayout: isRestaurantLayout,
-            textStyle: textStyle,
-            headerStyle: headerStyle,
-          ),
+      ..._buildReceiptSummarySection(
+        design: design,
+        paymentRows: paymentRows,
+        discount: discount,
+        totalSum: totalSum,
+        totalWeightKg: _totalWeightKg(),
+        som: som,
+        isPrecheck: isPrecheck,
+        isRestaurantLayout: isRestaurantLayout,
+        textStyle: textStyle,
+        headerStyle: headerStyle,
+      ),
           if (!isPrecheck) ...[
             if (design.showBarcode) ...[
               const SizedBox(height: 16),
@@ -404,6 +431,7 @@ class ReceiptWidget extends StatelessWidget {
     required List<ReceiptPaymentRow> paymentRows,
     required int discount,
     required int totalSum,
+    required double? totalWeightKg,
     required String som,
     required bool isPrecheck,
     required bool isRestaurantLayout,
@@ -442,8 +470,10 @@ class ReceiptWidget extends StatelessWidget {
       if (design.showItemSeparator) ...[
         const SizedBox(height: 4),
         Text(
-          ThermalReceiptLineWrap.fullSeparator(42, from: design.itemSeparator),
+          ThermalReceiptLineWrap.fullSeparator(kReceiptPreviewChars, from: design.itemSeparator),
           style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
+          softWrap: false,
+          overflow: TextOverflow.clip,
         ),
       ],
       ..._buildSummaryLines(
@@ -453,6 +483,14 @@ class ReceiptWidget extends StatelessWidget {
         valueWidth: cols.valueWidth,
         bold: true,
       ),
+      if (!isRestaurantLayout && totalWeightKg != null && totalWeightKg > 0) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Jami og\'irlik: ${ProductWeight.formatKg(totalWeightKg)}',
+          style: textStyle.copyWith(fontSize: 12, color: Colors.grey.shade800),
+          softWrap: false,
+        ),
+      ],
     ];
   }
 

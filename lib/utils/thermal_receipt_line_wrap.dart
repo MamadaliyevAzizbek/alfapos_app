@@ -8,6 +8,9 @@ const int kThermalChars80mm = 48;
 /// 58mm termal printer uchun qator uzunligi (Font A).
 const int kThermalChars58mm = 32;
 
+/// Ekran ko‘rinishi / chek dizayn preview (302px) uchun xavfsiz uzunlik.
+const int kReceiptPreviewChars = 42;
+
 /// Uzun matnni termal chek kengligiga mos qatorlarga bo‘lish.
 class ThermalReceiptLineWrap {
   ThermalReceiptLineWrap._();
@@ -66,6 +69,17 @@ class ThermalReceiptLineWrap {
     final sample = (from ?? '-').trim();
     final char = sample.isNotEmpty ? sample[0] : '-';
     return char * width;
+  }
+
+  /// Preview kengligiga moslashtirish — separator qatorlari bitta qatorda qoladi.
+  static List<String> fitSeparatorsForWidth(List<String> lines, int maxWidth) {
+    return [
+      for (final line in lines)
+        if (_isSeparatorLine(line))
+          fullSeparator(maxWidth, from: line)
+        else
+          line,
+    ];
   }
 
   static List<String> wrapLine(String line, {int maxWidth = kThermalChars80mm}) {

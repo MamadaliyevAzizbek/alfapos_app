@@ -4,6 +4,7 @@ import '../core/product_image_utils.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
+import '../utils/product_weight.dart';
 import '../widgets/auth_network_image.dart';
 
 /// Mahsulot haqida ma'lumotlar: rasm, o'lchov birlik, kategoriya, shtrix kod, narxlar
@@ -133,6 +134,10 @@ class _MahsulotDetailScreenState extends State<MahsulotDetailScreen> {
               child: Column(
                 children: [
                   _detailRow(context, "O'lchov birlik", product.unitDisplayLabel),
+                  if (product.weightKg != null && product.weightKg! > 0) ...[
+                    _divider(),
+                    _detailRow(context, "Og'irlik", ProductWeight.formatKg(product.weightKg!)),
+                  ],
                   _divider(),
                   _detailRow(context, "Ombordagi miqdor", product.stockDisplayText),
                   _divider(),

@@ -67,6 +67,7 @@ class ProductWebStoreBody {
 
     applyWholesaleFields(body, product);
     applyPackFields(body, product);
+    applyWeightField(body, product);
 
     if (deleteImage) {
       body['image'] = 'DELETE';
@@ -98,6 +99,15 @@ class ProductWebStoreBody {
       target['wholesalePrice'] = '';
       target['wholesale_price'] = '';
     }
+  }
+
+  static void applyWeightField(Map<String, dynamic> target, Product product) {
+    final w = product.weightKg;
+    if (w == null || w <= 0) {
+      target['weight'] = null;
+      return;
+    }
+    target['weight'] = w;
   }
 
   static void applyPackFields(Map<String, dynamic> target, Product product) {

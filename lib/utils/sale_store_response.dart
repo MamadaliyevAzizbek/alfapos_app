@@ -66,7 +66,25 @@ class SaleStoreResponse {
     return s.isEmpty ? null : s;
   }
 
+  static bool isStockQuantityCheckFailed(Map<String, dynamic> res) {
+    final v = res['checkAvailableQuantity'];
+    return v == true || v == 'true' || v == 1 || v == '1';
+  }
+
+  static String stockQuantityErrorMessage(Map<String, dynamic> res) {
+    final m = res['message'];
+    if (m is List) {
+      final parts = m.map((e) => e.toString().trim()).where((s) => s.isNotEmpty);
+      if (parts.isNotEmpty) return parts.join('\n');
+    }
+    if (m is String && m.trim().isNotEmpty) return m.trim();
+    return 'Mahsulot omborda yetarli emas';
+  }
+
   static void ensureCreated(Map<String, dynamic> res) {
+    if (isStockQuantityCheckFailed(res)) {
+      throw ApiException(stockQuantityErrorMessage(res), 422);
+    }
     if (!isSuccessFlag(res)) {
       throw ApiException(
         res['message']?.toString() ?? 'Sotuv serverda saqlanmadi',
