@@ -262,11 +262,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     if (_isSupplierBalancePayment(e)) return false;
     if (TolovsizPayment.isHiddenInSales(e)) return false;
     if (_isTolovsizPaymentType(e)) return _tolovsizContextActive;
+    // SALES_RETURNS_API §4: to'lovsiz yoqilganda Qarz/balans yashirinadi — faqat To'lovsiz.
     if (_tolovsizContextActive && (_isQarzPayment(e) || _isClientBalancePaymentType(e))) {
       return false;
     }
     if (widget.isReturnCheckout && _isClientBalancePaymentType(e)) return false;
-    if (widget.isReturnCheckout && _isQarzPayment(e)) return _client != null;
+    // Sof credit → amend (web «qaytarilgan» emas). Qarzli qaytarishda credit yashirinadi.
+    if (widget.isReturnCheckout && _isQarzPayment(e)) {
+      return _client != null && !_tolovsizContextActive;
+    }
     if (_isQarzPayment(e)) return _client != null;
     if (_isClientBalancePaymentType(e)) return _client != null && _clientBalanceUzs > 0;
     return true;
@@ -2040,12 +2044,24 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           isReturn: widget.isReturnCheckout,
         );
       }
+      final paidRaw = widget.isReturnCheckout ? -entry.value.abs() : entry.value;
       final row = <String, dynamic>{
         'paymentID': id,
-        'paid': entry.value,
+        'paid': widget.isReturnCheckout ? paidRaw.toStringAsFixed(2) : paidRaw,
       };
       final pt = meta != null ? _paymentTypeForApi(meta) : null;
       if (pt != null) row['paymentType'] = pt;
+      if (meta != null) {
+        final name = (meta['name'] ?? meta['title'] ?? '').toString();
+        if (name.isNotEmpty) row['paymentName'] = name;
+      }
+      // SALES_RETURNS_API §8/§10 — qaytarish to'lov qatori to'liq shakl.
+      if (widget.isReturnCheckout) {
+        row['PaymentTime'] = TolovsizPayment.paymentTimeNow();
+        row['options'] = <String, dynamic>{};
+        row['is_active'] = 1;
+        row['exchange'] = 0;
+      }
       return row;
     }).toList();
   }
@@ -2155,11 +2171,23 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           return;
         }
       }
-      if (_getQarzAmountFromAllocated(allocated) > 0 && _client == null) {
-        if (mounted) {
-          AppNotify.error(context, "Qarzdan qaytarish uchun mijoz tanlang");
+      // SALES_RETURNS_API: sof credit → amend; to'lovsiz yoqilganda credit taqiqlanadi.
+      if (_getQarzAmountFromAllocated(allocated) > 0) {
+        if (_tolovsizContextActive) {
+          if (mounted) {
+            AppNotify.error(
+              context,
+              "Qarzli qaytarish uchun «To'lovsiz» to'lovini tanlang (web bilan bir xil).",
+            );
+          }
+          return;
         }
-        return;
+        if (_client == null) {
+          if (mounted) {
+            AppNotify.error(context, "Qarzdan qaytarish uchun mijoz tanlang");
+          }
+          return;
+        }
       }
     }
     try {

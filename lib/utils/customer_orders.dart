@@ -17,7 +17,10 @@ class CustomerOrderRow {
         invoiceId = (raw['invoice_id'] ?? raw['invoiceId'] ?? '').toString(),
         dateStr = (raw['date'] ?? raw['created_at'] ?? raw['date_time'] ?? '').toString(),
         total = parseAmountFromApi(raw['total'] ?? raw['grand_total'] ?? raw['total_amount'] ?? 0),
-        dueAmount = parseAmountFromApi(raw['due_amount'] ?? 0),
+        // SALES_RETURNS_API: qaytarilgan qatorlarda manfiy qarz — due_amount_display (DB due_amount emas).
+        dueAmount = parseAmountFromApi(
+          raw['due_amount_display'] ?? raw['due_amount'] ?? raw['dueAmount'] ?? 0,
+        ),
         orderId = _intOrNull(raw['id'] ?? raw['order_id']),
         debtId = _intOrNull(raw['debt_id'] ?? raw['customer_debt_id']),
         sourcePaymentId = _intOrNull(raw['source_payment_id'] ?? raw['payment_id']);

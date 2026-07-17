@@ -7,13 +7,13 @@ import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
-import '../services/api_service.dart';
 import '../widgets/auth_network_image.dart';
 import '../widgets/ios_style_modals.dart';
 import '../widgets/product_tile.dart';
 import '../utils/platform_layout.dart';
 import '../utils/sale_receipt_reprint_print.dart';
 import '../utils/sale_return_utils.dart';
+import '../utils/sales_return_flow.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/invoice_edit_flow.dart';
 
@@ -464,10 +464,7 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                     }
                     return;
                   }
-                  final rawInvoice = (widget.sale['invoice_id'] ?? widget.sale['invoiceId'] ?? widget.sale['order_id'] ?? widget.sale['id']).toString().trim();
-                  final invoiceIdToSend = rawInvoice.isEmpty
-                      ? 'POS$orderId'
-                      : (rawInvoice.toUpperCase().startsWith('POS') ? rawInvoice : 'POS$rawInvoice');
+                  final due = SalesReturnFlow.saleDueAmount(widget.sale, invoiceDetail: inv);
                   final confirm = await IosStyleModals.showSheet<bool>(
                     context: context,
                     showGrabber: true,
@@ -480,8 +477,10 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                           children: [
                             const Text("Chekni qaytarish", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
                             const SizedBox(height: 10),
-                            const Text(
-                              "Ushbu sotuv API orqali bekor qilinadi (serverda ham qaytariladi). Davom etasizmi?",
+                            Text(
+                              due > 0
+                                  ? "Qarzli chek to'lovsiz yo'l bilan qaytariladi (web bilan bir xil: yangi «… qaytarilgan» chek). Davom etasizmi?"
+                                  : "Ushbu sotuv API orqali bekor qilinadi (serverda ham qaytariladi). Davom etasizmi?",
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 14),
@@ -500,7 +499,11 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                   );
                   if (confirm != true || !context.mounted) return;
                   try {
-                    await SalesApi.returnFullOrder(orderId: orderId, invoiceId: invoiceIdToSend);
+                    // SALES_RETURNS_API: qarzli → store+tolovsiz; to'langan → return-full-order.
+                    await SalesReturnFlow.returnFullReceipt(
+                      sale: widget.sale,
+                      invoiceDetail: inv,
+                    );
                     SaleReturnGuard.markReturned(orderId);
                     widget.sale['status'] = 'returned';
                     widget.sale['is_returned'] = true;

@@ -1,4 +1,4 @@
-/// Qaytarish — POST /sales/store (TOLOVSIZ_SALES_RETURNS_API.md).
+/// Qaytarish — POST /sales/store (SALES_RETURNS_API.md).
 class SalesReturnCheckout {
   SalesReturnCheckout._();
 

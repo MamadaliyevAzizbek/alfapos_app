@@ -22,6 +22,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   static const Color _totalBar = Color(0xFF3C3F4B);
   static const Color _priceGreen = Color(0xFF16A34A);
   static const Color _paymentBlue = Color(0xFF80A4FF);
+  static const Color _paymentBlueActive = Color(0xFF3B6FE8);
   static const BorderRadius _sharp = BorderRadius.zero;
   static const double _navRadius = 8;
   static const BorderRadius _navCorners = BorderRadius.all(Radius.circular(_navRadius));
@@ -812,7 +813,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       border: Border.fromBorderSide(BorderSide(color: Color(0xFFFFCC80))),
                     ),
                     child: const Text(
-                      'Mahsulot tanlang va qaytarish qiling. Mijoz tanlab «Qarz» to\'lovi bilan qaytarilsa, qarzi kamayadi.',
+                      'Mahsulot tanlang va qaytarish qiling. Qarzli chek uchun mijoz tanlab «To\'lovsiz» to\'lovini ishlating — qarzi kamayadi (web bilan bir xil).',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF6D4C41)),
                     ),
                   ),
@@ -964,7 +965,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   Widget _footerPaymentButton() {
     final enabled = cartItems.isNotEmpty;
-    final bg = isReturnMode ? const Color(0xFFE65100) : _paymentBlue;
+    final Color bg;
+    if (isReturnMode) {
+      bg = enabled ? const Color(0xFFE65100) : const Color(0xFFFFB74D);
+    } else {
+      bg = enabled ? _paymentBlueActive : _paymentBlue;
+    }
     final fg = enabled ? Colors.white : Colors.white54;
 
     return Material(

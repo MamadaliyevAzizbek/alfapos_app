@@ -430,8 +430,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                           ),
                           child: Text(
                             widget.tolovsizReturnDebtPart > 0 || widget.tolovsizReturnBalancePart > 0
-                                ? "Ichki qaytarish: to'lovsiz tanlangan — avval qarz kamayadi, qolgani balansga qo'shiladi."
-                                : "Ichki qaytarish: to'lov summalari mijozga qaytariladi. Mijoz balansi bu rejimda ishlatilmaydi.",
+                                ? "Qaytarish: to'lovsiz — avval qarz kamayadi, qolgani balansga qo'shiladi (web bilan bir xil)."
+                                : "Qaytarish: naqd/karta summalari mijozga qaytariladi. Qarzli chek uchun «To'lovsiz» tanlang (sof «Qarz» amend qiladi).",
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                           ),
                         ),

@@ -980,8 +980,12 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
                   _formatAmount(due),
                   textAlign: TextAlign.end,
                   style: _tableCellStyle.copyWith(
-                    fontWeight: due > 0 ? FontWeight.w700 : FontWeight.normal,
-                    color: due > 0 ? const Color(0xFFDC2626) : AppTheme.textPrimary,
+                    fontWeight: due != 0 ? FontWeight.w700 : FontWeight.normal,
+                    color: due > 0
+                        ? const Color(0xFFDC2626)
+                        : due < 0
+                            ? const Color(0xFF059669)
+                            : AppTheme.textPrimary,
                   ),
                 ),
               ),

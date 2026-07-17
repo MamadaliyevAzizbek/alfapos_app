@@ -835,8 +835,41 @@ class SalesApi {
     });
   }
 
-  /// POST /sales/return-full-order — chekni to'liq qaytarish (web bilan bir xil).
-  /// Request: { orderId: 12345, invoiceId: "POS10119" }
+  /// POST /sales/return-orders — chek bo'yicha savat (manfiy quantity).
+  static Future<Map<String, dynamic>> getReturnOrders({
+    required String orderId,
+    dynamic receivingType,
+  }) async {
+    return ApiClient.post('/sales/return-orders', body: {
+      'orderId': orderId,
+      'receivingType': receivingType,
+    });
+  }
+
+  /// POST /sales/order-items-for-return — qisman/to'liq qaytarish UI uchun mahsulotlar.
+  static Future<Map<String, dynamic>> getOrderItemsForReturn({required int orderId}) async {
+    return ApiClient.post('/sales/order-items-for-return', body: {
+      'orderId': orderId,
+    });
+  }
+
+  /// POST /sales/partial-return — qisman qaytarish (paymentTypeId raqam; to'lovsiz string emas).
+  static Future<Map<String, dynamic>> partialReturn({
+    required int orderId,
+    required String invoiceId,
+    required List<Map<String, dynamic>> items,
+    required int paymentTypeId,
+  }) async {
+    return ApiClient.post('/sales/partial-return', body: {
+      'orderId': orderId,
+      'invoiceId': invoiceId,
+      'items': items,
+      'paymentTypeId': paymentTypeId,
+    });
+  }
+
+  /// POST /sales/return-full-order — to'langan chek (asl to'lov nusxasi).
+  /// Qarzli/to'lovsiz uchun tavsiya: [SalesReturnFlow.returnFullReceipt] → store + tolovsiz.
   static Future<Map<String, dynamic>> returnFullOrder({
     required int orderId,
     required String invoiceId,
