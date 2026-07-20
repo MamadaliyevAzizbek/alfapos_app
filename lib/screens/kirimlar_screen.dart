@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../core/app_notify.dart';
+import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../core/input_formatters.dart';
 import '../core/theme.dart';
@@ -122,12 +123,25 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     if (q.isEmpty) return;
     _searchController.text = q;
     setState(() => _query = q);
-    final p = await _session.findByBarcode(q);
-    if (p != null) {
-      _session.addToCart(ProductsProvider.instance.withCatalogStock(p));
-      _searchController.clear();
-      setState(() => _query = '');
-      if (mounted) AppNotify.success(context, '${p.name} savatga qo\'shildi');
+    try {
+      final hit = await _session.findByBarcodeDetailed(q);
+      if (hit != null) {
+        _session.addToCart(
+          ProductsProvider.instance.withCatalogStock(hit.product),
+          quantity: hit.quantity,
+        );
+        _searchController.clear();
+        setState(() => _query = '');
+        if (mounted) {
+          final qtyLabel = hit.isScaleItem
+              ? ' (${hit.quantity} kg)'
+              : '';
+          AppNotify.success(context, '${hit.product.name}$qtyLabel savatga qo\'shildi');
+        }
+        return;
+      }
+    } on ApiException catch (e) {
+      if (mounted) AppNotify.error(context, e.message);
       return;
     }
     await _searchProducts(q);
