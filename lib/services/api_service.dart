@@ -685,19 +685,6 @@ class SalesApi {
     });
   }
 
-  /// POST /sales/scale-barcode — taroz etiketkasi (PLU + vazn), web /sales bilan bir xil.
-  static Future<Map<String, dynamic>> scaleBarcode({
-    required String barcode,
-    int? branchId,
-    String orderType = 'sales',
-  }) async {
-    return ApiClient.post('/sales/scale-barcode', body: {
-      'barcode': barcode,
-      'orderType': orderType,
-      if (branchId != null) 'branchId': branchId,
-    });
-  }
-
   static Future<Map<String, dynamic>> searchCustomers({
     required String searchValue,
     String orderType = 'sales',
@@ -912,19 +899,6 @@ class ReceivesApi {
   }) async {
     return ApiClient.post('/receives/barcode-search', body: {
       'searchValueForBarCode': searchValue,
-      'orderType': orderType,
-      if (branchId != null) 'branchId': branchId,
-    });
-  }
-
-  /// POST /receives/scale-barcode — kirim oynasi uchun taroz etiketkasi.
-  static Future<Map<String, dynamic>> scaleBarcode({
-    required String barcode,
-    int? branchId,
-    String orderType = 'receiving',
-  }) async {
-    return ApiClient.post('/receives/scale-barcode', body: {
-      'barcode': barcode,
       'orderType': orderType,
       if (branchId != null) 'branchId': branchId,
     });

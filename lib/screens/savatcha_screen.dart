@@ -1342,23 +1342,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (q.isEmpty || _barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
     try {
-      final result = await BarcodeProductLookup.resolveDetailed(
+      final found = await BarcodeProductLookup.resolve(
         query: q,
         salesScreenProducts: _sales.salesProducts,
         branchId: _sales.branchId ?? 1,
       );
-      if (result.found) {
-        _addProductToCart(result.product!, quantity: result.quantity);
-        _clearSearchField();
-        return;
-      }
-      if (result.scalePluNotFound) {
-        if (mounted) {
-          AppNotify.info(
-            context,
-            result.message ?? 'PLU kodli mahsulot topilmadi',
-          );
-        }
+      if (found != null) {
+        _addProductToCart(found);
         _clearSearchField();
         return;
       }
@@ -1415,8 +1405,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return 'Dona — ${formatThousands(product.pieceSellPriceNum.round())} so\'m';
   }
 
-  void _addProductToCart(Product product, {num quantity = 1}) {
-    final qty = quantity > 0 ? quantity : 1;
+  void _addProductToCart(Product product) {
     void afterAdd(CartItem line) {
       _applyCustomerPricingToNewItem(line);
       _expandedCartLine = null;
@@ -1424,17 +1413,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
 
     void addLine({required bool sellByPack}) {
-      if (!_canAddProductToCart(product, quantity: qty, sellByPack: sellByPack)) {
-        return;
-      }
-      afterAdd(_cart.add(CartItem(product: product, quantity: qty, sellByPack: sellByPack)));
-    }
-
-    // Taroz (kg) — pachka tanlash oynasi kerak emas.
-    if (qty != 1) {
-      addLine(sellByPack: false);
-      _refocusCatalogSearch();
-      return;
+      if (!_canAddProductToCart(product, sellByPack: sellByPack)) return;
+      afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: sellByPack)));
     }
 
     if (product.canSellByPack && !isDesktopPosLayout) {
@@ -1968,23 +1948,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (_barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
     try {
-      final result = await BarcodeProductLookup.resolveDetailed(
+      final found = await BarcodeProductLookup.resolve(
         query: q,
         salesScreenProducts: _sales.salesProducts,
         branchId: _sales.branchId ?? 1,
       );
-      if (result.found) {
-        _addProductToCart(result.product!, quantity: result.quantity);
-        _clearSearchField();
-        return;
-      }
-      if (result.scalePluNotFound) {
-        if (mounted) {
-          AppNotify.info(
-            context,
-            result.message ?? 'PLU kodli mahsulot topilmadi',
-          );
-        }
+      if (found != null) {
+        _addProductToCart(found);
         _clearSearchField();
         return;
       }
