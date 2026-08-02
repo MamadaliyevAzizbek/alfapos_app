@@ -198,11 +198,13 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     } on FormatException catch (e) {
+      ApiHttp.resetClient();
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage =
-              'Server noto‘g‘ri javob qaytardi. API manzilini yoki proksini tekshiring.\n(${e.message})';
+          _errorMessage = Platform.isWindows
+              ? 'Server JSON emas javob qaytardi. Windows proksi / antivirus (HTTPS scanning) / VPN ni o‘chirib qayta urinib ko‘ring.\n(${e.message})'
+              : 'Server noto‘g‘ri javob qaytardi. API manzilini yoki proksini tekshiring.\n(${e.message})';
         });
       }
     } catch (e, st) {

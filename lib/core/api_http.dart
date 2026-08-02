@@ -34,6 +34,15 @@ class ApiHttp {
 
   static const Duration timeout = Duration(seconds: 45);
 
+  /// Desktop POS: default — to‘g‘ridan-to‘g‘ri HTTPS (tizim/ENV proksisiz).
+  /// Brauzer ishlasa ham Windows dagi eski HTTP_PROXY Dart HTTP ni buzishi mumkin.
+  /// Kerak bo‘lsa: muhit o‘zgaruvchisi `ALFAPOS_USE_SYSTEM_PROXY=1`.
+  static bool get useSystemProxy {
+    if (kIsWeb) return false;
+    final v = Platform.environment['ALFAPOS_USE_SYSTEM_PROXY']?.trim().toLowerCase();
+    return v == '1' || v == 'true' || v == 'yes';
+  }
+
   /// Desktop: tizim sertifikatlari, proksi, SSL.
   static HttpClient createHttpClient({SecurityContext? securityContext}) {
     _creatingHttpClient = true;
@@ -51,7 +60,14 @@ class ApiHttp {
     client.connectionTimeout = timeout;
     client.idleTimeout = timeout;
     client.autoUncompress = true;
-    client.findProxy = HttpClient.findProxyFromEnvironment;
+    // Mobil: ENV proksi; desktop POS: odatda DIRECT (bitta mijozda FormatException oldini olish).
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isMacOS || Platform.isLinux) &&
+        !useSystemProxy) {
+      client.findProxy = (_) => 'DIRECT';
+    } else {
+      client.findProxy = HttpClient.findProxyFromEnvironment;
+    }
     client.userAgent = 'AlfaposPOS/${AppVersion.name} (${Platform.operatingSystem})';
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       client.badCertificateCallback = (cert, host, port) =>

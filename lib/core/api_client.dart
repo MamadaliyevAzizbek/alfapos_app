@@ -119,21 +119,62 @@ class ApiClient {
     return _handleResponse(response);
   }
 
+  /// JSON o‘qish: BOM va oldidagi PHP/proksi chiqindisini kesib urinish.
+  static dynamic _decodeJsonBody(String raw) {
+    var body = raw.trim();
+    if (body.startsWith('\uFEFF')) {
+      body = body.substring(1).trim();
+    }
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      final obj = body.indexOf('{');
+      final arr = body.indexOf('[');
+      var start = -1;
+      if (obj >= 0 && arr >= 0) {
+        start = obj < arr ? obj : arr;
+      } else {
+        start = obj >= 0 ? obj : arr;
+      }
+      if (start > 0) {
+        return jsonDecode(body.substring(start));
+      }
+      rethrow;
+    }
+  }
+
+  static String _bodyPreview(String body, {int max = 120}) {
+    final oneLine = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (oneLine.length <= max) return oneLine;
+    return '${oneLine.substring(0, max)}…';
+  }
+
   static Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
     dynamic decoded;
     if (response.body.isNotEmpty) {
       try {
-        decoded = jsonDecode(response.body);
+        decoded = _decodeJsonBody(response.body);
       } catch (e) {
-        // Server xato sahifasi (HTML) yuborganida JSON o'qilmaydi — aniq xabar
         final body = response.body.trim().toLowerCase();
-        if (body.startsWith('<') && (body.contains('</html>') || body.contains('<!doctype'))) {
+        final preview = _bodyPreview(response.body);
+        if (body.startsWith('<') ||
+            body.contains('<!doctype') ||
+            body.contains('<html') ||
+            body.contains('access denied') ||
+            body.contains('proxy')) {
           throw ApiException(
-            'Server HTML javob qaytardi (xato sahifasi). Kod: ${response.statusCode}. Serverni yoki API manzilini tekshiring.',
+            'Tarmoq/proksi JSON o‘rniga boshqa javob qaytardi (kod ${response.statusCode}). '
+            'Antivirus «HTTPS scanning», VPN yoki Windows proksini o‘chirib qayta urinib ko‘ring.\n'
+            'Javob: $preview',
             response.statusCode,
           );
         }
-        rethrow;
+        throw ApiException(
+          'Server noto‘g‘ri javob qaytardi (kod ${response.statusCode}). '
+          'Antivirus / proksi / VPN ni tekshiring.\n'
+          'Javob: $preview',
+          response.statusCode,
+        );
       }
       // Backend ba'zan root da massiv qaytaradi (masalan GET /products/categories, top-selling-products)
       if (decoded is List) {
