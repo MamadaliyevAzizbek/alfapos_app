@@ -39,6 +39,8 @@ Compress-Archive -Path (Join-Path $ReleaseDir "*") -DestinationPath $ZipPath -Fo
 $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $Iscc)) { $Iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe" }
 if (Test-Path $Iscc) {
+    Write-Host ">> VC++ Redistributable..." -ForegroundColor Cyan
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot "scripts\download_vcredist.ps1")
     Write-Host ">> Inno Setup o'rnatuvchi..." -ForegroundColor Cyan
     $ver = ((Get-Content (Join-Path $ProjectRoot "pubspec.yaml") | Select-String '^version:').Line -replace 'version:\s*','' -replace '\+.*','').Trim()
     & $Iscc "/DMyAppVersion=$ver" (Join-Path $ProjectRoot "scripts\alfapos_installer.iss")

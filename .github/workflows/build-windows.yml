@@ -54,6 +54,12 @@ jobs:
           Compress-Archive -Path "$src/*" -DestinationPath $zip -Force
           Write-Host "ZIP: $zip ($((Get-Item $zip).Length) bytes)"
 
+          Write-Host '>> VC++ Redistributable yuklanmoqda...'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File 'scripts/download_vcredist.ps1'
+          if (-not (Test-Path 'scripts/vcredist/vc_redist.x64.exe')) {
+            throw 'vc_redist.x64.exe topilmadi — download_vcredist.ps1 muvaffaqiyatsiz'
+          }
+
           $line = (Get-Content pubspec.yaml | Select-String '^version:').Line
           $ver = $line -replace 'version:\s*','' -replace '\+.*',''
           $iscc = @(

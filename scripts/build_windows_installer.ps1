@@ -59,6 +59,12 @@ if (-not $Iscc) {
     exit 0
 }
 
+Write-Host '>> VC++ Redistributable...' -ForegroundColor Cyan
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'scripts\download_vcredist.ps1')
+if (-not (Test-Path (Join-Path $ProjectRoot 'scripts\vcredist\vc_redist.x64.exe'))) {
+    throw 'vc_redist.x64.exe topilmadi'
+}
+
 $ver = Get-AppVersion
 $Iss = Join-Path $ProjectRoot 'scripts\alfapos_installer.iss'
 Write-Host ">> Inno Setup (versiya $ver)..." -ForegroundColor Cyan

@@ -44,3 +44,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Microsoft VC++ Redistributable (buildda yuklanadi)
+/scripts/vcredist/*.exe

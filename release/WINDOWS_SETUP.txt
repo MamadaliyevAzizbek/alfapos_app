@@ -1,13 +1,15 @@
 ALFAPOS — Windows o'rnatuvchi (SETUP)
 
-1. alfapos_app-windows-x64-setup.exe ni ishga tushiring.
+1. alfapos_app-windows-x64-setup.exe ni ishga tushiring (Administrator).
 2. O'rnatish joyini tanlang (odatda: C:\Program Files\AlfaPOS).
 3. «Ish stolida yorliq» va «Firewall ruxsati» ni tavsiya etiladi.
-4. O'rnatish tugagach Start menyudan yoki ish stolidan AlfaPOS ni oching.
+4. Setup avtomatik Microsoft Visual C++ Redistributable (x64) ni ham o'rnatadi (kerak bo'lsa).
+5. O'rnatish tugagach Start menyudan yoki ish stolidan AlfaPOS ni oching.
 
 MUHIM:
-- Setup ichida exe, barcha .dll va data\ papkasi o'rnatiladi — alohida ZIP ochish shart emas.
+- Setup ichida exe, barcha .dll, data\ va VC++ runtime o'rnatiladi — alohida ZIP ochish shart emas.
 - Eski ZIP usuli ham ishlaydi: papkani to'liq chiqarib alfapos_app.exe ni shu papkadan ishga tushiring.
+  ZIP da VC++ yo'q — kerak bo'lsa setup.exe ni ishlating yoki VC++ 2015-2022 x64 ni qo'lda o'rnating.
 
 Yangilash: yangi setup.exe ni eski ustidan ishga tushiring (yoki avval «O'chirish» orqali eski versiyani olib tashlang).
 
