@@ -426,7 +426,6 @@ class ThermalReceiptPrinter {
       design: resolvedDesign,
       openCashDrawer: drawerEnabled,
       cashDrawerPin: posPin,
-      compactRestaurant: ThermalReceiptFormatter.hasRestaurantQueueLine(lines),
       printerName: printerName,
     );
   }

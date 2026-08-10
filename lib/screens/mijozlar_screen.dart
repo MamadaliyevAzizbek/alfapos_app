@@ -9,10 +9,12 @@ import '../utils/customer_filter_options.dart';
 import '../utils/customer_groups_list.dart';
 import '../utils/platform_layout.dart';
 import 'mijoz_detail_screen.dart';
+import '../widgets/app_dropdown.dart';
 import '../widgets/customer_group_form.dart';
 import '../widgets/ios_style_modals.dart';
 import 'desktop/desktop_shell_scope.dart';
 import 'yangi_mijoz_screen.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 /// Mijozlar — POST /contacts/customers (web /contacts bilan bir xil).
 class MijozlarScreen extends StatefulWidget {
@@ -238,6 +240,7 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
   }
 
   Widget _buildDesktopScaffold() {
+    final underShell = DesktopShellScope.maybeOf(context) != null;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -246,14 +249,16 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         actions: [
-          IconButton(
-            tooltip: 'Yangilash',
-            onPressed: _desktopTab == 1
-                ? (_groupsLoading ? null : () => _loadTabGroups())
-                : (_clients.isLoading ? null : () => _reload(force: true)),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          const SizedBox(width: 8),
+          // Shell top bar «Sinxronlash» bo‘lsa dublikat yo‘q; push route’da Yangilash qoladi.
+          if (!underShell)
+            IconButton(
+              tooltip: 'Yangilash',
+              onPressed: _desktopTab == 1
+                  ? (_groupsLoading ? null : () => _loadTabGroups())
+                  : (_clients.isLoading ? null : () => _reload(force: true)),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          if (!underShell) const SizedBox(width: 8),
         ],
       ),
       body: Column(
@@ -532,14 +537,11 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
     required ValueChanged<String?> onChanged,
   }) {
     final selected = items.any((e) => e.value == value) ? value : items.firstOrNull?.value;
-    return DropdownButtonFormField<String>(
+    return AppDropdownField<String>(
       key: fieldKey,
+      label: label,
       value: selected,
-      isExpanded: true,
       menuMaxHeight: 360,
-      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 24),
-      decoration: _desktopFilterDecoration(label),
-      style: const TextStyle(fontSize: _desktopFilterFontSize, color: AppTheme.textPrimary),
       items: items,
       onChanged: items.length <= 1 ? null : onChanged,
     );
@@ -721,7 +723,7 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
             children: [
               _buildDesktopTableHeader(),
               Expanded(
-                child: RefreshIndicator(
+                child: ThrottledRefreshIndicator(
                   onRefresh: () => _reload(force: true),
                   child: ListView.builder(
                     itemCount: _clients.items.length + 1,
@@ -1084,15 +1086,6 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(Strings.mijozlar),
-        actions: [
-          IconButton(
-            tooltip: 'Yangilash',
-            onPressed: _mobileTab == 1
-                ? (_groupsLoading ? null : () => _loadTabGroups())
-                : (_clients.isLoading ? null : () => _reload(force: true)),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1269,9 +1262,10 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
         ),
       );
     }
-    return RefreshIndicator(
+    return ThrottledRefreshIndicator(
       onRefresh: _loadTabGroups,
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         itemCount: _tabGroups.length,
         itemBuilder: (context, i) {
@@ -1326,9 +1320,10 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
       return const Center(child: Text("Mijozlar yo'q", style: TextStyle(color: AppTheme.textSecondary)));
     }
 
-    return RefreshIndicator(
+    return ThrottledRefreshIndicator(
       onRefresh: () => _reload(force: true),
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         itemCount: _clients.items.length + 1,
         itemBuilder: (context, index) {

@@ -32,7 +32,7 @@ abstract class ThermalReceiptLayoutMetrics {
       }
       final text = line.startsWith('^') ? line.substring(1) : line;
       final isTotal = text.toLowerCase().contains('umumiy summa');
-      final fontSize = isTotal ? 14.0 : 12.0;
+      final fontSize = isTotal ? 18.0 : 12.0;
       height += 4 + (fontSize * 1.35);
     }
 

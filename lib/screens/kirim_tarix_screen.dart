@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/input_formatters.dart';
 import '../services/api_service.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 class KirimTarixScreen extends StatefulWidget {
   const KirimTarixScreen({super.key});
@@ -102,7 +103,7 @@ class _KirimTarixScreenState extends State<KirimTarixScreen> {
                     ? Center(child: Text(_error!, textAlign: TextAlign.center))
                     : _rows.isEmpty
                         ? const Center(child: Text('Kirimlar topilmadi'))
-                        : RefreshIndicator(
+                        : ThrottledRefreshIndicator(
                             onRefresh: _load,
                             child: ListView.builder(
                               padding: const EdgeInsets.symmetric(horizontal: 16),

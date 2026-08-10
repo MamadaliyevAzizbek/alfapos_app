@@ -77,9 +77,22 @@ extension DailySalesFormat on DailySales {
   String expensesFormatted(String currency) => DailySalesFormat.formatWithCurrency(expensesUzs, currency);
   String netProfitFormatted(String currency) => DailySalesFormat.formatWithCurrency(netProfitUzs, currency);
   static String formatUzs(num n) => formatWithCurrency(n, 'UZS');
-  /// API dagi ko'rinishida: butun "10.00", kasr "2.5". Valyuta API dan kelsa qo'shiladi, bo'lmasa hech narsa qo'shilmaydi.
+  /// Butun summa: `10 000` (`.00` yo‘q). Kasrli: kerakli kasrlar (`2.5`, `2.55`).
   static String formatWithCurrency(num n, String currency) {
-    final s = n == n.round() ? '${_spaceGroup(n.toInt())}.00' : '$n';
+    final d = n.toDouble();
+    final String s;
+    if ((d - d.roundToDouble()).abs() < 0.000001) {
+      s = _spaceGroup(d.round());
+    } else {
+      var fixed = d.abs().toStringAsFixed(2);
+      fixed = fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+      final parts = fixed.split('.');
+      final intPart = int.tryParse(parts[0]) ?? 0;
+      final sign = d < 0 ? '-' : '';
+      s = parts.length > 1
+          ? '$sign${_spaceGroup(intPart)}.${parts[1]}'
+          : '$sign${_spaceGroup(intPart)}';
+    }
     final sym = currency.trim();
     return sym.isEmpty ? s : '$s $sym';
   }

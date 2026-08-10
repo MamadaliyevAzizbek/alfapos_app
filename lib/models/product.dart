@@ -1,5 +1,6 @@
 import '../core/product_image_utils.dart';
 import '../utils/product_weight.dart';
+import '../utils/scale_barcode.dart';
 
 class Product {
   final String id;
@@ -9,6 +10,8 @@ class Product {
   final int? costPriceUzs; // kelish narxi (dona)
   final String? sku;
   final String? barcode;
+  /// API: `plu_code` — tarozi / PLU (max 10).
+  final String? pluCode;
   /// API: additionalBarcodes / additional_barcodes — 2 yoki undan ortiq qo'shimcha shtrix kodlar
   final List<String>? additionalBarcodes;
   /// API: default variant ID (variants[].id) — sales/store da variantID sifatida yuborish uchun
@@ -51,6 +54,7 @@ class Product {
     this.costPriceUzs,
     this.sku,
     this.barcode,
+    this.pluCode,
     this.additionalBarcodes,
     this.variantId,
     this.quantityInfo = '0 sht',
@@ -208,6 +212,7 @@ class Product {
     final mergedDescription = _hasNonEmptyText(description) ? description : local.description;
     final mergedVariantId = (variantId != null && variantId! > 0) ? variantId : local.variantId;
     final mergedSku = _hasNonEmptyText(sku) ? sku : local.sku;
+    final mergedPlu = _hasNonEmptyText(pluCode) ? pluCode : local.pluCode;
 
     final mergedSellPack = (sellPricePerPack != null && sellPricePerPack! > 0)
         ? sellPricePerPack
@@ -239,6 +244,7 @@ class Product {
       costPriceUzs: mergedCost,
       sku: mergedSku,
       barcode: mergedBarcode,
+      pluCode: mergedPlu,
       additionalBarcodes: mergedAdditional,
       variantId: mergedVariantId,
       quantityInfo: mergedQtyInfo,
@@ -371,7 +377,7 @@ class Product {
     return out;
   }
 
-  /// Berilgan qator asosiy barcode yoki qo'shimcha barcode'lardan biriga to'g'ri kelsa true
+  /// Berilgan qator asosiy barcode, PLU yoki qo'shimcha barcode'lardan biriga to'g'ri kelsa true
   bool matchesBarcode(String query) {
     final rawNorm = normalizeBarcode(query);
     if (rawNorm.isEmpty) return false;
@@ -393,7 +399,36 @@ class Product {
         if (same(ab, rawNorm)) return true;
       }
     }
+    if (matchesPlu(query)) return true;
+
+    // Tarozi shtrixi: ichidagi PLU bilan solishtirish
+    for (final plu in extractScalePluCandidates(query)) {
+      if (matchesPlu(plu)) return true;
+      if (sku != null && sku!.trim().isNotEmpty) {
+        final skuDigits = normalizeBarcode(sku);
+        final pluDigits = normalizeBarcode(plu);
+        if (skuDigits.isNotEmpty &&
+            pluDigits.isNotEmpty &&
+            (skuDigits == pluDigits || _barcodeForMatch(sku) == _barcodeForMatch(plu))) {
+          return true;
+        }
+      }
+    }
     return false;
+  }
+
+  /// `plu_code` bilan mos keladimi (boshidagi nollar farqi e’tiborsiz).
+  bool matchesPlu(String query) {
+    final p = pluCode?.trim();
+    if (p == null || p.isEmpty) return false;
+    final q = query.trim();
+    if (q.isEmpty) return false;
+    if (p == q) return true;
+    final pn = normalizeBarcode(p);
+    final qn = normalizeBarcode(q);
+    if (pn.isEmpty || qn.isEmpty) return false;
+    if (pn == qn) return true;
+    return _barcodeForMatch(p) == _barcodeForMatch(q);
   }
 
   /// Shtrix oxirgi [minSuffix]… raqam (masalan oxirgi 4 ta) bilan mos keladimi.
@@ -486,6 +521,7 @@ class Product {
       'costPriceUzs': costPriceUzs,
       'sku': sku,
       'barcode': barcode,
+      'pluCode': pluCode,
       'additionalBarcodes': additionalBarcodes,
       'variantId': variantId,
       'quantityInfo': quantityInfo,
@@ -718,6 +754,7 @@ class Product {
       costPriceUzs: json['costPriceUzs'] as int?,
       sku: json['sku'] as String?,
       barcode: _stringFromJson(json['barcode']),
+      pluCode: _stringFromJson(json['pluCode'] ?? json['plu_code']),
       additionalBarcodes: _additionalBarcodeListFromJson(json['additionalBarcodes']),
       variantId: json['variantId'] as int?,
       quantityInfo: _sanitizeQuantityInfo(
@@ -909,6 +946,10 @@ class Product {
     if (skuFinal == null && variants != null && variants.isNotEmpty && variants.first is Map) {
       skuFinal = _stringFromJson((variants.first as Map)['sku']);
     }
+    final pluFinal = _stringFromJson(m['plu_code']) ??
+        _stringFromJson(m['pluCode']) ??
+        _stringFromJson(m['plu']) ??
+        _stringFromJson(m['PLU']);
 
     // Qo'shimcha barcode'lar: variant yoki product da additionalBarcodes / additional_barcodes
     List<String>? additionalBarcodes = _additionalBarcodeListFromJson(
@@ -1097,6 +1138,7 @@ class Product {
       costPriceUzs: costPriceUzs,
       sku: skuFinal,
       barcode: barcode,
+      pluCode: pluFinal,
       additionalBarcodes: additionalBarcodes,
       variantId: variantId,
       quantityInfo: _quantityInfoLabel(initialQuantity, unit),

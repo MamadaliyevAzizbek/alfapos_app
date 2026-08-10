@@ -38,6 +38,8 @@ class ProductsProvider extends ChangeNotifier {
   int? _cachedDefaultBranchId;
   /// Serverga ketma-ket yuborish (navbat).
   bool _syncDrainActive = false;
+  /// Parallel loadFromApi bo‘lmasin (429 oldini olish).
+  Future<void>? _loadFromApiInFlight;
   /// Bir vaqtda faqat bitta yangi mahsulot POST (UI race / qayta bosishdan himoya).
   bool _serverCreateInFlight = false;
 
@@ -59,6 +61,7 @@ class ProductsProvider extends ChangeNotifier {
     _cachedDefaultBranchId = null;
     _controller.add(items);
     notifyListeners();
+    unawaited(ProductCatalogStorage.clearSyncMeta());
   }
 
   /// Avval diskdan (tez), keyin ixtiyoriy API dan yangilash (fon).
@@ -80,7 +83,7 @@ class ProductsProvider extends ChangeNotifier {
   Future<void> ensureFullCatalogLoaded({bool force = false}) async {
     if (force) {
       ApiSyncThrottle.invalidate('products_full_catalog');
-      await loadFromApi();
+      await loadFromApi(force: true);
       return;
     }
     if (_items.isEmpty || !_loaded) {
@@ -97,7 +100,7 @@ class ProductsProvider extends ChangeNotifier {
     }
     await flushPendingSyncToServer();
     if (force) {
-      await loadFromApi();
+      await loadFromApi(force: true);
       return;
     }
     await _refreshCatalogFromApi();
@@ -109,13 +112,20 @@ class ProductsProvider extends ChangeNotifier {
       const Duration(minutes: 15),
       () async {
         try {
-          await loadFromApi();
+          // force=false: avval fingerprint — o‘zgarmasa to‘liq paging yo‘q.
+          await loadFromApi(force: false);
         } catch (_) {}
       },
     );
   }
 
-  Future<void> _persistCatalog() => ProductCatalogStorage.saveCatalog(_items);
+  Future<void> _persistCatalog({bool invalidateSyncMeta = true}) async {
+    await ProductCatalogStorage.saveCatalog(_items);
+    // Lokal CRUD dan keyin fingerprint eskirgan — keyingi sync tekshiradi.
+    if (invalidateSyncMeta) {
+      await ProductCatalogStorage.clearSyncMeta();
+    }
+  }
 
   static bool _isLocalOnlyProductId(String id) =>
       id.startsWith('local_') || int.tryParse(id) == null;
@@ -783,7 +793,21 @@ class ProductsProvider extends ChangeNotifier {
     return [];
   }
 
-  Future<void> loadFromApi() async {
+  Future<void> loadFromApi({bool force = false}) async {
+    final existing = _loadFromApiInFlight;
+    if (existing != null) return existing;
+    final future = _loadFromApiBody(force: force);
+    _loadFromApiInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_loadFromApiInFlight, future)) {
+        _loadFromApiInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _loadFromApiBody({bool force = false}) async {
     _loadError = null;
     try {
       await _ensureUnitsLoaded();
@@ -793,19 +817,49 @@ class ProductsProvider extends ChangeNotifier {
       var guard = 0;
       final allRows = <dynamic>[];
 
-      while (guard < 500) {
-        guard++;
-        final res = await ProductsApi.getProductsList(body: {
-          'rowLimit': pageSize,
-          'rowOffset': offset,
-        });
-        if (offset == 0) _lastRawProducts = res;
-        final rows = _extractList(res);
-        if (rows.isEmpty) break;
-        allRows.addAll(rows);
-        offset += rows.length;
-        if (rows.length < pageSize) break;
-        await ApiPacing.staggerPause(ApiPacing.productPageStep);
+      // 1-sahifa: o‘zgarish bo‘lmasa qolgan sahifalarni umuman so‘ramaymiz.
+      final firstRes = await ProductsApi.getProductsList(body: {
+        'rowLimit': pageSize,
+        'rowOffset': 0,
+      });
+      _lastRawProducts = firstRes;
+      final firstRows = _extractList(firstRes);
+      final remoteMeta = ProductCatalogSyncMeta.fromApiPage(firstRes, firstRows);
+      final localMeta = await ProductCatalogStorage.loadSyncMeta();
+
+      if (_items.isNotEmpty &&
+          localMeta != null &&
+          localMeta.matches(remoteMeta)) {
+        // Serverda count/qty/namuna o‘zgarmagan — to‘liq yuklash shart emas
+        // (hatto «Sinxronlash» force bo‘lsa ham).
+        _loaded = true;
+        await ProductCatalogStorage.saveSyncMeta(
+          ProductCatalogSyncMeta(
+            count: localMeta.count,
+            totalQuantity: localMeta.totalQuantity,
+            sampleFingerprint: localMeta.sampleFingerprint,
+            savedAt: DateTime.now(),
+          ),
+        );
+        return;
+      }
+
+      allRows.addAll(firstRows);
+      offset = firstRows.length;
+      if (firstRows.length >= pageSize) {
+        while (guard < 500) {
+          guard++;
+          await ApiPacing.staggerPause(ApiPacing.productPageStep);
+          final res = await ProductsApi.getProductsList(body: {
+            'rowLimit': pageSize,
+            'rowOffset': offset,
+          });
+          final rows = _extractList(res);
+          if (rows.isEmpty) break;
+          allRows.addAll(rows);
+          offset += rows.length;
+          if (rows.length < pageSize) break;
+        }
       }
 
       _items = allRows
@@ -831,7 +885,8 @@ class ProductsProvider extends ChangeNotifier {
       _loaded = true;
       _controller.add(items);
       notifyListeners();
-      unawaited(_persistCatalog());
+      await ProductCatalogStorage.saveCatalog(_items);
+      await ProductCatalogStorage.saveSyncMeta(remoteMeta);
     } on ApiException catch (e) {
       _loadError = e.message;
       _loaded = true;

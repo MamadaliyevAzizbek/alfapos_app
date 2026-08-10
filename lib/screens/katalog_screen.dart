@@ -21,7 +21,7 @@ import '../widgets/category_image_cover.dart';
 import '../widgets/edit_category_sheet.dart';
 import '../widgets/ios_style_modals.dart';
 import 'desktop/desktop_shell_scope.dart';
-import '../services/app_data_sync.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 class KatalogScreen extends StatefulWidget {
   const KatalogScreen({super.key});
@@ -36,8 +36,6 @@ class KatalogScreen extends StatefulWidget {
   static String _normalizeBarcodeStatic(String? s) => Product.normalizeBarcode(s);
 }
 
-enum _ProductFilter { all, active, inactive }
-
 class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProviderStateMixin, DesktopShellSyncMixin {
   StreamSubscription<List<Product>>? _productsSub;
   StreamSubscription<List<String>>? _categoriesSub;
@@ -45,26 +43,15 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   String _query = '';
   String? _lockedProductId;
   bool _ignoreNextSearchChange = false;
-  _ProductFilter _productFilter = _ProductFilter.all;
   final _products = ProductsProvider.instance;
   final _categories = CategoriesProvider.instance;
   late TabController _tabController;
-  bool _syncing = false;
   List<String> _categoryOrderIds = [];
 
-  Future<void> _syncAllData() async {
-    if (_syncing || AppDataSync.isRunning) return;
-    setState(() => _syncing = true);
-    try {
-      await AppDataSync.syncAll(force: true);
-      if (!mounted) return;
-      AppNotify.success(context, 'Ma\'lumotlar sinxronlandi');
-      setState(() {});
-    } catch (e) {
-      if (mounted) AppNotify.error(context, 'Sinxronlash xatosi: $e');
-    } finally {
-      if (mounted) setState(() => _syncing = false);
-    }
+  Future<void> _pullRefreshCatalog() async {
+    await _products.loadFromStorage(refreshInBackground: true);
+    await _categories.loadFromApiIfStale();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -142,31 +129,9 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     super.dispose();
   }
 
-  List<Product> get _productsByFilter {
-    final list = _products.items;
-    switch (_productFilter) {
-      case _ProductFilter.active:
-        return list.where((p) => p.initialQuantity > 0).toList();
-      case _ProductFilter.inactive:
-        return list.where((p) => p.initialQuantity == 0).toList();
-      case _ProductFilter.all:
-        return list;
-    }
-  }
-
   List<Product> get _filteredProducts => _lockedProductId != null
-      ? _productsByFilter.where((p) => p.id == _lockedProductId).toList()
-      : KatalogScreen.filterProductsByQuery(_productsByFilter, _query);
-
-  int get _allCount => _products.items.length;
-  int get _activeCount => _products.items.where((p) => p.initialQuantity > 0).length;
-  int get _inactiveCount => _products.items.where((p) => p.initialQuantity == 0).length;
-
-  String _formatCount(int n) {
-    if (n < 1000) return '$n';
-    final s = n.toString();
-    return '${s.substring(0, s.length - 3)} ${s.substring(s.length - 3)}';
-  }
+      ? _products.items.where((p) => p.id == _lockedProductId).toList()
+      : KatalogScreen.filterProductsByQuery(_products.items, _query);
 
   void _maybeClearSearchAfterBarcodeMatch() {
     product_search.scheduleBarcodeAutoAction(
@@ -189,19 +154,6 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     return Scaffold(
       appBar: AppBar(
         title: const Text(Strings.navMahsulotlar),
-        actions: [
-          IconButton(
-            tooltip: 'Sinxronlash',
-            onPressed: _syncing || AppDataSync.isRunning ? null : _syncAllData,
-            icon: _syncing || AppDataSync.isRunning
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                  )
-                : const Icon(Icons.sync_rounded),
-          ),
-        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -224,7 +176,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
           child: Row(
             children: [
               Expanded(
@@ -242,6 +194,8 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                     _maybeClearSearchAfterBarcodeMatch();
                   },
                   decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     hintText: Strings.mahsulotQidirishHint,
                     prefixIcon: Icon(
                       Icons.search_rounded,
@@ -251,19 +205,19 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                 ),
               ),
               if (!isDesktopPosLayout) ...[
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Material(
                   color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   child: InkWell(
                     onTap: () => _showScanner(context),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      child: const Icon(
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Padding(
+                      padding: EdgeInsets.all(11),
+                      child: Icon(
                         Icons.qr_code_scanner_rounded,
                         color: Colors.white,
-                        size: 26,
+                        size: 22,
                       ),
                     ),
                   ),
@@ -272,47 +226,13 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
             ],
           ),
         ),
-        // Barchasi / Faol / Faol emas
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: _filterChip(
-                  label: '${Strings.barchasi} (${_formatCount(_allCount)})',
-                  selected: _productFilter == _ProductFilter.all,
-                  onTap: () => setState(() => _productFilter = _ProductFilter.all),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _filterChip(
-                  label: '${Strings.faol} (${_formatCount(_activeCount)})',
-                  selected: _productFilter == _ProductFilter.active,
-                  onTap: () => setState(() => _productFilter = _ProductFilter.active),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _filterChip(
-                  label: '${Strings.faolEmas} (${_formatCount(_inactiveCount)})',
-                  selected: _productFilter == _ProductFilter.inactive,
-                  onTap: () => setState(() => _productFilter = _ProductFilter.inactive),
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Yangi mahsulot qo'shish — katta ko'k pill tugma (rasmdagi kabi)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Material(
-            color: AppTheme.primary,
-            borderRadius: BorderRadius.circular(28),
-            elevation: 2,
-            shadowColor: AppTheme.primary.withValues(alpha: 0.4),
-            child: InkWell(
-              onTap: () async {
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: FilledButton.icon(
+              onPressed: () async {
                 final saved = await Navigator.of(context).push<bool>(
                   MaterialPageRoute(builder: (_) => const YangiTovarScreen()),
                 );
@@ -322,39 +242,25 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                   AppNotify.success(null, "Tovar muvaffaqiyatli qo'shildi!");
                 }
               },
-              borderRadius: BorderRadius.circular(28),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_circle_outline_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                    SizedBox(width: 12),
-                    Text(
-                      "Yangi mahsulot qo'shish",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text(
+                "Yangi mahsulot qo'shish",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
           ),
         ),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              await _products.loadFromApi();
-              await _categories.loadFromApi();
-              if (mounted) setState(() {});
-            },
+          child: ThrottledRefreshIndicator(
+            onRefresh: _pullRefreshCatalog,
             child: _products.loadError != null
                 ? SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -518,11 +424,8 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
           ),
         ),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              await _categories.loadFromApi();
-              if (mounted) setState(() {});
-            },
+          child: ThrottledRefreshIndicator(
+            onRefresh: _pullRefreshCatalog,
             child: list.isEmpty
                 ? SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -615,33 +518,6 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
           ),
         ),
       ],
-    );
-  }
-
-  Widget _filterChip({required String label, required bool selected, required VoidCallback onTap}) {
-    return Material(
-      color: selected ? AppTheme.primaryLight : AppTheme.cardBg,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: selected ? AppTheme.primary : AppTheme.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-      ),
     );
   }
 

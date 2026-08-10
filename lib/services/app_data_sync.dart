@@ -18,24 +18,24 @@ class AppDataSync {
   static bool _running = false;
   static bool get isRunning => _running;
 
-  static void _invalidateSyncThrottles() {
-    ApiSyncThrottle.invalidate(_syncAllKey);
-    ApiSyncThrottle.invalidate('products_full_catalog');
-    ApiSyncThrottle.invalidate('categories_api');
-    ApiSyncThrottle.invalidate('cash_register_sync');
-    for (var i = 0; i < 9; i++) {
-      ApiSyncThrottle.invalidate('desktop_shell_sync_$i');
-    }
-  }
-
   /// Navbatdagi mahsulotlarni serverga yuboradi, keyin serverdan yangilaydi.
   /// [force]: foydalanuvchi «Sinxronlash» bosganda — throttle o‘tkazib yuboriladi.
+  ///
+  /// Muhim: pull-to-refresh da `force: true` ishlatmang — Laravel «Too Many Attempts»
+  /// (429) chiqishi mumkin. Faqat aniq Sinxronlash tugmasida force qiling.
   static Future<void> syncAll({bool force = false}) async {
     if (_running) return;
     if (!force && !ApiSyncThrottle.shouldRun(_syncAllKey, _syncAllMinInterval)) return;
 
     _running = true;
-    if (force) _invalidateSyncThrottles();
+    // force=true bo‘lsa ham barcha throttle’larni birdan o‘chirmaymiz —
+    // faqat syncAll kalitini yangilaymiz; katalog 15 daqiqa ichida qayta
+    // to‘liq yuklanmasin (429 xavfi).
+    if (force) {
+      ApiSyncThrottle.invalidate(_syncAllKey);
+      ApiSyncThrottle.invalidate('cash_register_sync');
+      ApiSyncThrottle.invalidate('dashboard_api');
+    }
     ApiSyncThrottle.markRan(_syncAllKey);
     try {
       await ProductsProvider.instance.flushPendingSyncToServer();
@@ -47,6 +47,8 @@ class AppDataSync {
       await syncSellerNameFromApi();
       await ApiPacing.staggerPause();
 
+      // Mahsulotlar: force bo‘lsa ham refreshFromServer o‘z throttle’iga rioya qiladi
+      // (agar kerak bo‘lsa force bilan alohida chaqiriladi).
       await ProductsProvider.instance.refreshFromServer(force: force);
       await ApiPacing.staggerPause();
 

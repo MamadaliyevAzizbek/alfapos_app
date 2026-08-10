@@ -28,9 +28,6 @@ import '../utils/receipt_row_builder.dart';
 import '../widgets/receipt_widget.dart';
 import '../widgets/ios_style_modals.dart';
 import 'mijoz_screen.dart';
-import 'chergirma_screen.dart';
-import '../models/chergirma_result.dart';
-import '../utils/cart_payment_discount.dart';
 import 'yangi_mijoz_screen.dart';
 import 'tavsif_screen.dart';
 import 'desktop/desktop_payment_screen.dart';
@@ -382,14 +379,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         }
       }
     });
-  }
-
-  void _syncMixedPaymentAfterTotalChange() {
-    if (!_mixedPayment) {
-      _syncSinglePaymentSelection();
-      return;
-    }
-    _clampMixedPaymentAmounts();
   }
 
   /// Aralash to'lov o'chiq: bitta tur uchun kiritiladigan summa (balans chegarasi bilan).
@@ -1174,105 +1163,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     );
   }
 
-  int get _cartDiscountPercentDisplay =>
-      SalesSessionProvider.instance.cartDiscountPercent;
-
-  String? get _mobileChergirmaSubtitle {
-    final pct = _cartDiscountPercentDisplay;
-    if (pct != 0) return '${CartDiscountPercent.discountPercentToUi(pct)}%';
-    final catalog = CartDiscountPercent.catalogLinesTotal(widget.items);
-    final discount = catalog - _totalRaw;
-    if (discount > 0) return '${_fmt(discount)} so\'m';
-    return null;
-  }
-
-  Future<void> _applyCartDiscountPercent(int percent) {
-    final sales = SalesSessionProvider.instance;
-    final old = sales.cartDiscountPercent;
-    sales.setCartDiscountPercent(percent);
-    for (final item in widget.items) {
-      var base = item.unitPriceBaseForCartPercent;
-      if (base == null) {
-        final line = item.unitPriceForLine;
-        base = old != 0 ? line / ((100 + old) / 100) : line;
-        item.unitPriceBaseForCartPercent = base;
-      }
-      CartDiscountPercent.applyToItem(item, percent);
-    }
-    if (mounted) {
-      setState(() {});
-      _syncMixedPaymentAfterTotalChange();
-    }
-    return Future.value();
-  }
-
-  Future<void> _openChergirmaScreen() async {
-    final r = await Navigator.push<ChergirmaResult>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChergirmaScreen(
-          totalUzs: _totalRaw,
-          distributeToCartLines: !widget.useDesktopFullscreenLayout,
-        ),
-      ),
-    );
-    if (r != null && mounted) {
-      await _applyChergirmaResult(r);
-    }
-  }
-
-  Future<void> _applyChergirmaResult(ChergirmaResult r) async {
-    if (widget.useDesktopFullscreenLayout) {
-      final map = r.legacyMap;
-      setState(() {
-        _discountPercent = map['percent'];
-        _discountUzs = map['uzs'];
-      });
-      _syncMixedPaymentAfterTotalChange();
-      return;
-    }
-
-    switch (r.mode) {
-      case ChergirmaMode.clear:
-        SalesSessionProvider.instance.setCartDiscountPercent(0);
-        for (final item in widget.items) {
-          CartDiscountPercent.applyToItem(item, 0);
-        }
-        setState(() {
-          _discountPercent = null;
-          _discountUzs = null;
-        });
-        break;
-      case ChergirmaMode.percent:
-        setState(() {
-          _discountPercent = null;
-          _discountUzs = null;
-        });
-        await _applyCartDiscountPercent(r.value);
-        break;
-      case ChergirmaMode.discountUzs:
-        final cartTotal = widget.items.fold<int>(0, (s, e) => s + e.total);
-        _applyPaymentDiscountToCart(cartTotal - r.value);
-        break;
-      case ChergirmaMode.customerPays:
-        _applyPaymentDiscountToCart(r.value);
-        break;
-    }
-  }
-
-  void _applyPaymentDiscountToCart(int amountPaidUzs) {
-    SalesSessionProvider.instance.setCartDiscountPercent(0);
-    CartPaymentDiscount.applyCustomerPayment(widget.items, amountPaidUzs);
-    for (final item in widget.items) {
-      CartProvider.instance.updateSalePriceOverride(item, item.salePriceOverride);
-    }
-    setState(() {
-      _discountPercent = null;
-      _discountUzs = null;
-    });
-    _syncMixedPaymentAfterTotalChange();
-  }
-
   Future<void> _applyPaymentCustomer(Client client) async {
     Client? effective = client;
     final idNum = int.tryParse(client.id);
@@ -1366,35 +1256,6 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _DetailRow(
-          icon: Icons.point_of_sale_rounded,
-          title: Strings.sotuvchi,
-          subtitle: _sellerDisplayName.isEmpty ? null : _sellerDisplayName,
-          trailing: const SizedBox.shrink(),
-        ),
-        const SizedBox(height: 12),
-        _DetailRow(
-          icon: Icons.percent_rounded,
-          title: Strings.chergirma,
-          subtitle: widget.useDesktopFullscreenLayout
-              ? (_discountPercent != null
-                  ? '$_discountPercent%'
-                  : _discountUzs != null
-                      ? '${_fmt(_discountUzs!)} UZS'
-                      : null)
-              : _mobileChergirmaSubtitle,
-          trailing: TextButton(
-            onPressed: _openChergirmaScreen,
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(Strings.qoShish, style: TextStyle(color: AppTheme.primary)),
-                Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppTheme.primary),
-              ],
-            ),
           ),
         ),
         const SizedBox(height: 12),

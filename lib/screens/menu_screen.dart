@@ -5,10 +5,7 @@ import '../core/seller_preferences.dart';
 import '../providers/dashboard_provider.dart';
 import '../services/api_service.dart';
 import 'mijozlar_screen.dart';
-import 'kirimlar_screen.dart';
 import 'xarajatlar_screen.dart';
-import 'hisobotlar_screen.dart';
-import 'sozlamalar_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -120,15 +117,6 @@ class _MenuScreenState extends State<MenuScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _MenuButton(
-              icon: Icons.settings_rounded,
-              title: 'Sozlamalar',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SozlamalarScreen()),
-              ),
-            ),
-            const SizedBox(height: 12),
             if (widget.onLogout != null) ...[
               SizedBox(
                 width: double.infinity,
@@ -158,29 +146,11 @@ class _MenuScreenState extends State<MenuScreen> {
             ),
             const SizedBox(height: 12),
             _MenuButton(
-              icon: Icons.add_box_rounded,
-              title: Strings.kirimlar,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const KirimlarScreen()),
-              ),
-            ),
-            const SizedBox(height: 12),
-            _MenuButton(
               icon: Icons.payments_rounded,
               title: Strings.xarajatlar,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const XarajatlarScreen()),
-              ),
-            ),
-            const SizedBox(height: 12),
-            _MenuButton(
-              icon: Icons.assessment_rounded,
-              title: Strings.hisobotlar,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const HisobotlarScreen()),
               ),
             ),
           ],

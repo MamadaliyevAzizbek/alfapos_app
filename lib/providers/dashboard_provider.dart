@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/daily_sales.dart';
 import '../services/api_service.dart';
 import '../core/api_client.dart';
+import '../core/api_sync_throttle.dart';
 
 class DashboardProvider extends ChangeNotifier {
   DashboardProvider._();
@@ -28,7 +29,11 @@ class DashboardProvider extends ChangeNotifier {
   int _totalStockQuantity = 0;
   int _customersCount = 0;
   int _soldProductsToday = 0;
+  int _lowStockCount = 0;
   num _returnedToday = 0;
+  num _todayProfit = 0;
+  num _yesterdayIncome = 0;
+  num _monthlyIncome = 0;
   num _last30DaysProfit = 0;
   num _totalProfitAll = 0;
   List<DashboardBarPoint> _barChart = [];
@@ -57,7 +62,15 @@ class DashboardProvider extends ChangeNotifier {
   int get totalStockQuantity => _totalStockQuantity;
   int get customersCount => _customersCount;
   int get soldProductsToday => _soldProductsToday;
+  /// `additional_info.low_stock_*` — kam qolgan mahsulotlar soni (veb: «Kam qolgan mahsulotlar»).
+  int get lowStockCount => _lowStockCount;
   num get returnedToday => _returnedToday;
+  /// `summary.today_profit` / `profit.today` — Bugungi foyda KPI.
+  num get todayProfit => _todayProfit;
+  /// Kechagi daromad (veb pastki kartalar).
+  num get yesterdayIncome => _yesterdayIncome;
+  /// Bu oylik daromad (veb pastki kartalar).
+  num get monthlyIncome => _monthlyIncome;
   num get last30DaysProfit => _last30DaysProfit;
   num get totalProfitAll => _totalProfitAll;
   List<DashboardBarPoint> get barChart => List.unmodifiable(_barChart);
@@ -103,6 +116,12 @@ class DashboardProvider extends ChangeNotifier {
 
   Future<void> loadFromApi([DateTime? forDate]) async {
     _loadError = null;
+    // Bir xil kun uchun qisqa TTL — syncAll ketma-ket dashboardni qayta so‘ramasin.
+    if (forDate == null &&
+        _todaySales != null &&
+        !ApiSyncThrottle.shouldRun('dashboard_api', const Duration(minutes: 2))) {
+      return;
+    }
     _loading = true;
     if (forDate != null) {
       _selectedDate = DateTime(forDate.year, forDate.month, forDate.day);
@@ -115,6 +134,7 @@ class DashboardProvider extends ChangeNotifier {
       _lastRawDashboard = res;
       await _parseDashboardResponse(res);
 
+      ApiSyncThrottle.markRan('dashboard_api');
       _loading = false;
       notifyListeners();
     } on ApiException catch (e) {
@@ -176,6 +196,23 @@ class DashboardProvider extends ChangeNotifier {
       expensesUzs = _toNum(summary['today_expenses']);
       daxod = _toNum(summary['today_incomes']);
       returned = _toNum(summary['today_returned_amount']);
+      _todayProfit = _toNum(
+        summary['today_profit'] ?? summary['todayProfit'] ?? summary['profit'],
+      );
+      _yesterdayIncome = _toNum(
+        summary['yesterday_incomes'] ??
+            summary['yesterday_income'] ??
+            summary['yesterday_sales'] ??
+            summary['yesterdayIncomes'] ??
+            summary['yesterday_profit'],
+      );
+      _monthlyIncome = _toNum(
+        summary['monthly_incomes'] ??
+            summary['monthly_income'] ??
+            summary['this_month_incomes'] ??
+            summary['month_incomes'] ??
+            summary['monthlyIncomes'],
+      );
     } else {
       totalUzs = _toNum(
         basicData['todaySales'] ??
@@ -207,6 +244,26 @@ class DashboardProvider extends ChangeNotifier {
             basicData['today_returned_amount'] ??
             root['todayReturnedAmount'] ??
             root['today_returned_amount'],
+      );
+      _todayProfit = _toNum(
+        basicData['todayProfit'] ??
+            basicData['today_profit'] ??
+            root['todayProfit'] ??
+            root['today_profit'],
+      );
+      _yesterdayIncome = _toNum(
+        basicData['yesterdayIncomes'] ??
+            basicData['yesterday_incomes'] ??
+            basicData['yesterdaySales'] ??
+            root['yesterdayIncomes'] ??
+            root['yesterday_incomes'],
+      );
+      _monthlyIncome = _toNum(
+        basicData['monthlyIncomes'] ??
+            basicData['monthly_incomes'] ??
+            basicData['thisMonthIncomes'] ??
+            root['monthlyIncomes'] ??
+            root['monthly_incomes'],
       );
     }
     _todayDebt = todayDebt;
@@ -277,16 +334,39 @@ class DashboardProvider extends ChangeNotifier {
       _salesValue = _toNum(ai['stock_selling_value']);
       _warehouseValue = _toNum(ai['stock_purchase_value']);
       _totalStockQuantity = _toInt(ai['total_remaining_quantity']);
+      _lowStockCount = _toInt(
+        ai['low_stock_count'] ??
+            ai['low_stock_products'] ??
+            ai['low_stock_products_count'] ??
+            ai['products_low_stock'] ??
+            ai['kam_qolgan_mahsulotlar'] ??
+            ai['out_of_stock_count'] ??
+            ai['lowStockCount'] ??
+            ai['lowStockProducts'],
+      );
     } else {
       _applyLegacyAdditionalInfo(root, basicData, legacy, todayDebt);
     }
 
-    // Foyda (pastki kartalar / kelajak) — daxod emas!
+    // Foyda — daxod (today_incomes) emas!
     final profit = root['profit'];
     if (profit is Map) {
       final p = Map<String, dynamic>.from(profit);
-      _last30DaysProfit = _toNum(p['last_30_days']);
+      if (_todayProfit == 0) {
+        _todayProfit = _toNum(p['today'] ?? p['today_profit'] ?? p['daily']);
+      }
+      if (_yesterdayIncome == 0) {
+        _yesterdayIncome = _toNum(
+          p['yesterday'] ?? p['yesterday_income'] ?? p['yesterday_incomes'],
+        );
+      }
+      _last30DaysProfit = _toNum(p['last_30_days'] ?? p['monthly'] ?? p['month']);
       _totalProfitAll = _toNum(p['total']);
+      if (_monthlyIncome == 0) {
+        _monthlyIncome = _toNum(
+          p['monthly_income'] ?? p['monthly_incomes'] ?? p['this_month'] ?? p['last_30_days'],
+        );
+      }
     } else {
       _last30DaysProfit = _toNum(
         basicData['last30DaysProfit'] ??
@@ -294,6 +374,12 @@ class DashboardProvider extends ChangeNotifier {
             basicData['monthlyProfit'],
       );
       _totalProfitAll = _toNum(basicData['totalProfit'] ?? basicData['total_profit']);
+      if (_monthlyIncome == 0) {
+        _monthlyIncome = _last30DaysProfit;
+      }
+    }
+    if (_monthlyIncome == 0 && _last30DaysProfit != 0) {
+      _monthlyIncome = _last30DaysProfit;
     }
 
     final charts = root['charts'];
@@ -376,6 +462,14 @@ class DashboardProvider extends ChangeNotifier {
     _customersCount = _toInt(
       basicData['totalCustomers'] ?? root['customersCount'] ?? root['totalCustomers'],
     );
+    _lowStockCount = _toInt(
+      basicData['lowStockCount'] ??
+          basicData['low_stock_count'] ??
+          root['lowStockCount'] ??
+          root['low_stock_count'] ??
+          legacy['lowStockCount'] ??
+          legacy['low_stock_count'],
+    );
   }
 
   static List<dynamic> _extractList(dynamic raw) {
@@ -440,7 +534,11 @@ class DashboardProvider extends ChangeNotifier {
     _totalStockQuantity = 0;
     _customersCount = 0;
     _soldProductsToday = 0;
+    _lowStockCount = 0;
     _returnedToday = 0;
+    _todayProfit = 0;
+    _yesterdayIncome = 0;
+    _monthlyIncome = 0;
     _last30DaysProfit = 0;
     _totalProfitAll = 0;
     _barChart = [];

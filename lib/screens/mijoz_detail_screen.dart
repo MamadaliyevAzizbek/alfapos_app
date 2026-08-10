@@ -12,8 +12,11 @@ import '../utils/customer_balance_transaction.dart';
 import '../utils/customer_orders.dart';
 import '../utils/platform_layout.dart';
 import 'api_chek_detail_screen.dart';
+import 'desktop/desktop_shell_scope.dart';
 import 'yangi_mijoz_screen.dart';
+import '../widgets/app_dropdown.dart';
 import '../widgets/ios_style_modals.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 /// Mijoz detali: ma'lumotlar, cheklar ro'yxati, qarz to'lash
 class MijozDetailScreen extends StatefulWidget {
@@ -271,7 +274,7 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
             child: TabBarView(
               controller: _tabs,
               children: [
-                RefreshIndicator(
+                ThrottledRefreshIndicator(
                   onRefresh: _load,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -471,11 +474,13 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
             ),
             title: Text(_client.name),
             actions: [
-              IconButton(
-                tooltip: 'Yangilash',
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: _loading ? null : _load,
-              ),
+              // Shell «Sinxronlash» bo‘lsa dublikat yo‘q; push route’da Yangilash qoladi.
+              if (DesktopShellScope.maybeOf(context) == null)
+                IconButton(
+                  tooltip: 'Yangilash',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: _loading ? null : _load,
+                ),
             ],
           ),
           body: Row(
@@ -1501,14 +1506,11 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
                 ),
               ),
               const SizedBox(height: 4),
-              DropdownButtonFormField<BulkDuePaymentMethod>(
-                initialValue: method,
-                decoration: InputDecoration(
-                  labelText: "To'lov turi",
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+              AppDropdownField<BulkDuePaymentMethod>(
+                label: "To'lov turi",
+                value: method,
                 items: methods
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m.label)))
+                    .map((m) => appDropdownItem(value: m, label: m.label))
                     .toList(),
                 onChanged: (v) {
                   if (v != null) {
@@ -1598,10 +1600,12 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
                         ),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<BulkDuePaymentMethod>(
-                        initialValue: method,
-                        decoration: AppModals.desktopField("To'lov turi"),
-                        items: methods.map((m) => DropdownMenuItem(value: m, child: Text(m.label))).toList(),
+                      AppDropdownField<BulkDuePaymentMethod>(
+                        label: "To'lov turi",
+                        value: method,
+                        items: methods
+                            .map((m) => appDropdownItem(value: m, label: m.label))
+                            .toList(),
                         onChanged: (v) {
                           if (v != null) {
                             method = v;

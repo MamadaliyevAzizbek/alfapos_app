@@ -18,6 +18,7 @@ import '../providers/sales_session_provider.dart';
 import '../core/api_client.dart';
 import '../services/api_service.dart';
 import '../core/seller_preferences.dart';
+import '../widgets/app_dropdown.dart';
 import '../widgets/product_tile.dart';
 import 'tranzaksiya_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
@@ -33,7 +34,6 @@ import 'desktop/desktop_shell_scope.dart';
 import 'desktop/savatcha_desktop_layout.dart';
 import '../providers/cash_register_shift_provider.dart';
 import 'desktop/sales_filter_dialog.dart';
-import 'desktop/sales_nav_filters.dart';
 import 'desktop/desktop_payment_screen.dart';
 import 'desktop/sales_hold_orders_sheet.dart';
 import '../utils/cart_discount_percent.dart';
@@ -65,6 +65,7 @@ import '../widgets/sales_customer_search.dart';
 import '../models/chergirma_result.dart';
 import 'chergirma_screen.dart';
 import 'yangi_mijoz_screen.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 /// Savatcha: mahsulotlar API dan (ProductsProvider). Sotuv POST /sales/store orqali, chek ID API javobidan.
 /// Savatcha o'zi diska saqlanmaydi (faqat sessiya davomida xotirada).
@@ -128,8 +129,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   bool get _isInvoiceEditMode => _invoiceEditOrderId != null;
 
   Future<void> _onRefresh() async {
+    // To‘liq force sync qilmaymiz — 429 (Too Many Attempts) xavfi.
     if (isDesktopPosLayout) {
-      await _products.loadFromApi();
+      await _products.loadFromStorage(refreshInBackground: true);
     } else {
       await _products.loadFromStorage(refreshInBackground: true);
       if (_sales.initError == null) {
@@ -149,22 +151,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return _sortCatalogProducts(merged);
   }
 
-  bool get _salesFiltersActive {
-    final toggles = _sales.hideZeroStock ||
-        _sales.sellAtWholesalePrice ||
-        _sales.sellAtPurchasePrice ||
-        _sales.showPurchasePrice ||
-        _sales.showUsdEquivalent;
-    if (isDesktopPosLayout) {
-      return toggles || _sales.categoryId != null || _sales.brandId != null;
-    }
-    return toggles;
-  }
-
   List<Product> get _mobileCatalogProducts {
     final q = _query.trim();
     if (q.isEmpty) return _catalogProductsForSearch();
-    return product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
+    // Desktop bilan bir xil: mahalliy filtr + server natijalarini birlashtirish.
+    final local = product_search.filterCatalogProducts(_catalogProductsForSearch(), q);
+    return _mergeSearchResults(q, local);
   }
 
   @override
@@ -746,24 +738,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (mounted && !isDesktopPosLayout) setState(() {});
     }
     _barcodeSearchDebounce?.cancel();
+    _catalogSearchDebounce?.cancel();
     final q = v.trim();
 
-    // Mobil: Mahsulotlar (Katalog) kabi — mahalliy filtr; API har harfda emas.
-    if (!isDesktopPosLayout) {
-      if (q.isEmpty && _sales.lastSearch.isNotEmpty) {
-        _sales.setSearchQuery('');
-      }
-      if (product_search.looksLikeBarcodeInput(q)) {
-        _barcodeSearchDebounce = Timer(const Duration(milliseconds: 500), () {
-          if (!mounted) return;
-          if (_searchController.text.trim() != q) return;
-          unawaited(_searchAndAdd(q));
-        });
-      }
-      return;
-    }
-
-    // Mahsulotlar (Katalog) kabi: nom — faqat mahalliy filtr; API har harfda emas.
+    // Nom — mahalliy filtr + debounce bilan server; shtrix — avtomatik qo‘shish.
     if (q.isEmpty) {
       if (_sales.lastSearch.isNotEmpty) {
         _sales.setSearchQuery('');
@@ -776,16 +754,17 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _barcodeSearchDebounce = Timer(const Duration(milliseconds: 400), () {
         if (!mounted) return;
         if (_searchController.text.trim() != q) return;
-        unawaited(_desktopBarcodeSearchAndAdd(q));
+        unawaited(
+          isDesktopPosLayout ? _desktopBarcodeSearchAndAdd(q) : _searchAndAdd(q),
+        );
       });
       return;
     }
 
-    _catalogSearchDebounce?.cancel();
     _catalogSearchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       if (_searchController.text.trim() != q) return;
-      unawaited(_desktopSearchProducts(q));
+      unawaited(_searchProductsByQuery(q));
     });
   }
 
@@ -812,9 +791,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
     return product_search.sortProductsBySearchRelevance(merged, q);
   }
-
-  List<Product> get _filteredProducts =>
-      product_search.filterProductsByQuery(_products.items, _query);
 
   /// Desktop: kategoriya/brend tanlanganida server filtri, aks holda to'liq katalog.
   List<Product> get _desktopBrowseProducts {
@@ -851,8 +827,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return _sortCatalogProducts(list);
   }
 
-  List<Product> get _desktopCatalogProducts => _desktopCatalogProductsFor(_query);
-
   List<Product> _desktopCatalogProductsFor(String searchQuery) {
     final q = searchQuery.trim();
     if (q.isNotEmpty) {
@@ -866,8 +840,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return _desktopBrowseProducts;
   }
 
-  /// Desktop: nom/SKU — mahalliy + server qidiruv; shtrix — alohida.
-  Future<void> _desktopSearchProducts(String query) async {
+  /// Nom/SKU — mahalliy + server qidiruv; shtrix/PLU/tarozi — alohida.
+  Future<void> _searchProductsByQuery(String query) async {
     final q = query.trim();
     if (q.isEmpty) {
       if (_sales.lastSearch.isNotEmpty) {
@@ -877,8 +851,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (mounted) setState(() {});
       return;
     }
-    if (product_search.looksLikeBarcodeInput(q)) {
-      await _desktopBarcodeSearchAndAdd(q);
+    if (product_search.looksLikeBarcodeOrPluInput(q)) {
+      if (isDesktopPosLayout) {
+        await _desktopBarcodeSearchAndAdd(q);
+      } else {
+        await _searchAndAdd(q);
+      }
       return;
     }
 
@@ -896,74 +874,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   int get _cartProfitTotal =>
       _cartGrandTotal - SalesStoreBody.estimateCostUzs(_cart.items);
 
-  String _cartProfitPercentLabel() {
-    if (_cartGrandTotal <= 0) return 'Foyda: 0%';
-    final pct = _cartProfitTotal / _cartGrandTotal * 100;
-    return 'Foyda: ${pct.toStringAsFixed(1)}%';
-  }
-
-  Widget _mobileCartTotalBar() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: SalesCartProfitDisplaySettings.visible,
-      builder: (context, showProfit, _) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: _isReturnMode ? const Color(0xFFE65100) : AppTheme.primary,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Text(
-                _isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (_cartCatalogTotal > 0 && _cartCatalogTotal != _cartGrandTotal)
-                    Text(
-                      formatThousands(_cartCatalogTotal),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
-                        fontSize: 13,
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    ),
-                  Text(
-                    formatThousands(_cartGrandTotal),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (showProfit && !_isReturnMode) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      _cartProfitPercentLabel(),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.82),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Widget _mobileCashRegisterBar() {
     final registers = _sales.cashRegisters;
     if (registers.length <= 1) return const SizedBox.shrink();
@@ -979,21 +889,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: DropdownButtonFormField<Map<String, dynamic>>(
+      child: AppDropdownField<Map<String, dynamic>>(
+        label: 'Kassa',
         value: selected,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: 'Kassa',
-          prefixIcon: const Icon(Icons.point_of_sale_rounded, color: AppTheme.textSecondary),
-          filled: true,
-          fillColor: AppTheme.cardBg,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
         items: registers
             .map(
-              (r) => DropdownMenuItem<Map<String, dynamic>>(
+              (r) => appDropdownItem(
                 value: r,
-                child: Text(cashRegisterDisplayTitle(r), overflow: TextOverflow.ellipsis),
+                label: cashRegisterDisplayTitle(r),
               ),
             )
             .toList(),
@@ -1007,17 +910,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     );
   }
 
-  Widget _mobileCustomerSection() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: SalesCustomerSearch(
-        selected: _selectedClient,
-        onSelected: _onCustomerSelected,
-        onAddNew: () => _addCustomer(context),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (isDesktopPosLayout) {
@@ -1026,12 +918,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
     final items = _cart.items;
     final showSearchResults = _query.trim().isNotEmpty;
-    final products = showSearchResults ? _mobileCatalogProducts : _filteredProducts;
-    final hasLocalCatalog = _catalogProductsForSearch().isNotEmpty;
+    final products = showSearchResults ? _mobileCatalogProducts : const <Product>[];
     final catalogLoading = showSearchResults &&
-        !hasLocalCatalog &&
-        !_products.isLoaded &&
-        _sales.productsLoading;
+        products.isEmpty &&
+        (_sales.productsLoading || !_products.isLoaded);
     final shift = CashRegisterShiftProvider.instance;
     final showShiftDashboard = shift.requiresCashRegister && shift.isShiftOpen;
 
@@ -1087,13 +977,15 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _searchController,
                     decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       hintText: Strings.artikulShtrixIsm,
                       prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textSecondary),
                     ),
@@ -1103,22 +995,20 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                       _catalogSearchDebounce?.cancel();
                       final trimmed = q.trim();
                       if (trimmed.isEmpty) return;
-                      if (product_search.looksLikeBarcodeInput(trimmed)) {
-                        await _searchAndAdd(trimmed);
-                      }
+                      await _searchProductsByQuery(trimmed);
                     },
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Material(
                   color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   child: InkWell(
                     onTap: () => _openScanner(context),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     child: const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 26),
+                      padding: EdgeInsets.all(11),
+                      child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 22),
                     ),
                   ),
                 ),
@@ -1126,15 +1016,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             ),
           ),
           _mobileCashRegisterBar(),
-          if (items.isNotEmpty) _mobileCustomerSection(),
           Expanded(
             child: GestureDetector(
               onTap: () {
                 FocusScope.of(context).unfocus();
                 FocusManager.instance.primaryFocus?.unfocus();
               },
-              behavior: HitTestBehavior.translucent,
-              child: RefreshIndicator(
+              // deferToChild: miqdor TextField birinchi bosishda fokus oladi;
+              // translucent ota onTap fokusni darhol yopib yuborardi.
+              behavior: HitTestBehavior.deferToChild,
+              child: ThrottledRefreshIndicator(
                 onRefresh: _onRefresh,
                 child: showSearchResults
                   ? catalogLoading
@@ -1224,12 +1115,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           ),
         if (items.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _mobileCartTotalBar(),
-                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -1237,31 +1126,28 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                         onPressed: _sales.holdCartInFlight ? null : () => _holdCart(context),
                         icon: _sales.holdCartInFlight
                             ? const SizedBox(
-                                width: 20,
-                                height: 20,
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
                               )
-                            : const Icon(Icons.pause_circle_outline_rounded, size: 22),
+                            : const Icon(Icons.pause_circle_outline_rounded, size: 20),
                         label: Text(_sales.holdCartInFlight ? 'Saqlanmoqda...' : Strings.toxtatish),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          visualDensity: VisualDensity.compact,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
+                    const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => _showDiscountDialog(context),
                         icon: Icon(
                           Icons.percent_rounded,
-                          size: 22,
+                          size: 20,
                           color: _sales.cartDiscountPercent != 0 ? AppTheme.primary : null,
                         ),
                         label: Text(
@@ -1274,48 +1160,26 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          visualDensity: VisualDensity.compact,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showDesktopFilterSheet(context),
-                        icon: Icon(
-                          Icons.tune_rounded,
-                          size: 22,
-                          color: _salesFiltersActive ? AppTheme.primary : null,
-                        ),
-                        label: Text(
-                          _salesFiltersActive ? 'Filtr •' : 'Filtr',
-                          style: TextStyle(
-                            color: _salesFiltersActive ? AppTheme.primary : null,
-                            fontWeight: _salesFiltersActive ? FontWeight.w600 : null,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
+                  height: 44,
                   child: ElevatedButton(
                     onPressed: () => _openPayment(context),
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     child: const Row(
@@ -1342,13 +1206,23 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (q.isEmpty || _barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
     try {
-      final found = await BarcodeProductLookup.resolve(
+      final result = await BarcodeProductLookup.resolveDetailed(
         query: q,
         salesScreenProducts: _sales.salesProducts,
         branchId: _sales.branchId ?? 1,
       );
-      if (found != null) {
-        _addProductToCart(found);
+      if (result.found) {
+        _addProductToCart(result.product!, quantity: result.quantity);
+        _clearSearchField();
+        return;
+      }
+      if (result.scalePluNotFound) {
+        if (mounted) {
+          AppNotify.info(
+            context,
+            result.message ?? 'PLU kodli mahsulot topilmadi',
+          );
+        }
         _clearSearchField();
         return;
       }
@@ -1405,7 +1279,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return 'Dona — ${formatThousands(product.pieceSellPriceNum.round())} so\'m';
   }
 
-  void _addProductToCart(Product product) {
+  void _addProductToCart(Product product, {num quantity = 1}) {
+    final qty = quantity > 0 ? quantity : 1;
     void afterAdd(CartItem line) {
       _applyCustomerPricingToNewItem(line);
       _expandedCartLine = null;
@@ -1413,8 +1288,17 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
 
     void addLine({required bool sellByPack}) {
-      if (!_canAddProductToCart(product, sellByPack: sellByPack)) return;
-      afterAdd(_cart.add(CartItem(product: product, quantity: 1, sellByPack: sellByPack)));
+      if (!_canAddProductToCart(product, quantity: qty, sellByPack: sellByPack)) {
+        return;
+      }
+      afterAdd(_cart.add(CartItem(product: product, quantity: qty, sellByPack: sellByPack)));
+    }
+
+    // Taroz (kg) — pachka tanlash oynasi kerak emas.
+    if (qty != 1) {
+      addLine(sellByPack: false);
+      _refocusCatalogSearch();
+      return;
     }
 
     if (product.canSellByPack && !isDesktopPosLayout) {
@@ -1460,13 +1344,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       child: _CartLinePriceEditSheet(item: item),
     );
     if (!mounted || result == null) return;
-    if (result.useStandard) {
-      _setCartLineUnitPrice(item, null);
-    } else {
-      final def = item.defaultLineUnitPrice;
-      final price = result.price;
-      _setCartLineUnitPrice(item, price != null && price == def ? null : price);
+    if (result.sellByPack != null) {
+      _setCartLineSellByPack(item, result.sellByPack!);
     }
+    final def = item.defaultLineUnitPrice;
+    final price = result.price;
+    _setCartLineUnitPrice(item, price != null && price == def ? null : price);
     setState(() {});
   }
 
@@ -1617,7 +1500,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             onSelected: _onCustomerSelected,
             onAddNew: () => _addCustomer(context),
             iconOnlyAddButton: true,
-            sharpCorners: true,
+            sharpCorners: false,
             searchFocusNode: _customerSearchFocus,
             shortcutKeyLabel: SalesKeyboardShortcutsSettings.resolveKeyLabel(
               _shortcutKeys,
@@ -1948,13 +1831,23 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (_barcodeSearchInFlight) return;
     _barcodeSearchInFlight = true;
     try {
-      final found = await BarcodeProductLookup.resolve(
+      final result = await BarcodeProductLookup.resolveDetailed(
         query: q,
         salesScreenProducts: _sales.salesProducts,
         branchId: _sales.branchId ?? 1,
       );
-      if (found != null) {
-        _addProductToCart(found);
+      if (result.found) {
+        _addProductToCart(result.product!, quantity: result.quantity);
+        _clearSearchField();
+        return;
+      }
+      if (result.scalePluNotFound) {
+        if (mounted) {
+          AppNotify.info(
+            context,
+            result.message ?? 'PLU kodli mahsulot topilmadi',
+          );
+        }
         _clearSearchField();
         return;
       }
@@ -1981,7 +1874,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   Future<void> _desktopSearchSubmit(String q) async {
     _barcodeSearchDebounce?.cancel();
     _catalogSearchDebounce?.cancel();
-    await _desktopSearchProducts(q);
+    await _searchProductsByQuery(q);
   }
 
   Future<void> _holdCart(BuildContext context) async {
@@ -2568,8 +2461,17 @@ class _CartItemTileState extends State<_CartItemTile> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
+    _controller = TextEditingController(text: _formatQuantity(widget.item.quantity));
     _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CartItemTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_editing && !_focusNode.hasFocus) {
+      final t = _formatQuantity(widget.item.quantity);
+      if (_controller.text != t) _controller.text = t;
+    }
   }
 
   @override
@@ -2581,14 +2483,36 @@ class _CartItemTileState extends State<_CartItemTile> {
   }
 
   void _onFocusChange() {
-    if (!_focusNode.hasFocus && _editing) _applyAndClose();
+    if (!_focusNode.hasFocus && _editing) {
+      // setState paytida vaqtinchalik focus yo'qolishi mumkin — keyingi frameda tekshiramiz.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _focusNode.hasFocus || !_editing) return;
+        _applyAndClose();
+      });
+    }
+  }
+
+  void _startEditing() {
+    if (widget.onQuantityChanged == null) return;
+    _controller.text = _formatQuantity(widget.item.quantity);
+    setState(() => _editing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_editing) return;
+      _focusNode.requestFocus();
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    });
   }
 
   void _applyAndClose() {
-    final s = _controller.text.trim().replaceAll(',', '.');
+    final s = _controller.text.trim().replaceAll(',', '.').replaceAll(' ', '');
     final q = num.tryParse(s);
     if (q != null && q > 0 && widget.onQuantityChanged != null) {
       widget.onQuantityChanged!(q);
+    } else {
+      _controller.text = _formatQuantity(widget.item.quantity);
     }
     if (mounted) setState(() => _editing = false);
   }
@@ -2622,13 +2546,14 @@ class _CartItemTileState extends State<_CartItemTile> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final p = item.product;
-    final unitLabel = item.sellByPack ? "pachka" : "dona";
+    final unitLabel = item.sellByPack ? 'pachka' : 'dona';
     final canEdit = widget.onQuantityChanged != null;
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: InkWell(
@@ -2637,7 +2562,7 @@ class _CartItemTileState extends State<_CartItemTile> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
                         width: 56,
@@ -2653,39 +2578,43 @@ class _CartItemTileState extends State<_CartItemTile> {
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               p.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                            if (item.hasSalePriceOverride) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                'Vaqtinchalik narx (shu sotuv)',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.orange.shade800,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 4),
-                            Text(
-                              _formatLineTotal(item),
-                              style: const TextStyle(
-                                color: AppTheme.primary,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                height: 1.15,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${_formatQuantity(item.quantity)} $unitLabel',
+                              _formatLineTotal(item),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary,
+                                color: AppTheme.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              item.hasSalePriceOverride
+                                  ? 'Vaqtinchalik · ${_formatQuantity(item.quantity)} $unitLabel'
+                                  : '${_formatQuantity(item.quantity)} $unitLabel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: item.hasSalePriceOverride
+                                    ? FontWeight.w500
+                                    : FontWeight.w400,
+                                color: item.hasSalePriceOverride
+                                    ? Colors.orange.shade800
+                                    : AppTheme.textSecondary,
                               ),
                             ),
                           ],
@@ -2696,63 +2625,65 @@ class _CartItemTileState extends State<_CartItemTile> {
                 ),
               ),
             ),
+            const SizedBox(width: 8),
             Container(
+              height: 40,
               decoration: BoxDecoration(
                 color: AppTheme.cardBg,
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.remove_rounded, size: 20),
-                    onPressed: widget.onDecrement,
+                    onPressed: () {
+                      if (_editing) _applyAndClose();
+                      widget.onDecrement();
+                    },
                   ),
-                  if (_editing)
-                    SizedBox(
-                      width: 56,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                          border: InputBorder.none,
-                        ),
-                        onSubmitted: (_) => _applyAndClose(),
+                  SizedBox(
+                    width: 48,
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      readOnly: !_editing,
+                      showCursor: _editing,
+                      enableInteractiveSelection: _editing,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
                       ),
-                    )
-                  else
-                    GestureDetector(
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        border: InputBorder.none,
+                      ),
                       onTap: canEdit
                           ? () {
-                              _controller.text = _formatQuantity(item.quantity);
-                              setState(() => _editing = true);
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                FocusScope.of(context).requestFocus(_focusNode);
-                              });
+                              if (!_editing) {
+                                _startEditing();
+                              } else {
+                                _controller.selection = TextSelection(
+                                  baseOffset: 0,
+                                  extentOffset: _controller.text.length,
+                                );
+                              }
                             }
                           : null,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Text(
-                          _formatQuantity(item.quantity),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
+                      onSubmitted: (_) => _applyAndClose(),
                     ),
+                  ),
                   IconButton(
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.add_rounded, size: 20),
-                    onPressed: widget.onIncrement,
+                    onPressed: () {
+                      if (_editing) _applyAndClose();
+                      widget.onIncrement();
+                    },
                   ),
                 ],
               ),
@@ -2765,11 +2696,10 @@ class _CartItemTileState extends State<_CartItemTile> {
 }
 
 class _CartLinePriceResult {
-  const _CartLinePriceResult.standard() : useStandard = true, price = null;
-  const _CartLinePriceResult.saved(this.price) : useStandard = false;
+  const _CartLinePriceResult.saved(this.price, {this.sellByPack});
 
-  final bool useStandard;
   final double? price;
+  final bool? sellByPack;
 }
 
 class _CartLinePriceEditSheet extends StatefulWidget {
@@ -2783,17 +2713,69 @@ class _CartLinePriceEditSheet extends StatefulWidget {
 
 class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
   late final TextEditingController _priceCtrl;
+  late bool _sellByPack;
+  String? _activePriceType;
 
   @override
   void initState() {
     super.initState();
+    _sellByPack = widget.item.sellByPack;
     _priceCtrl = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
+    _activePriceType = _detectActivePriceType();
   }
 
   @override
   void dispose() {
     _priceCtrl.dispose();
     super.dispose();
+  }
+
+  CartItem get _probe => CartItem(
+        product: widget.item.product,
+        quantity: widget.item.quantity,
+        sellByPack: _sellByPack,
+      );
+
+  bool get _sellByPackChanged => _sellByPack != widget.item.sellByPack;
+
+  bool? get _sellByPackResult => _sellByPackChanged ? _sellByPack : null;
+
+  String? _detectActivePriceType() {
+    final current = parseFormattedSum(_priceCtrl.text)?.toDouble() ??
+        widget.item.unitPriceDisplay.toDouble();
+    const types = [
+      CustomerGroupDiscount.selling,
+      CustomerGroupDiscount.wholesale,
+    ];
+    for (final type in types) {
+      final price = CustomerGroupDiscount.catalogUnitPriceForItem(_probe, type);
+      if ((current - price).abs() < 0.5) return type;
+    }
+    return null;
+  }
+
+  void _syncActiveFromField() {
+    final next = _detectActivePriceType();
+    if (next != _activePriceType) {
+      setState(() => _activePriceType = next);
+    }
+  }
+
+  void _selectCatalogPriceType(String priceType) {
+    final price = CustomerGroupDiscount.catalogUnitPriceForItem(_probe, priceType);
+    setState(() {
+      _activePriceType = priceType;
+      _priceCtrl.text = formatThousands(price.round());
+    });
+  }
+
+  void _setSellByPack(bool sellByPack) {
+    if (_sellByPack == sellByPack) return;
+    setState(() => _sellByPack = sellByPack);
+    final type = _activePriceType ?? CustomerGroupDiscount.selling;
+    final price = CustomerGroupDiscount.catalogUnitPriceForItem(_probe, type);
+    _priceCtrl.text = formatThousands(price.round());
+    setState(() => _activePriceType = type);
   }
 
   InputDecoration _fieldDecoration(String label, {String? suffix}) {
@@ -2821,14 +2803,78 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
       AppNotify.info(context, "To'g'ri narx kiriting");
       return;
     }
-    Navigator.pop(context, _CartLinePriceResult.saved(v.toDouble()));
+    Navigator.pop(
+      context,
+      _CartLinePriceResult.saved(v.toDouble(), sellByPack: _sellByPackResult),
+    );
+  }
+
+  Widget _priceTypeChip({
+    required String label,
+    required num price,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? AppTheme.primary.withValues(alpha: 0.08) : Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected ? AppTheme.primary : AppTheme.divider,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? AppTheme.primary : AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                formatThousands(price.round()),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? AppTheme.primary : AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final unitHint = item.sellByPack ? '1 pachka narxi' : '1 dona narxi';
-    final catalog = item.defaultLineUnitPrice.round();
+    final product = item.product;
+    final unitHint = _sellByPack ? '1 pachka narxi' : '1 dona narxi';
+    final sellingPrice = CustomerGroupDiscount.catalogUnitPriceForItem(
+      _probe,
+      CustomerGroupDiscount.selling,
+    );
+    final wholesalePrice = CustomerGroupDiscount.catalogUnitPriceForItem(
+      _probe,
+      CustomerGroupDiscount.wholesale,
+    );
 
     return IosStyleModals.sheetKeyboardForm(
       context: context,
@@ -2836,43 +2882,82 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
       onSave: _save,
       cancelLabel: Strings.bekorQilish,
       saveLabel: Strings.saqlash,
-      middle: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: TextButton(
-          onPressed: () => Navigator.pop(context, const _CartLinePriceResult.standard()),
-          style: TextButton.styleFrom(
-            foregroundColor: AppTheme.primary,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-          ),
-          child: const Text(
-            'Standart narx',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-          ),
-        ),
-      ),
       body: [
         const Text(
           "Narxni o'zgartirish",
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppTheme.textPrimary),
         ),
-        const SizedBox(height: 6),
-        Text(
-          item.product.name,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         TextField(
           controller: _priceCtrl,
           keyboardType: TextInputType.number,
           autofocus: true,
           inputFormatters: [ThousandsInputFormatter()],
+          onChanged: (_) => _syncActiveFromField(),
           decoration: _fieldDecoration(unitHint, suffix: Strings.som),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Katalog narxi: ${formatThousands(catalog)} ${Strings.som}',
-          style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        const SizedBox(height: 14),
+        const Text(
+          'Sotish turi',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
         ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _priceTypeChip(
+                label: 'Sotish',
+                price: sellingPrice,
+                selected: _activePriceType == CustomerGroupDiscount.selling,
+                onTap: () => _selectCatalogPriceType(CustomerGroupDiscount.selling),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _priceTypeChip(
+                label: 'Ulgurji',
+                price: wholesalePrice,
+                selected: _activePriceType == CustomerGroupDiscount.wholesale,
+                onTap: () => _selectCatalogPriceType(CustomerGroupDiscount.wholesale),
+              ),
+            ),
+          ],
+        ),
+        if (product.canSellByPack) ...[
+          const SizedBox(height: 12),
+          const Text(
+            "O'lchov",
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _priceTypeChip(
+                  label: 'Dona',
+                  price: CustomerGroupDiscount.catalogUnitPriceForItem(
+                    CartItem(product: product, sellByPack: false),
+                    _activePriceType ?? CustomerGroupDiscount.selling,
+                  ),
+                  selected: !_sellByPack,
+                  onTap: () => _setSellByPack(false),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _priceTypeChip(
+                  label: 'Pachka (${product.quantityPerPack})',
+                  price: CustomerGroupDiscount.catalogUnitPriceForItem(
+                    CartItem(product: product, sellByPack: true),
+                    _activePriceType ?? CustomerGroupDiscount.selling,
+                  ),
+                  selected: _sellByPack,
+                  onTap: () => _setSellByPack(true),
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

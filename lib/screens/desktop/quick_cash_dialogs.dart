@@ -9,6 +9,7 @@ import '../../providers/cash_register_shift_provider.dart';
 import '../../services/api_service.dart';
 import '../../utils/cash_register_utils.dart';
 import '../../utils/platform_layout.dart';
+import '../../widgets/app_dropdown.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../widgets/sales_customer_search.dart';
 import '../../providers/clients_provider.dart';
@@ -190,52 +191,50 @@ class _QuickCashFormState extends State<_QuickCashForm> {
           ),
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<int>(
+        AppDropdownField<int>(
+          label: 'Kategoriya',
           value: _categoryId,
-          decoration: InputDecoration(
-            labelText: 'Kategoriya',
-            border: const OutlineInputBorder(),
-            suffixIcon: _loading && _categories.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                    ),
-                  )
-                : null,
-          ),
+          icon: _loading && _categories.isEmpty
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: Padding(
+                    padding: EdgeInsets.all(2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                  ),
+                )
+              : null,
           items: _categories
-              .map((c) => DropdownMenuItem(
-                    value: dropdownId(c),
-                    child: Text(dropdownLabel(c)),
-                  ))
+              .map((c) {
+                final id = dropdownId(c);
+                if (id == null) return null;
+                return appDropdownItem(value: id, label: dropdownLabel(c));
+              })
+              .whereType<DropdownMenuItem<int>>()
               .toList(),
           onChanged: (v) => setState(() => _categoryId = v),
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<int>(
+        AppDropdownField<int>(
+          label: "To'lov turlari *",
           value: _paymentTypeId,
-          decoration: InputDecoration(
-            labelText: "To'lov turlari *",
-            border: const OutlineInputBorder(),
-            suffixIcon: _loading && _paymentTypes.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                    ),
-                  )
-                : null,
-          ),
+          icon: _loading && _paymentTypes.isEmpty
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: Padding(
+                    padding: EdgeInsets.all(2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                  ),
+                )
+              : null,
           items: _paymentTypes
-              .map((c) => DropdownMenuItem(
-                    value: dropdownId(c),
-                    child: Text(dropdownLabel(c)),
-                  ))
+              .map((c) {
+                final id = dropdownId(c);
+                if (id == null) return null;
+                return appDropdownItem(value: id, label: dropdownLabel(c));
+              })
+              .whereType<DropdownMenuItem<int>>()
               .toList(),
           onChanged: (v) => setState(() => _paymentTypeId = v),
         ),

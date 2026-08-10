@@ -9,6 +9,7 @@ import '../providers/products_provider.dart';
 import '../providers/receive_session_provider.dart';
 import '../services/api_service.dart';
 import '../utils/receive_payment_types.dart';
+import '../widgets/app_dropdown.dart';
 import '../widgets/ios_style_modals.dart';
 
 class KirimYakunlashScreen extends StatefulWidget {
@@ -96,14 +97,11 @@ class _KirimYakunlashScreenState extends State<KirimYakunlashScreen> {
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppTheme.primary),
           ),
           const SizedBox(height: 16),
-          DropdownButtonFormField<int>(
+          AppDropdownField<int>(
+            label: 'Yetkazib beruvchi *',
             value: _session.selectedSupplier?.id,
-            decoration: const InputDecoration(
-              labelText: 'Yetkazib beruvchi *',
-              border: OutlineInputBorder(),
-            ),
             items: suppliers
-                .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
+                .map((s) => appDropdownItem(value: s.id, label: s.name))
                 .toList(),
             onChanged: (id) {
               ReceiveSupplier? picked;
@@ -123,19 +121,16 @@ class _KirimYakunlashScreenState extends State<KirimYakunlashScreen> {
             label: const Text('Yangi taminotchi'),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
+          AppDropdownField<int>(
+            label: 'To\'lov turi *',
             value: selectedPayId,
-            decoration: const InputDecoration(
-              labelText: 'To\'lov turi *',
-              border: OutlineInputBorder(),
-            ),
             items: payments
                 .map((e) {
                   final id = ReceivePaymentTypes.idOf(e);
                   if (id == null) return null;
-                  return DropdownMenuItem(
+                  return appDropdownItem(
                     value: id,
-                    child: Text(ReceivePaymentTypes.labelOf(e)),
+                    label: ReceivePaymentTypes.labelOf(e),
                   );
                 })
                 .whereType<DropdownMenuItem<int>>()

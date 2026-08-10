@@ -15,6 +15,7 @@ import 'api_http.dart';
 import 'api_sync_throttle.dart';
 import 'auth_storage.dart';
 import 'seller_preferences.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 const String _keyLoginCompanyId = 'alfapos_login_companyId';
 const String _keyLoginLogin = 'alfapos_login_login';
@@ -26,6 +27,7 @@ Future<void> resetAppSessionForAccountChange({
 }) async {
   ApiHttp.resetClient();
   ApiSyncThrottle.clearAll();
+  PullRefreshGuard.reset();
 
   CartProvider.instance.clear();
   CashRegisterShiftProvider.instance.resetForAccountChange();

@@ -5,6 +5,8 @@ import '../../core/theme.dart';
 import '../../models/daily_sales.dart';
 import '../../providers/dashboard_provider.dart';
 import 'desktop_shell_scope.dart';
+import '../../widgets/throttled_refresh_indicator.dart';
+
 /// Desktop: butun sonlar — `.00` siz; kasrli qiymatda faqat kerakli kasrlar.
 String _desktopFmtAmount(num n, String currency) {
   final sym = currency.trim();
@@ -105,7 +107,7 @@ class _AsosiyDesktopScreenState extends State<AsosiyDesktopScreen> with DesktopS
 
     return ColoredBox(
       color: const Color(0xFFF1F5F9),
-      child: RefreshIndicator(
+      child: ThrottledRefreshIndicator(
         onRefresh: _load,
         child: isLoading && sales.totalUzs == 0
             ? ListView(
@@ -177,7 +179,7 @@ class _AsosiyDesktopScreenState extends State<AsosiyDesktopScreen> with DesktopS
                               _MetricCard(
                                 icon: Icons.trending_up_rounded,
                                 value: _desktopFmtAmount(daxod, currency),
-                                label: 'Bugungi daxod',
+                                label: 'Bugungi Даход',
                               ),
                             ],
                           );
@@ -219,6 +221,37 @@ class _AsosiyDesktopScreenState extends State<AsosiyDesktopScreen> with DesktopS
                       ),
                       const SizedBox(height: 24),
                       _AdditionalInfoSection(dash: dash, currency: currency),
+                      const SizedBox(height: 24),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final cols = c.maxWidth >= 900 ? 3 : (c.maxWidth >= 600 ? 2 : 1);
+                          return GridView.count(
+                            crossAxisCount: cols,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            childAspectRatio: cols == 3 ? 3.4 : 2.8,
+                            children: [
+                              _MetricCard(
+                                icon: Icons.account_balance_wallet_outlined,
+                                value: _desktopFmtAmount(daxod, currency),
+                                label: 'Bugungi daromadi',
+                              ),
+                              _MetricCard(
+                                icon: Icons.history_rounded,
+                                value: _desktopFmtAmount(dash.yesterdayIncome, currency),
+                                label: 'Kechagi daromadi',
+                              ),
+                              _MetricCard(
+                                icon: Icons.calendar_month_rounded,
+                                value: _desktopFmtAmount(dash.monthlyIncome, currency),
+                                label: 'Bu oylik daromad',
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ],
                   ),
       ),
@@ -350,6 +383,7 @@ class _SellersPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Panel(
       title: 'Bugungi sotuvchilar hisobotlari',
+      subtitle: 'Qaysi sotuvchi qancha savdo qilgani',
       child: sellers.isEmpty
           ? const Padding(
               padding: EdgeInsets.all(16),
@@ -421,6 +455,7 @@ class _PaymentsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Panel(
       title: "Bugungi to'lov turlari",
+      subtitle: "To'lov usullari bo'yicha taqsimot",
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -515,9 +550,10 @@ class _PaymentsPanel extends StatelessWidget {
 
 class _Panel extends StatelessWidget {
   final String title;
+  final String? subtitle;
   final Widget child;
 
-  const _Panel({required this.title, required this.child});
+  const _Panel({required this.title, required this.child, this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -531,12 +567,20 @@ class _Panel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            padding: EdgeInsets.fromLTRB(16, 14, 16, subtitle == null ? 8 : 2),
             child: Text(
               title,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
             ),
           ),
+          if (subtitle != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                subtitle!,
+                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ),
           child,
         ],
       ),
@@ -603,7 +647,7 @@ class _AdditionalInfoSection extends StatelessWidget {
                     valueColor: const Color(0xFFDC2626),
                   ),
                   _AdditionalInfoTile(
-                    icon: Icons.storefront_outlined,
+                    icon: Icons.account_balance_outlined,
                     label: 'Ostatka (Sotish narxi)',
                     value: _desktopFmtAmount(dash.salesValue, currency),
                   ),

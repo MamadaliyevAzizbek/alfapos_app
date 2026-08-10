@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../core/app_notify.dart';
+import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../core/input_formatters.dart';
 import '../core/theme.dart';
@@ -18,6 +19,7 @@ import 'kirim_tarix_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/platform_layout.dart';
 import 'desktop/desktop_shell_scope.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 /// Kirim — web /receives bilan bir xil: taminotchi, savat, barcode, store.
 class KirimlarScreen extends StatefulWidget {
@@ -122,12 +124,23 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     if (q.isEmpty) return;
     _searchController.text = q;
     setState(() => _query = q);
-    final p = await _session.findByBarcode(q);
-    if (p != null) {
-      _session.addToCart(ProductsProvider.instance.withCatalogStock(p));
-      _searchController.clear();
-      setState(() => _query = '');
-      if (mounted) AppNotify.success(context, '${p.name} savatga qo\'shildi');
+    try {
+      final hit = await _session.findByBarcodeDetailed(q);
+      if (hit != null) {
+        _session.addToCart(
+          ProductsProvider.instance.withCatalogStock(hit.product),
+          quantity: hit.quantity,
+        );
+        _searchController.clear();
+        setState(() => _query = '');
+        if (mounted) {
+          final qtyLabel = hit.isScaleItem ? ' (${hit.quantity} kg)' : '';
+          AppNotify.success(context, '${hit.product.name}$qtyLabel savatga qo\'shildi');
+        }
+        return;
+      }
+    } on ApiException catch (e) {
+      if (mounted) AppNotify.error(context, e.message);
       return;
     }
     await _searchProducts(q);
@@ -189,26 +202,26 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
               MaterialPageRoute(builder: (_) => const KirimQoralamalarScreen()),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _session.initLoading ? null : _init,
-          ),
         ],
       ),
       body: _session.initLoading
           ? const Center(child: CircularProgressIndicator())
           : _session.initError != null
-              ? Center(
-                  child: Padding(
+              ? ThrottledRefreshIndicator(
+                  onRefresh: _init,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_session.initError!, textAlign: TextAlign.center),
-                        const SizedBox(height: 12),
-                        FilledButton(onPressed: _init, child: const Text('Qayta yuklash')),
-                      ],
-                    ),
+                    children: [
+                      const SizedBox(height: 80),
+                      Text(_session.initError!, textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Pastga tortib yangilang',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                    ],
                   ),
                 )
               : Column(
@@ -296,7 +309,12 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
                         ],
                       ),
                     ),
-                    Expanded(child: _buildProductList()),
+                    Expanded(
+                      child: ThrottledRefreshIndicator(
+                        onRefresh: _init,
+                        child: _buildProductList(),
+                      ),
+                    ),
                   ],
                 ),
       bottomNavigationBar: _session.cartCount > 0 ? _buildCartBottomBar() : null,
@@ -360,18 +378,44 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
 
   Widget _buildProductList() {
     if (_loadingProducts) {
-      return const Center(child: CircularProgressIndicator());
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 120),
+          Center(child: CircularProgressIndicator()),
+        ],
+      );
     }
     if (_productsError != null) {
-      return Center(child: Text(_productsError!, textAlign: TextAlign.center));
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 80),
+          Text(_productsError!, textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          const Text(
+            'Pastga tortib yangilang',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      );
     }
     final list = _filtered;
     if (list.isEmpty) {
-      return const Center(
-        child: Text('Mahsulot topilmadi', style: TextStyle(color: AppTheme.textSecondary)),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 120),
+          Center(
+            child: Text('Mahsulot topilmadi', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+        ],
       );
     }
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(16, 0, 16, _session.cartCount > 0 ? 8 : 16),
       itemCount: list.length,
       itemBuilder: (context, index) {

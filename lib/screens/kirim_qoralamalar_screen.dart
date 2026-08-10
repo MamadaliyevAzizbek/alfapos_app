@@ -5,6 +5,7 @@ import '../models/product.dart';
 import '../models/receive_supplier.dart';
 import '../providers/receive_session_provider.dart';
 import '../services/receive_draft_storage.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 class KirimQoralamalarScreen extends StatefulWidget {
   const KirimQoralamalarScreen({super.key});
@@ -36,48 +37,53 @@ class _KirimQoralamalarScreenState extends State<KirimQoralamalarScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Saqlanganlar'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _load,
-            tooltip: 'Yangilash',
-          ),
-        ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _drafts.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'Saqlangan qoralamalar yo\'q.\nSavat ichida «Qoralamani saqlash» tugmasidan foydalaning.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _drafts.length,
-                  itemBuilder: (context, i) {
-                    final d = _drafts[i];
-                    return Card(
-                      child: ListTile(
-                        title: Text('${d.cartItems.length} mahsulot'),
-                        subtitle: Text('${d.selectedDate} · ${d.savedAt}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () async {
-                            await ReceiveDraftStorage.deleteDraft(_session.branchId ?? 1, d.id);
-                            _load();
-                          },
-                        ),
-                        onTap: () => _restoreDraft(d),
+      body: ThrottledRefreshIndicator(
+        onRefresh: _load,
+        child: _loading
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 160),
+                  Center(child: CircularProgressIndicator()),
+                ],
+              )
+            : _drafts.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(24),
+                    children: const [
+                      SizedBox(height: 80),
+                      Text(
+                        'Saqlangan qoralamalar yo\'q.\nSavat ichida «Qoralamani saqlash» tugmasidan foydalaning.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
                       ),
-                    );
-                  },
-                ),
+                    ],
+                  )
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _drafts.length,
+                    itemBuilder: (context, i) {
+                      final d = _drafts[i];
+                      return Card(
+                        child: ListTile(
+                          title: Text('${d.cartItems.length} mahsulot'),
+                          subtitle: Text('${d.selectedDate} · ${d.savedAt}'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () async {
+                              await ReceiveDraftStorage.deleteDraft(_session.branchId ?? 1, d.id);
+                              _load();
+                            },
+                          ),
+                          onTap: () => _restoreDraft(d),
+                        ),
+                      );
+                    },
+                  ),
+      ),
     );
   }
 

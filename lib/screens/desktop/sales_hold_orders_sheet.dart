@@ -9,6 +9,7 @@ import '../../utils/hold_order_cart.dart';
 import '../../utils/hold_order_precheck_print.dart';
 import '../../utils/hold_orders_response.dart';
 import '../../utils/platform_layout.dart';
+import '../../widgets/throttled_refresh_indicator.dart';
 
 enum _HoldOutputAction { print, excel }
 
@@ -565,20 +566,33 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
 
   Widget _buildListBody() {
     return _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
-                  : _holds.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'Saqlangan buyurtma yo\'q',
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _holds.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder: (context, i) => _buildHoldOrderTile(_holds[i], i + 1),
-                        );
+        ? ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: const [
+              SizedBox(height: 120),
+              Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+            ],
+          )
+        : _holds.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(
+                    child: Text(
+                      'Saqlangan buyurtma yo\'q',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+                    ),
+                  ),
+                ],
+              )
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: _holds.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) => _buildHoldOrderTile(_holds[i], i + 1),
+              );
   }
 
   @override
@@ -622,14 +636,11 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text("Saqlangan buyurtmalar"),
-        actions: [
-          IconButton(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
-      body: _buildListBody(),
+      body: ThrottledRefreshIndicator(
+        onRefresh: _load,
+        child: _buildListBody(),
+      ),
     );
   }
 }

@@ -8,7 +8,6 @@ import '../../services/sales_ui_scale_settings.dart';
 import '../../utils/platform_layout.dart';
 import '../../widgets/ios_style_modals.dart';
 import '../../widgets/pos_modal_actions.dart';
-import 'sales_nav_filters.dart';
 
 /// Sotuv filtri — kategoriya, brend, qoldiq, narx rejimi.
 class SalesFilterDialog extends StatefulWidget {
@@ -195,16 +194,16 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
               child: MediaQuery(
                 data: MediaQuery.of(context).copyWith(textScaler: SalesUiScaleSettings.textScaler(scale)),
                 child: Container(
-                  width: SalesUiScaleSettings.scaled(480),
+                  width: SalesUiScaleSettings.chromeScaled(480),
                   height: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    border: Border(left: BorderSide(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1))),
+                    border: Border(left: BorderSide(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.chromeScaled(1))),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0x2E0F172A),
-                        blurRadius: SalesUiScaleSettings.scaled(28),
-                        offset: Offset(SalesUiScaleSettings.scaled(-8), 0),
+                        blurRadius: SalesUiScaleSettings.chromeScaled(28),
+                        offset: Offset(SalesUiScaleSettings.chromeScaled(-8), 0),
                       ),
                     ],
                   ),
@@ -213,28 +212,28 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
                     children: [
                       Padding(
                         padding: EdgeInsets.fromLTRB(
-                          SalesUiScaleSettings.scaled(24),
-                          SalesUiScaleSettings.scaled(18),
-                          SalesUiScaleSettings.scaled(12),
-                          SalesUiScaleSettings.scaled(16),
+                          SalesUiScaleSettings.chromeScaled(24),
+                          SalesUiScaleSettings.chromeScaled(18),
+                          SalesUiScaleSettings.chromeScaled(12),
+                          SalesUiScaleSettings.chromeScaled(16),
                         ),
                         child: Row(
                           children: [
                             Container(
-                              width: SalesUiScaleSettings.scaled(42),
-                              height: SalesUiScaleSettings.scaled(42),
+                              width: SalesUiScaleSettings.chromeScaled(42),
+                              height: SalesUiScaleSettings.chromeScaled(42),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFEAF2FF),
-                                borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(12)),
+                                borderRadius: BorderRadius.circular(SalesUiScaleSettings.chromeScaled(12)),
                               ),
                               alignment: Alignment.center,
                               child: Icon(
                                 Icons.tune_rounded,
-                                size: SalesUiScaleSettings.scaled(24),
+                                size: SalesUiScaleSettings.chromeScaled(24),
                                 color: AppTheme.primary,
                               ),
                             ),
-                            SizedBox(width: SalesUiScaleSettings.scaled(10)),
+                            SizedBox(width: SalesUiScaleSettings.chromeScaled(10)),
                             Expanded(
                               child: Text(
                                 'Filtr',
@@ -246,18 +245,18 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
                               ),
                             ),
                             Container(
-                              width: SalesUiScaleSettings.scaled(44),
-                              height: SalesUiScaleSettings.scaled(44),
+                              width: SalesUiScaleSettings.chromeScaled(44),
+                              height: SalesUiScaleSettings.chromeScaled(44),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF3F6FB),
-                                borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(22)),
+                                borderRadius: BorderRadius.circular(SalesUiScaleSettings.chromeScaled(22)),
                               ),
                               child: IconButton(
                                 onPressed: () => Navigator.pop(context, false),
                                 icon: Icon(
                                   Icons.close_rounded,
                                   color: const Color(0xFF64748B),
-                                  size: SalesUiScaleSettings.scaled(24),
+                                  size: SalesUiScaleSettings.chromeScaled(24),
                                 ),
                                 padding: EdgeInsets.zero,
                               ),
@@ -281,29 +280,29 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
   }
 
   Widget _buildForm() {
-    final edgePad = SalesUiScaleSettings.scaled(22);
-    final bottomPad = SalesUiScaleSettings.scaled(widget.compactActions ? 12 : 16);
+    final edgePad = SalesUiScaleSettings.chromeScaled(22);
+    final bottomPad = SalesUiScaleSettings.chromeScaled(widget.compactActions ? 12 : 16);
 
     return SingleChildScrollView(
       controller: widget.scrollController,
-      padding: EdgeInsets.fromLTRB(edgePad, SalesUiScaleSettings.scaled(4), edgePad, bottomPad),
+      padding: EdgeInsets.fromLTRB(edgePad, SalesUiScaleSettings.chromeScaled(4), edgePad, bottomPad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_loadingLists)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.scaled(8)),
+              padding: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.chromeScaled(8)),
               child: Center(
                 child: SizedBox(
-                  width: SalesUiScaleSettings.scaled(22),
-                  height: SalesUiScaleSettings.scaled(22),
+                  width: SalesUiScaleSettings.chromeScaled(22),
+                  height: SalesUiScaleSettings.chromeScaled(22),
                   child: const CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
                 ),
               ),
             ),
           if (isDesktopPosLayout) ...[
             Padding(
-              padding: EdgeInsets.only(bottom: SalesUiScaleSettings.scaled(12)),
+              padding: EdgeInsets.only(bottom: SalesUiScaleSettings.chromeScaled(12)),
               child: Text(
                 'Kategoriya va brend — yuqori panelda (kassa nomi yonida).',
                 style: const TextStyle(
@@ -385,20 +384,20 @@ class _SalesFilterDialogState extends State<SalesFilterDialog> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        SalesUiScaleSettings.scaled(22),
-        SalesUiScaleSettings.scaled(18),
-        SalesUiScaleSettings.scaled(22),
-        SalesUiScaleSettings.scaled(22),
+        SalesUiScaleSettings.chromeScaled(22),
+        SalesUiScaleSettings.chromeScaled(18),
+        SalesUiScaleSettings.chromeScaled(22),
+        SalesUiScaleSettings.chromeScaled(22),
       ),
       child: Row(
         children: [
           OutlinedButton(
             onPressed: _clearAndApply,
             style: OutlinedButton.styleFrom(
-              minimumSize: Size(SalesUiScaleSettings.scaled(150), SalesUiScaleSettings.scaled(48)),
+              minimumSize: Size(SalesUiScaleSettings.chromeScaled(150), SalesUiScaleSettings.chromeScaled(48)),
               foregroundColor: const Color(0xFFDC2626),
               backgroundColor: Colors.white,
-              side: BorderSide(color: const Color(0xFFF87171), width: SalesUiScaleSettings.scaled(1.4)),
+              side: BorderSide(color: const Color(0xFFF87171), width: SalesUiScaleSettings.chromeScaled(1.4)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
               textStyle: const TextStyle(
                 fontSize: 15,
@@ -444,16 +443,16 @@ class _FilterZoomControl extends StatelessWidget {
               onTap: () => unawaited(SalesUiScaleSettings.zoomOut()),
               desktop: desktop,
             ),
-            SizedBox(width: SalesUiScaleSettings.scaled(desktop ? 14 : 10)),
+            SizedBox(width: SalesUiScaleSettings.chromeScaled(desktop ? 14 : 10)),
             SizedBox(
-              width: SalesUiScaleSettings.scaled(desktop ? 72 : 56),
+              width: SalesUiScaleSettings.chromeScaled(desktop ? 72 : 56),
               child: Text(
                 SalesUiScaleSettings.percentLabel(scale),
                 textAlign: TextAlign.center,
                 style: percentStyle,
               ),
             ),
-            SizedBox(width: SalesUiScaleSettings.scaled(desktop ? 14 : 10)),
+            SizedBox(width: SalesUiScaleSettings.chromeScaled(desktop ? 14 : 10)),
             _ZoomStepButton(
               icon: Icons.add_rounded,
               enabled: SalesUiScaleSettings.canZoomIn,
@@ -465,7 +464,7 @@ class _FilterZoomControl extends StatelessWidget {
 
         if (!desktop) {
           return Padding(
-            padding: EdgeInsets.only(bottom: SalesUiScaleSettings.scaled(12)),
+            padding: EdgeInsets.only(bottom: SalesUiScaleSettings.chromeScaled(12)),
             child: Row(
               children: [
                 Expanded(child: Text('Masshtab', style: labelStyle)),
@@ -476,15 +475,15 @@ class _FilterZoomControl extends StatelessWidget {
         }
 
         return Container(
-          margin: EdgeInsets.only(bottom: SalesUiScaleSettings.scaled(10)),
+          margin: EdgeInsets.only(bottom: SalesUiScaleSettings.chromeScaled(10)),
           padding: EdgeInsets.symmetric(
-            horizontal: SalesUiScaleSettings.scaled(14),
-            vertical: SalesUiScaleSettings.scaled(12),
+            horizontal: SalesUiScaleSettings.chromeScaled(14),
+            vertical: SalesUiScaleSettings.chromeScaled(12),
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(14)),
-            border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1)),
+            borderRadius: BorderRadius.circular(SalesUiScaleSettings.chromeScaled(14)),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.chromeScaled(1)),
           ),
           child: Row(
             children: [
@@ -515,10 +514,10 @@ class _ZoomStepButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = SalesUiScaleSettings.scaled(desktop ? 40.0 : 36.0);
-    final iconSize = SalesUiScaleSettings.scaled(desktop ? 22.0 : 18.0);
+    final size = SalesUiScaleSettings.chromeScaled(desktop ? 40.0 : 36.0);
+    final iconSize = SalesUiScaleSettings.chromeScaled(desktop ? 22.0 : 18.0);
     final color = enabled ? AppTheme.primary : const Color(0xFFCBD5E1);
-    final radius = SalesUiScaleSettings.scaled(12);
+    final radius = SalesUiScaleSettings.chromeScaled(12);
 
     return Material(
       color: const Color(0xFFF8FAFC),
@@ -526,7 +525,7 @@ class _ZoomStepButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
         side: BorderSide(
           color: enabled ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
-          width: SalesUiScaleSettings.scaled(1),
+          width: SalesUiScaleSettings.chromeScaled(1),
         ),
       ),
       child: InkWell(
@@ -580,21 +579,21 @@ class _FilterToggle extends StatelessWidget {
 
     if (!desktop) {
       return Padding(
-        padding: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.scaled(10)),
+        padding: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.chromeScaled(10)),
         child: row,
       );
     }
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.scaled(5)),
+      margin: EdgeInsets.symmetric(vertical: SalesUiScaleSettings.chromeScaled(5)),
       padding: EdgeInsets.symmetric(
-        horizontal: SalesUiScaleSettings.scaled(14),
-        vertical: SalesUiScaleSettings.scaled(12),
+        horizontal: SalesUiScaleSettings.chromeScaled(14),
+        vertical: SalesUiScaleSettings.chromeScaled(12),
       ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(14)),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1)),
+        borderRadius: BorderRadius.circular(SalesUiScaleSettings.chromeScaled(14)),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.chromeScaled(1)),
       ),
       child: row,
     );
@@ -614,11 +613,11 @@ class _FilterSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!desktop) return child;
     return Container(
-      padding: EdgeInsets.all(SalesUiScaleSettings.scaled(18)),
+      padding: EdgeInsets.all(SalesUiScaleSettings.chromeScaled(18)),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(SalesUiScaleSettings.scaled(18)),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.scaled(1)),
+        borderRadius: BorderRadius.circular(SalesUiScaleSettings.chromeScaled(18)),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: SalesUiScaleSettings.chromeScaled(1)),
       ),
       child: child,
     );

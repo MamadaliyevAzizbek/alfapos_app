@@ -7,6 +7,7 @@ import '../providers/clients_provider.dart';
 import '../services/api_service.dart';
 import '../utils/customer_store_body.dart';
 import '../utils/platform_layout.dart';
+import '../widgets/app_dropdown.dart';
 import '../widgets/ios_style_modals.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 
@@ -340,15 +341,14 @@ class _YangiMijozFormBodyState extends State<YangiMijozFormBody> {
                     style: TextStyle(fontSize: _fieldFont),
                     decoration: _fieldDecoration('Manzil'),
                   ),
-                  DropdownButtonFormField<int>(
+                  AppDropdownField<int>(
+                    label: 'Mijoz guruh',
                     value: _selectedGroupId,
-                    decoration: _fieldDecoration('Mijoz guruh'),
-                    style: TextStyle(fontSize: _fieldFont, color: AppTheme.textPrimary),
                     items: _groups
                         .map(
-                          (g) => DropdownMenuItem(
+                          (g) => appDropdownItem(
                             value: _groupIdFrom(g),
-                            child: Text(_groupTitle(g)),
+                            label: _groupTitle(g),
                           ),
                         )
                         .toList(),
@@ -365,15 +365,14 @@ class _YangiMijozFormBodyState extends State<YangiMijozFormBody> {
                   ),
                 ),
                 SizedBox(height: _desktop ? 16 : 12),
-                DropdownButtonFormField<String>(
+                AppDropdownField<String>(
+                  label: 'Guruh foizi qaysi narx asosida',
+                  hint: 'Tanlang',
                   value: _priceTypeOptions.any((o) => o.value == _selectedPriceType)
                       ? _selectedPriceType
                       : null,
-                  decoration: _fieldDecoration('Guruh foizi qaysi narx asosida'),
-                  style: TextStyle(fontSize: _fieldFont, color: AppTheme.textPrimary),
-                  hint: const Text('Tanlang'),
                   items: _priceTypeOptions
-                      .map((o) => DropdownMenuItem(value: o.value, child: Text(o.label)))
+                      .map((o) => appDropdownItem(value: o.value, label: o.label))
                       .toList(),
                   onChanged: (v) => setState(() => _selectedPriceType = v),
                 ),

@@ -3,9 +3,11 @@ import 'dart:convert';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../services/api_service.dart';
+import '../widgets/app_dropdown.dart';
 import 'api_chek_detail_screen.dart';
 import '../widgets/ios_style_modals.dart';
 import 'desktop/desktop_shell_scope.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 /// API reports (reports/sales) — hisobotlar ekrani
 class HisobotlarScreen extends StatefulWidget {
@@ -531,11 +533,13 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
                 ),
               ),
             Expanded(
-              child: _rows.isEmpty && !_loading
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+              child: ThrottledRefreshIndicator(
+                onRefresh: _load,
+                child: _rows.isEmpty && !_loading
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         children: [
+                          SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
                           Icon(
                             Icons.assessment_rounded,
                             size: 64,
@@ -543,28 +547,17 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            _error == null ? "Bu davr uchun savdolar yo'q" : "Hisobotni qayta yuklang",
+                            _error == null ? "Bu davr uchun savdolar yo'q" : "Pastga tortib yangilang",
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 15,
                               color: AppTheme.textSecondary,
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          FilledButton.icon(
-                            onPressed: _loading ? null : _load,
-                            icon: const Icon(Icons.refresh_rounded, size: 20),
-                            label: const Text('Yuklash'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.primary,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
                         ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.builder(
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: _rows.length,
                         itemBuilder: (context, index) {
@@ -575,7 +568,7 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
                           );
                         },
                       ),
-                    ),
+              ),
             ),
           ],
         ],
@@ -638,24 +631,23 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: options.any((e) => e['value'] == value) ? value : options.first['value'],
+    return AppDropdownField<String>(
+      label: label,
+      value: options.any((e) => e['value'] == value) ? value : options.first['value'],
+      variant: AppDropdownVariant.compact,
+      enabled: !loading,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       items: options
           .map(
-            (e) => DropdownMenuItem<String>(
-              value: e['value'],
-              child: Text(e['label'] ?? e['value'] ?? ''),
+            (e) => appDropdownItem(
+              value: e['value']!,
+              label: e['label'] ?? e['value'] ?? '',
             ),
           )
           .toList(),
-      onChanged: loading ? null : (v) {
+      onChanged: (v) {
         if (v != null) onChanged(v);
       },
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      ),
     );
   }
 }

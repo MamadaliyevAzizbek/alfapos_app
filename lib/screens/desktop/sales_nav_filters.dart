@@ -4,11 +4,14 @@ import '../../core/theme.dart';
 import '../../providers/sales_session_provider.dart';
 import '../../services/sales_ui_scale_settings.dart';
 
-/// Sotuv navbar: kategoriya va brend (kassa nomi yonida, filtr dialogidagi ko‘rinish).
+/// Sotuv navbar: kategoriya va brend — tugmalar bilan bir xil balandlik/border.
 class SalesNavCategoryBrandFilters extends StatelessWidget {
   static double get menuMaxHeight => SalesUiScaleSettings.scaled(48 * 4);
-  /// Navbar kategoriya/brend maydoni balandligi (oyna tugmalari bilan bir xil).
   static double get navbarFieldHeight => SalesUiScaleSettings.navbarControlSize();
+
+  static const Color _border = Color(0xFFDDE5F0);
+  static const Color _fill = Colors.white;
+  static const double _radius = 8;
 
   final String? categoryId;
   final String? brandId;
@@ -33,64 +36,23 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
 
   bool get _hasBrandFilter => brandId != null && brandId!.isNotEmpty;
 
-  Widget _categoryField() => SalesFilterDropdownField(
-        label: 'Kategoriya',
-        value: categoryId,
-        options: categories,
-        onChanged: onCategoryChanged,
-        size: SalesFilterDropdownSize.navbar,
-      );
-
-  Widget _brandField() => SalesFilterDropdownField(
-        label: 'Brend',
-        value: brandId,
-        options: brands,
-        onChanged: onBrandChanged,
-        size: SalesFilterDropdownSize.navbar,
-      );
-
-  Widget _clearButton({
-    required VoidCallback onPressed,
-    required String tooltip,
-  }) {
-    return IconButton(
-      onPressed: onPressed,
-      icon: Icon(Icons.close_rounded, size: SalesUiScaleSettings.navbarAccentIconSize(), color: const Color(0xFF64748B)),
-      padding: EdgeInsets.zero,
-      constraints: BoxConstraints(
-        minWidth: SalesUiScaleSettings.scaled(36),
-        minHeight: SalesUiScaleSettings.navbarControlSize(),
-      ),
-      tooltip: tooltip,
-    );
-  }
-
-  Widget _filterWithClear({
-    required Widget field,
-    required bool showClear,
-    required VoidCallback onClear,
-    required String clearTooltip,
-  }) {
-    if (!showClear) return field;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(child: field),
-        _clearButton(onPressed: onClear, tooltip: clearTooltip),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final categoryBlock = _filterWithClear(
-      field: _categoryField(),
+    final gap = SalesUiScaleSettings.navbarGap();
+    final category = _NavChromeDropdown(
+      label: 'Kategoriya',
+      value: categoryId,
+      options: categories,
+      onChanged: onCategoryChanged,
       showClear: _hasCategoryFilter,
       onClear: () => onCategoryChanged(null),
       clearTooltip: 'Kategoriyani tozalash',
     );
-    final brandBlock = _filterWithClear(
-      field: _brandField(),
+    final brand = _NavChromeDropdown(
+      label: 'Brend',
+      value: brandId,
+      options: brands,
+      onChanged: onBrandChanged,
       showClear: _hasBrandFilter,
       onClear: () => onBrandChanged(null),
       clearTooltip: 'Brendni tozalash',
@@ -100,22 +62,168 @@ class SalesNavCategoryBrandFilters extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (expand) ...[
-          Expanded(child: categoryBlock),
-          SizedBox(width: SalesUiScaleSettings.scaled(16)),
-          Expanded(child: brandBlock),
+          Expanded(child: category),
+          SizedBox(width: gap),
+          Expanded(child: brand),
         ] else ...[
-          SizedBox(width: SalesUiScaleSettings.scaled(180), child: categoryBlock),
-          SizedBox(width: SalesUiScaleSettings.scaled(14)),
-          SizedBox(width: SalesUiScaleSettings.scaled(170), child: brandBlock),
+          SizedBox(width: SalesUiScaleSettings.scaled(180), child: category),
+          SizedBox(width: gap),
+          SizedBox(width: SalesUiScaleSettings.scaled(170), child: brand),
         ],
       ],
     );
   }
 }
 
+/// Navbar uchun: floating label yo‘q — ichki 2 qator (label + qiymat), fixed height.
+class _NavChromeDropdown extends StatelessWidget {
+  final String label;
+  final String? value;
+  final List<Map<String, dynamic>> options;
+  final ValueChanged<String?> onChanged;
+  final bool showClear;
+  final VoidCallback onClear;
+  final String clearTooltip;
+
+  const _NavChromeDropdown({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    required this.showClear,
+    required this.onClear,
+    required this.clearTooltip,
+  });
+
+  String? _safeValue() {
+    if (value == null) return null;
+    final ids = options.map((e) => e['id']?.toString()).toSet();
+    return ids.contains(value) ? value : null;
+  }
+
+  String _displayLabel(String? id) {
+    if (id == null) return 'Hammasi';
+    for (final o in options) {
+      if (o['id']?.toString() == id) return (o['name'] ?? '').toString();
+    }
+    return 'Hammasi';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final h = SalesNavCategoryBrandFilters.navbarFieldHeight;
+    final safe = _safeValue();
+    final items = <DropdownMenuItem<String?>>[
+      const DropdownMenuItem(value: null, child: Text('Hammasi')),
+      ...options.map(
+        (o) => DropdownMenuItem(
+          value: o['id']?.toString(),
+          child: Text((o['name'] ?? '').toString()),
+        ),
+      ),
+    ];
+
+    return SizedBox(
+      height: h,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: SalesNavCategoryBrandFilters._fill,
+          borderRadius: BorderRadius.circular(SalesNavCategoryBrandFilters._radius),
+          border: Border.all(color: SalesNavCategoryBrandFilters._border),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: SalesUiScaleSettings.scaled(12),
+                  right: showClear ? 0 : SalesUiScaleSettings.scaled(4),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: safe,
+                    isExpanded: true,
+                    isDense: true,
+                    borderRadius: BorderRadius.circular(SalesNavCategoryBrandFilters._radius),
+                    menuMaxHeight: SalesNavCategoryBrandFilters.menuMaxHeight,
+                    icon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: SalesUiScaleSettings.scaled(22),
+                      color: const Color(0xFF64748B),
+                    ),
+                    style: TextStyle(
+                      fontSize: SalesUiScaleSettings.scaled(14),
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF0F172A),
+                      height: 1.1,
+                    ),
+                    selectedItemBuilder: (context) {
+                      return [
+                        for (final _ in items)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: SalesUiScaleSettings.scaled(11),
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF64748B),
+                                    height: 1.05,
+                                  ),
+                                ),
+                                Text(
+                                  _displayLabel(safe),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: SalesUiScaleSettings.scaled(14),
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF0F172A),
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ];
+                    },
+                    items: items,
+                    onChanged: onChanged,
+                  ),
+                ),
+              ),
+            ),
+            if (showClear)
+              IconButton(
+                onPressed: onClear,
+                tooltip: clearTooltip,
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints(
+                  minWidth: SalesUiScaleSettings.scaled(36),
+                  minHeight: h,
+                ),
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: SalesUiScaleSettings.scaled(18),
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 enum SalesFilterDropdownSize { compact, normal, navbar }
 
-/// Filtr dialogidagi kabi outlined dropdown (navbar va dialog uchun).
+/// Filtr dialogidagi outlined dropdown (dialog / oddiy formalar).
 class SalesFilterDropdownField extends StatelessWidget {
   final String label;
   final String? value;
@@ -134,28 +242,15 @@ class SalesFilterDropdownField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = switch (size) {
-      SalesFilterDropdownSize.compact => 0.0,
-      SalesFilterDropdownSize.navbar => 0.0,
-      SalesFilterDropdownSize.normal => 14.0,
-    };
-    final labelSize = switch (size) {
-      SalesFilterDropdownSize.compact => SalesUiScaleSettings.scaled(12),
-      SalesFilterDropdownSize.navbar => SalesUiScaleSettings.navbarLabelFontSize(),
-      SalesFilterDropdownSize.normal => SalesUiScaleSettings.scaled(14),
-    };
-    final padV = switch (size) {
-      SalesFilterDropdownSize.compact => SalesUiScaleSettings.scaled(10),
-      SalesFilterDropdownSize.navbar => SalesUiScaleSettings.scaled(16),
-      SalesFilterDropdownSize.normal => SalesUiScaleSettings.scaled(14),
-    };
-    final padH = switch (size) {
-      SalesFilterDropdownSize.navbar => SalesUiScaleSettings.scaled(16),
-      _ => SalesUiScaleSettings.scaled(12),
-    };
-    final fieldHeight = size == SalesFilterDropdownSize.navbar
-        ? SalesUiScaleSettings.navbarControlSize()
-        : null;
+    // Navbar endi alohida `_NavChromeDropdown` — bu yerda faqat dialog/form.
+    final radius = size == SalesFilterDropdownSize.compact ? 8.0 : 14.0;
+    final labelSize = size == SalesFilterDropdownSize.compact
+        ? SalesUiScaleSettings.scaled(12)
+        : SalesUiScaleSettings.scaled(14);
+    final padV = size == SalesFilterDropdownSize.compact
+        ? SalesUiScaleSettings.scaled(10)
+        : SalesUiScaleSettings.scaled(14);
+    final padH = SalesUiScaleSettings.scaled(12);
 
     final items = <DropdownMenuItem<String?>>[
       DropdownMenuItem(
@@ -170,17 +265,13 @@ class SalesFilterDropdownField extends StatelessWidget {
       ),
     ];
 
-    final dropdown = DropdownButtonFormField<String?>(
+    return DropdownButtonFormField<String?>(
       value: _safeValue(value, options),
       isExpanded: true,
-      menuMaxHeight: size == SalesFilterDropdownSize.navbar
-          ? SalesNavCategoryBrandFilters.menuMaxHeight
-          : SalesUiScaleSettings.scaled(48 * 4),
+      menuMaxHeight: SalesUiScaleSettings.scaled(48 * 4),
       icon: Icon(
         Icons.arrow_drop_down_rounded,
-        size: size == SalesFilterDropdownSize.navbar
-            ? SalesUiScaleSettings.navbarAccentIconSize()
-            : SalesUiScaleSettings.scaled(24),
+        size: SalesUiScaleSettings.scaled(24),
         color: const Color(0xFF64748B),
       ),
       borderRadius: BorderRadius.circular(radius),
@@ -197,57 +288,32 @@ class SalesFilterDropdownField extends StatelessWidget {
           fontSize: labelSize,
         ),
         filled: true,
-        fillColor: const Color(0xFFFBFDFF),
-        isDense: size == SalesFilterDropdownSize.compact || size == SalesFilterDropdownSize.navbar,
+        fillColor: Colors.white,
+        isDense: size == SalesFilterDropdownSize.compact,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
-          borderSide: const BorderSide(color: Color(0xFFDDE5F0), width: 1.2),
+          borderSide: const BorderSide(color: Color(0xFFDDE5F0)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
-          borderSide: const BorderSide(color: Color(0xFFDDE5F0), width: 1.2),
+          borderSide: const BorderSide(color: Color(0xFFDDE5F0)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
-          borderSide: const BorderSide(color: AppTheme.primary, width: 1.6),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
         ),
         contentPadding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
       ),
       style: TextStyle(
-        fontSize: size == SalesFilterDropdownSize.navbar
-            ? SalesUiScaleSettings.navbarChipFontSize()
-            : (size == SalesFilterDropdownSize.compact
-                ? SalesUiScaleSettings.scaled(13)
-                : SalesUiScaleSettings.scaled(15)),
+        fontSize: size == SalesFilterDropdownSize.compact
+            ? SalesUiScaleSettings.scaled(13)
+            : SalesUiScaleSettings.scaled(15),
         fontWeight: FontWeight.w700,
         color: const Color(0xFF0F172A),
         height: 1.2,
       ),
-      selectedItemBuilder: (context) => [
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: _FilterDropdownLabel('Hammasi', dense: true, size: size),
-        ),
-        ...options.map(
-          (o) => Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: _FilterDropdownLabel(
-              (o['name'] ?? '').toString(),
-              dense: true,
-              size: size,
-            ),
-          ),
-        ),
-      ],
       items: items,
       onChanged: onChanged,
-    );
-
-    if (fieldHeight == null) return dropdown;
-
-    return SizedBox(
-      height: fieldHeight,
-      child: dropdown,
     );
   }
 
@@ -260,38 +326,23 @@ class SalesFilterDropdownField extends StatelessWidget {
 
 class _FilterDropdownLabel extends StatelessWidget {
   final String text;
-  final bool dense;
   final SalesFilterDropdownSize size;
 
-  const _FilterDropdownLabel(
-    this.text, {
-    this.dense = false,
-    this.size = SalesFilterDropdownSize.normal,
-  });
+  const _FilterDropdownLabel(this.text, {this.size = SalesFilterDropdownSize.normal});
 
   @override
   Widget build(BuildContext context) {
-    final fontSize = switch (size) {
-      SalesFilterDropdownSize.compact => dense
-          ? SalesUiScaleSettings.scaled(13)
-          : SalesUiScaleSettings.scaled(14),
-      SalesFilterDropdownSize.navbar => dense
-          ? SalesUiScaleSettings.navbarChipFontSize()
-          : SalesUiScaleSettings.scaled(18),
-      SalesFilterDropdownSize.normal => dense
-          ? SalesUiScaleSettings.scaled(15)
-          : SalesUiScaleSettings.scaled(16),
-    };
+    final fontSize = size == SalesFilterDropdownSize.compact
+        ? SalesUiScaleSettings.scaled(14)
+        : SalesUiScaleSettings.scaled(16);
     return Text(
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: fontSize,
-        fontWeight: dense ? FontWeight.w700 : FontWeight.w500,
-        color: dense && size == SalesFilterDropdownSize.navbar
-            ? const Color(0xFF0F172A)
-            : AppTheme.textPrimary,
+        fontWeight: FontWeight.w500,
+        color: AppTheme.textPrimary,
       ),
     );
   }

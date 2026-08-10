@@ -6,6 +6,7 @@ import '../core/input_formatters.dart';
 import '../providers/products_provider.dart';
 import '../providers/sales_session_provider.dart';
 import '../services/api_service.dart';
+import '../utils/platform_layout.dart';
 import '../widgets/ios_style_modals.dart';
 import 'hold_order_cart.dart';
 import 'invoice_edit_utils.dart';
@@ -17,58 +18,70 @@ class InvoiceEditFlow {
 
   static Future<String?> _askEditReason(BuildContext context) async {
     final ctrl = TextEditingController();
-    final reason = await IosStyleModals.showSheet<String>(
-      context: context,
-      showGrabber: true,
-      child: Builder(
-        builder: (ctx) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(ctx).bottom + 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Chekni tahrirlash',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Tahrirlash sababini kiriting (majburiy). Eski chek bekor qilinadi, yangi chek yaratiladi.',
-                  style: TextStyle(fontSize: 14, height: 1.35),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: ctrl,
-                  autofocus: true,
-                  maxLines: 3,
-                  minLines: 2,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: InputDecoration(
-                    hintText: 'Masalan: noto‘g‘ri miqdor kiritilgan',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                IosStyleModals.sheetPillCancelSaveRow(
-                  cancelLabel: 'Bekor qilish',
-                  saveLabel: 'Davom etish',
-                  onCancel: () => Navigator.pop(ctx),
-                  onSave: () {
-                    final t = ctrl.text.trim();
-                    if (t.isEmpty) {
-                      AppNotify.warning(ctx, 'Tahrirlash sababi majburiy');
-                      return;
-                    }
-                    Navigator.pop(ctx, t);
-                  },
-                ),
-              ],
+    final content = Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Chekni tahrirlash',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Tahrirlash sababini kiriting (majburiy). Eski chek bekor qilinadi, yangi chek yaratiladi.',
+            style: TextStyle(fontSize: 14, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 3,
+            minLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              hintText: 'Masalan: noto‘g‘ri miqdor kiritilgan',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
-          );
-        },
+          ),
+          const SizedBox(height: 14),
+          Builder(
+            builder: (ctx) => IosStyleModals.sheetPillCancelSaveRow(
+              cancelLabel: 'Bekor qilish',
+              saveLabel: 'Davom etish',
+              onCancel: () => Navigator.pop(ctx),
+              onSave: () {
+                final t = ctrl.text.trim();
+                if (t.isEmpty) {
+                  AppNotify.warning(ctx, 'Tahrirlash sababi majburiy');
+                  return;
+                }
+                Navigator.pop(ctx, t);
+              },
+            ),
+          ),
+        ],
       ),
     );
+
+    final String? reason;
+    if (isDesktopPosLayout) {
+      reason = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          contentPadding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: SizedBox(width: 440, child: content),
+        ),
+      );
+    } else {
+      reason = await IosStyleModals.showSheet<String>(
+        context: context,
+        showGrabber: true,
+        child: content,
+      );
+    }
     ctrl.dispose();
     return reason;
   }

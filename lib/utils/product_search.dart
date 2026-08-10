@@ -1,6 +1,7 @@
 import 'package:flutter/scheduler.dart';
 
 import '../models/product.dart';
+import 'scale_barcode.dart';
 
 /// Qidiruv matnini normallashtirish (bo'shliq, katta-kichik harf).
 String normalizeProductSearchQuery(String query) =>
@@ -91,6 +92,19 @@ int productSearchRelevanceScore(Product product, String query) {
     if (suffixScore > best) best = suffixScore;
   }
 
+  // PLU / tarozi ichidagi PLU.
+  if (product.matchesPlu(raw)) {
+    const pluScore = 87000;
+    if (pluScore > best) best = pluScore;
+  }
+  for (final plu in extractScalePluCandidates(raw)) {
+    if (product.matchesPlu(plu)) {
+      const scalePluScore = 87500;
+      if (scalePluScore > best) best = scalePluScore;
+      break;
+    }
+  }
+
   return best;
 }
 
@@ -146,11 +160,21 @@ void scheduleBarcodeAutoAction({
 bool looksLikeBarcodeInput(String query) {
   final trimmed = query.trim();
   if (trimmed.isEmpty) return false;
+  if (looksLikePossibleScaleBarcode(trimmed)) return true;
   final digitsOnly = trimmed.replaceAll(RegExp(r'\D'), '');
   if (digitsOnly.length < 8) return false;
   final compact = trimmed.replaceAll(RegExp(r'[\s\-]'), '');
   if (compact == digitsOnly) return true;
   if (RegExp(r'^[\d\s\-]+$').hasMatch(trimmed)) return true;
+  return false;
+}
+
+/// Shtrix, tarozi yorlig‘i yoki qisqa PLU — savatchaga avtomatik qidirish uchun.
+bool looksLikeBarcodeOrPluInput(String query) {
+  final trimmed = query.trim();
+  if (trimmed.isEmpty) return false;
+  if (looksLikeBarcodeInput(trimmed)) return true;
+  if (looksLikePluCode(trimmed)) return true;
   return false;
 }
 
@@ -171,6 +195,7 @@ List<Product> filterProductsByBarcodeQuery(List<Product> products, String query)
     if (p.matchesBarcode(raw)) return true;
     if (looksLikeBarcodeSuffixInput(raw) && p.matchesBarcodeSuffix(raw)) return true;
     if (p.sku != null && p.sku!.toLowerCase() == q) return true;
+    if (p.matchesPlu(raw)) return true;
     return false;
   }).toList();
 }

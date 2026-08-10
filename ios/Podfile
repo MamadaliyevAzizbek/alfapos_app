@@ -88,4 +88,6 @@ post_install do |installer|
       config.build_settings['GCC_GENERATE_DEBUGGING_SYMBOLS'] = 'YES'
     end
   end
+  # Xcode "Update to recommended settings" warningni yashirish (Pods har safar regenerate bo'ladi)
+  installer.pods_project.root_object.attributes['LastUpgradeCheck'] = '2650'
 end

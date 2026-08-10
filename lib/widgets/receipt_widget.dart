@@ -263,7 +263,7 @@ class ReceiptWidget extends StatelessWidget {
               child: Text(
                 '$queueNumber',
                 style: TextStyle(
-                  fontSize: isRestaurantLayout ? 42 : ThermalReceiptLargeText.onScreenFontSize,
+                  fontSize: ThermalReceiptLargeText.onScreenFontSize,
                   fontWeight: FontWeight.w800,
                   fontFamily: 'Courier',
                   fontFamilyFallback: const ['monospace'],
@@ -478,7 +478,7 @@ class ReceiptWidget extends StatelessWidget {
       ],
       ..._buildSummaryLines(
         [totalRow],
-        headerStyle,
+        headerStyle.copyWith(fontSize: 17, fontWeight: FontWeight.w800, height: 1.25),
         labelWidth: cols.labelWidth,
         valueWidth: cols.valueWidth,
         bold: true,

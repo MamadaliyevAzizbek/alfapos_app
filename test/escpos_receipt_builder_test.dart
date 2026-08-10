@@ -127,6 +127,75 @@ void main() {
     expect(bytes, isNotEmpty);
   });
 
+  test('restaurant receipt uses standard feed and enlarges total like shop', () async {
+    final config = ReceiptDesignConfig.defaults.copyWith(
+      showRestaurantQueueNumber: true,
+      restaurantQueueLabel: 'Navbat raqami',
+    );
+    final restaurantLines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: 'Restoran',
+        dateTime: DateTime(2026, 6, 10, 14, 30),
+        receiptNumber: 'POS99',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Latte',
+            quantity: '1 dona',
+            unitPrice: '25,000',
+            lineTotal: '25,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '25,000'),
+        ],
+        totalAmount: '25,000',
+        queueNumber: 12,
+        isRestaurantLayout: true,
+      ),
+      config: config,
+    );
+    final shopLines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: "Do'kon",
+        dateTime: DateTime(2026, 6, 10, 14, 30),
+        receiptNumber: 'POS100',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Non',
+            quantity: '1 dona',
+            unitPrice: '4,000',
+            lineTotal: '4,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '4,000'),
+        ],
+        totalAmount: '4,000',
+      ),
+    );
+
+    final restaurantBytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: restaurantLines,
+      design: config,
+    );
+    final shopBytes = await EscPosReceiptBuilder.buildReceipt(lines: shopLines);
+
+    int feedBeforeCut(List<int> bytes) {
+      final feedIndex = bytes.lastIndexOf(0x64);
+      expect(feedIndex, greaterThan(0));
+      expect(bytes[feedIndex - 1], 0x1B);
+      return bytes[feedIndex + 1];
+    }
+
+    expect(feedBeforeCut(restaurantBytes), feedBeforeCut(shopBytes));
+    expect(feedBeforeCut(restaurantBytes), 4);
+    // GS ! — navbat va umumiy summa kattalashtirish.
+    expect(restaurantBytes.contains(29), isTrue);
+    expect(shopBytes.contains(29), isTrue);
+  });
+
   test('standard receipt leaves extra bottom feed before cut', () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],

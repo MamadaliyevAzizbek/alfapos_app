@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 import '../utils/receive_payment_types.dart';
 import '../utils/receive_products.dart';
 import '../utils/receive_store_body.dart';
+import '../utils/scale_barcode.dart';
 
 class ReceiveSessionProvider extends ChangeNotifier {
   ReceiveSessionProvider._();
@@ -207,19 +208,66 @@ class ReceiveSessionProvider extends ChangeNotifier {
   }
 
   Future<Product?> findByBarcode(String barcode) async {
+    final hit = await findByBarcodeDetailed(barcode);
+    return hit?.product;
+  }
+
+  /// Taroz + oddiy barcode (DESKTOP_SCALE_BARCODE_API.md — receives/scale-barcode).
+  Future<({Product product, num quantity, bool isScaleItem})?> findByBarcodeDetailed(
+    String barcode,
+  ) async {
     final q = barcode.trim();
     if (q.isEmpty) return null;
+
+    if (looksLikePossibleScaleBarcode(q)) {
+      try {
+        final res = await ReceivesApi.scaleBarcode(
+          barcode: q,
+          branchId: branchId,
+        );
+        final hit = ScaleBarcode.parseSuccess(res);
+        if (hit != null) {
+          return (
+            product: hit.product,
+            quantity: hit.quantity,
+            isScaleItem: true,
+          );
+        }
+        if (ScaleBarcode.isScaleBarcodeResponse(res)) {
+          throw ApiException(
+            ScaleBarcode.errorMessage(res) ?? 'PLU kodli mahsulot topilmadi',
+            404,
+          );
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+
     try {
       final res = await ReceivesApi.barcodeSearch(
         searchValue: q,
         branchId: branchId,
       );
+      final scaleHit = ScaleBarcode.parseSuccess(res);
+      if (scaleHit != null &&
+          (scaleHit.isScaleItem || ScaleBarcode.isScaleBarcodeResponse(res))) {
+        return (
+          product: scaleHit.product,
+          quantity: scaleHit.quantity,
+          isScaleItem: true,
+        );
+      }
       final br = res['barcodeResultValue'];
       final fromBarcode = ReceiveProducts.productFromBarcodeResult(br);
-      if (fromBarcode != null) return fromBarcode;
+      if (fromBarcode != null) {
+        return (product: fromBarcode, quantity: 1, isScaleItem: false);
+      }
     } catch (_) {}
     final list = await searchProducts(q);
-    if (list.length == 1) return list.single;
+    if (list.length == 1) {
+      return (product: list.single, quantity: 1, isScaleItem: false);
+    }
     return null;
   }
 

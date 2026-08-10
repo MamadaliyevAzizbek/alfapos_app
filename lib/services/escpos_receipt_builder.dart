@@ -56,12 +56,11 @@ class EscPosReceiptBuilder {
     PaperSize paperSize = PaperSize.mm80,
     bool openCashDrawer = false,
     PosDrawer cashDrawerPin = PosDrawer.pin2,
-    bool compactRestaurant = false,
     String? printerName,
   }) async {
     final profile = await _profile();
-    final compactLayout = compactRestaurant ||
-        PrinterPaperProfile.needsCompactLayout(printerName);
+    // Faqat ba'zi printer modellari uchun ixcham layout — restoran alohida emas.
+    final compactLayout = PrinterPaperProfile.needsCompactLayout(printerName);
     final rowGap = compactLayout ? 0 : 6;
     final g = Generator(paperSize, profile, spaceBetweenRows: rowGap);
     final bytes = <int>[];
@@ -165,13 +164,9 @@ class EscPosReceiptBuilder {
         final text = ThermalReceiptLargeText.unwrap(line);
         final compactPaper = paperSize == PaperSize.mm58;
         final queueSize = _queueTextSize(
-          compactRestaurant
-              ? (compactPaper
-                  ? ThermalReceiptLargeText.restaurantPrinterSize58mm
-                  : ThermalReceiptLargeText.restaurantPrinterSize80mm)
-              : (compactPaper
-                  ? ThermalReceiptLargeText.printerSize58mm
-                  : ThermalReceiptLargeText.printerSize80mm),
+          compactPaper
+              ? ThermalReceiptLargeText.printerSize58mm
+              : ThermalReceiptLargeText.printerSize80mm,
         );
         bytes.addAll(
           g.textEncoded(
@@ -206,10 +201,9 @@ class EscPosReceiptBuilder {
         );
       } else {
         final lower = text.toLowerCase();
-        final isTotal = !compactRestaurant &&
-            (lower.contains('umumiy summa') ||
-                lower.contains('jami') ||
-                lower.contains('итого'));
+        final isTotal = lower.contains('umumiy summa') ||
+            lower.contains('jami') ||
+            lower.contains('итого');
         if (ReceiptStrikethroughText.containsMarker(text)) {
           bytes.addAll(
             _printMarkedLine(

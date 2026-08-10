@@ -10,6 +10,7 @@ import '../../utils/customer_group_discount.dart';
 import '../../widgets/product_tile.dart';
 import '../../widgets/restaurant_category_chips.dart';
 import '../../widgets/sales_shortcut_key_badge.dart';
+import '../../widgets/sales_pos_search_field.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
 import '../../services/sales_ui_scale_settings.dart';
@@ -23,6 +24,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   static const Color _priceGreen = Color(0xFF16A34A);
   static const Color _paymentBlue = Color(0xFF80A4FF);
   static const Color _paymentBlueActive = Color(0xFF3B6FE8);
+  static const Color _chromeBorder = Color(0xFFDDE5F0);
   static const BorderRadius _sharp = BorderRadius.zero;
   static const double _navRadius = 8;
   static const BorderRadius _navCorners = BorderRadius.all(Radius.circular(_navRadius));
@@ -204,47 +206,28 @@ class SavatchaDesktopLayout extends StatelessWidget {
     return 'F: $value%';
   }
 
-  Map<String, dynamic>? _selectedRegister() {
-    if (cashRegisters.isEmpty) return null;
-    if (selectedCashRegisterId == null) return cashRegisters.first;
-    for (final r in cashRegisters) {
-      final id = r['id'] ?? r['cash_register_id'];
-      final n = id is int ? id : int.tryParse(id?.toString() ?? '');
-      if (n == selectedCashRegisterId) return r;
-    }
-    return cashRegisters.first;
-  }
-
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: SalesUiScaleSettings.scale,
-      builder: (context, scale, _) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: SalesUiScaleSettings.textScaler(scale),
-          ),
-          child: ColoredBox(
-            color: _panelBg,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildTopBar(context),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(flex: 6, child: _buildCatalogPanel(context)),
-                      Container(width: 1, color: AppTheme.divider),
-                      Expanded(flex: 4, child: _buildCartPanel(context)),
-                    ],
-                  ),
-                ),
-              ],
+    return SalesUiScaleSettings.wrapUniformZoom(
+      child: ColoredBox(
+        color: _panelBg,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTopBar(context),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(flex: 6, child: _buildCatalogPanel(context)),
+                  Container(width: 1, color: AppTheme.divider),
+                  Expanded(flex: 4, child: _buildCartPanel(context)),
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -253,13 +236,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   double get _navBtnHeight => SalesUiScaleSettings.navbarControlSize();
 
-  ButtonStyle _navTextBtnStyle({bool compact = false}) => TextButton.styleFrom(
-        foregroundColor: _navInactive,
-        padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
-        minimumSize: Size(0, _navBtnHeight),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        textStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: compact ? 14 : 15),
-      );
+  double get _toolGap => SalesUiScaleSettings.navbarGap();
 
   Widget _buildTopBar(BuildContext context) {
     return Container(
@@ -274,11 +251,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 1280;
+          final gap = SalesUiScaleSettings.navbarGap();
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildTopBarLeading(compact: compact),
-              const SizedBox(width: 12),
+              SizedBox(width: gap),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -296,7 +274,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         ),
                       ),
                       if (onSalesWindowSelected != null && onAddSalesWindow != null)
-                        SizedBox(width: SalesUiScaleSettings.scaled(16)),
+                        SizedBox(width: gap),
                     ],
                     if (onSalesWindowSelected != null && onAddSalesWindow != null)
                       SalesWindowTabs(
@@ -309,7 +287,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: gap),
               _buildTopBarActions(compact: compact),
             ],
           );
@@ -318,109 +296,153 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
+  Widget _navSquareIconButton({
+    required String tooltip,
+    required VoidCallback? onPressed,
+    required Widget icon,
+  }) {
+    return SizedBox(
+      width: _navBtnHeight,
+      height: _navBtnHeight,
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          foregroundColor: _navBlue,
+          shape: const RoundedRectangleBorder(borderRadius: _navCorners),
+          side: const BorderSide(color: _chromeBorder),
+          backgroundColor: Colors.white,
+        ),
+        icon: icon,
+      ),
+    );
+  }
+
   Widget _buildTopBarLeading({required bool compact}) {
     if (onOpenSectionMenu == null) return const SizedBox.shrink();
-    return IconButton(
+    return _navSquareIconButton(
       tooltip: 'Bo\'limlar',
       onPressed: onOpenSectionMenu,
-      visualDensity: VisualDensity.compact,
-      icon: Icon(Icons.menu_rounded, size: compact ? 26 : 28, color: _navBlue),
+      icon: Icon(Icons.menu_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navBlue),
     );
   }
 
   Widget _buildTopBarActions({required bool compact}) {
+    final gap = SalesUiScaleSettings.navbarGap();
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (onReturnModeChanged != null) _buildPosModeNavCards(compact: compact),
         if (onSalesList != null) ...[
-          SizedBox(width: compact ? 8 : 10),
+          SizedBox(width: gap),
           SizedBox(
             height: _navBtnHeight,
-            child: TextButton.icon(
+            child: OutlinedButton.icon(
               onPressed: onSalesList,
-              style: _navTextBtnStyle(compact: compact),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _navInactive,
+                backgroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(
+                  horizontal: SalesUiScaleSettings.scaled(compact ? 12 : 14),
+                ),
+                minimumSize: Size(0, _navBtnHeight),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                side: const BorderSide(color: _chromeBorder),
+                shape: const RoundedRectangleBorder(borderRadius: _navCorners),
+              ),
               icon: Icon(Icons.list_alt_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
-              label: Text("Sotish ro'yxati", style: TextStyle(fontSize: compact ? 14 : 15)),
+              label: Text(
+                "Sotish ro'yxati",
+                style: TextStyle(
+                  fontSize: SalesUiScaleSettings.scaled(compact ? 14 : 15),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
-        SizedBox(width: compact ? 8 : 10),
-        _navCashRegisterButton(compact: compact),
         if (onGlobalSync != null) ...[
-          const SizedBox(width: 4),
-          IconButton(
+          SizedBox(width: gap),
+          _navSquareIconButton(
             tooltip: 'Sinxronlash',
             onPressed: globalSyncing ? null : onGlobalSync,
             icon: globalSyncing
                 ? SizedBox(
-                    width: compact ? 20 : 22,
-                    height: compact ? 20 : 22,
+                    width: SalesUiScaleSettings.navbarIconSize(),
+                    height: SalesUiScaleSettings.navbarIconSize(),
                     child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
                   )
-                : Icon(Icons.sync_rounded, size: compact ? 22 : 24, color: const Color(0xFF2563EB)),
+                : Icon(Icons.sync_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navBlue),
           ),
         ],
-        if (onLogout != null)
-          PopupMenuButton<String>(
-            tooltip: 'Hisob',
-            offset: const Offset(0, 48),
-            color: Colors.white,
-            shape: const RoundedRectangleBorder(borderRadius: _sharp),
-            icon: Icon(Icons.person_outline_rounded, color: _navBlue, size: compact ? 24 : 26),
-            onSelected: (value) {
-              if (value == 'logout') onLogout!();
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem<String>(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
-                    SizedBox(width: 10),
-                    Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
-                  ],
+        if (onLogout != null || onOpenShiftDashboard != null) ...[
+          SizedBox(width: gap),
+          SizedBox(
+            width: _navBtnHeight,
+            height: _navBtnHeight,
+            child: PopupMenuButton<String>(
+              tooltip: 'Hisob',
+              offset: Offset(0, _navBtnHeight + 4),
+              color: Colors.white,
+              shape: const RoundedRectangleBorder(borderRadius: _navCorners),
+              padding: EdgeInsets.zero,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: _navCorners,
+                  border: Border.all(color: _chromeBorder),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.person_outline_rounded,
+                    color: _navBlue,
+                    size: SalesUiScaleSettings.navbarIconSize(),
+                  ),
                 ),
               ),
-            ],
+              onSelected: (value) {
+                if (value == 'shift') onOpenShiftDashboard?.call();
+                if (value == 'logout') onLogout?.call();
+              },
+              itemBuilder: (context) => [
+                if (onOpenShiftDashboard != null)
+                  PopupMenuItem<String>(
+                    value: 'shift',
+                    child: Row(
+                      children: [
+                        Icon(Icons.point_of_sale_outlined, size: 20, color: AppTheme.textPrimary),
+                        const SizedBox(width: 10),
+                        Text(
+                          cashRegisterLabel,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (onLogout != null)
+                  const PopupMenuItem<String>(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
+                        SizedBox(width: 10),
+                        Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
+        ],
       ],
     );
   }
 
-  Widget _navCashRegisterButton({required bool compact}) {
-    return Tooltip(
-      message: 'Kassa smenasi',
-      child: SizedBox(
-        height: _navBtnHeight,
-        child: OutlinedButton.icon(
-          onPressed: onOpenShiftDashboard,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _navInactive,
-            backgroundColor: Colors.white,
-            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
-            minimumSize: Size(0, _navBtnHeight),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            side: const BorderSide(color: Color(0xFFDDE5F0)),
-            shape: const RoundedRectangleBorder(borderRadius: _navCorners),
-          ),
-          icon: Icon(Icons.point_of_sale_outlined, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
-          label: Text(
-            cashRegisterLabel,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: compact ? 14 : 15,
-              fontWeight: FontWeight.w600,
-              color: _navInactive,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildPosModeNavCards({bool compact = false}) {
+    final gap = SalesUiScaleSettings.navbarGap();
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -431,7 +453,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           onTap: () => onReturnModeChanged?.call(false),
           compact: compact,
         ),
-        SizedBox(width: compact ? 10 : 14),
+        SizedBox(width: gap),
         _navModeCard(
           label: 'Qaytarishlar',
           icon: Icons.replay_rounded,
@@ -450,28 +472,30 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required VoidCallback onTap,
     bool compact = false,
   }) {
+    final fontSize = SalesUiScaleSettings.scaled(compact ? 14 : 15);
     if (selected) {
       return SizedBox(
         height: _navBtnHeight,
         child: Material(
-          elevation: 2,
-          shadowColor: _navBlue.withValues(alpha: 0.28),
+          elevation: 0,
           borderRadius: _navCorners,
           color: _navBlue,
           child: InkWell(
             onTap: onTap,
             borderRadius: _navCorners,
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 16),
+              padding: EdgeInsets.symmetric(
+                horizontal: SalesUiScaleSettings.scaled(compact ? 14 : 16),
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(icon, color: Colors.white, size: SalesUiScaleSettings.navbarIconSize()),
-                  SizedBox(width: compact ? 6 : 8),
+                  SizedBox(width: SalesUiScaleSettings.scaled(compact ? 6 : 8)),
                   Text(
                     label,
                     style: TextStyle(
-                      fontSize: compact ? 14 : 15,
+                      fontSize: fontSize,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
@@ -486,16 +510,24 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
     return SizedBox(
       height: _navBtnHeight,
-      child: TextButton.icon(
+      child: OutlinedButton.icon(
         onPressed: onTap,
-        style: _navTextBtnStyle(compact: compact).copyWith(
-          overlayColor: WidgetStateProperty.all(Colors.transparent),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _navInactive,
+          backgroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(
+            horizontal: SalesUiScaleSettings.scaled(compact ? 12 : 14),
+          ),
+          minimumSize: Size(0, _navBtnHeight),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          side: const BorderSide(color: _chromeBorder),
+          shape: const RoundedRectangleBorder(borderRadius: _navCorners),
         ),
         icon: Icon(icon, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
         label: Text(
           label,
           style: TextStyle(
-            fontSize: compact ? 14 : 15,
+            fontSize: fontSize,
             fontWeight: FontWeight.w600,
             color: _navInactive,
           ),
@@ -512,73 +544,38 @@ class SavatchaDesktopLayout extends StatelessWidget {
     final initialLoading = productsLoading && catalogProducts.isEmpty;
     final loadingMore = productsLoading && catalogProducts.isNotEmpty;
     final isRestaurant = _isRestaurantMode;
-    final crossAxisCount = SalesUiScaleSettings.catalogCrossAxisCount(isRestaurant ? 6 : 4);
+    final crossAxisCount = SalesUiScaleSettings.catalogCrossAxisCount(4);
     final spacing = SalesUiScaleSettings.scaled(isRestaurant ? 8.0 : 12.0);
     final edgePad = SalesUiScaleSettings.scaled(12.0);
-    final searchPadV = SalesUiScaleSettings.scaled(14.0);
+    final gap = _toolGap;
+    final h = SalesPosSearchField.height;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, SalesUiScaleSettings.scaled(8.0)),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: 5,
-                child: ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: searchController,
-                  builder: (context, searchValue, searchField) {
-                    return SalesFieldShortcutOverlay(
-                      keyLabel: _shortcutLabel(SalesShortcutAction.focusProductSearch),
-                      visible: searchValue.text.isEmpty,
-                      child: Stack(
-                        alignment: Alignment.centerRight,
-                        children: [
-                          searchField!,
-                          if (searchValue.text.isNotEmpty)
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 20),
-                              onPressed: () {
-                                searchController.clear();
-                                onSearchChanged('');
-                              },
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                  child: TextField(
-                    key: const ValueKey('desktop-catalog-search'),
+          child: SizedBox(
+            height: h,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: SalesPosSearchField(
+                    fieldKey: const ValueKey('desktop-catalog-search'),
                     controller: searchController,
                     focusNode: catalogSearchFocus,
+                    hintText: "Mahsulotni qidirish - yoki - Shtrix kod",
+                    prefixIcon: Icons.search_rounded,
                     onChanged: onSearchChanged,
                     onSubmitted: onSearchSubmitted,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: "Mahsulotni qidirish - yoki - Shtrix kod",
-                      filled: true,
-                      fillColor: Colors.white,
-                      prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                      enabledBorder: const OutlineInputBorder(
-                        borderRadius: _sharp,
-                        borderSide: BorderSide(color: AppTheme.divider),
-                      ),
-                      focusedBorder: const OutlineInputBorder(
-                        borderRadius: _sharp,
-                        borderSide: BorderSide(color: AppTheme.primary, width: 2),
-                      ),
-                      contentPadding: EdgeInsets.fromLTRB(0, searchPadV, SalesUiScaleSettings.scaled(40.0), searchPadV),
-                    ),
+                    shortcutKeyLabel: _shortcutLabel(SalesShortcutAction.focusProductSearch),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _buildCatalogRegisterSelector(),
-              const SizedBox(width: 8),
-              _buildCatalogFilterButton(),
-            ],
+                SizedBox(width: gap),
+                _buildCatalogFilterButton(),
+              ],
+            ),
           ),
         ),
         if (_showRestaurantCategoryChips)
@@ -601,220 +598,168 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       ),
                     )
                   : Stack(
-                          children: [
-                            NotificationListener<ScrollNotification>(
-                              onNotification: (n) {
-                                if (loadingMore || onLoadMoreProducts == null) return false;
-                                if (n is ScrollEndNotification &&
-                                    n.metrics.pixels >= n.metrics.maxScrollExtent - 120) {
-                                  onLoadMoreProducts!();
-                                }
-                                return false;
-                              },
-                              child: GridView.builder(
-                                key: ValueKey(
-                                  'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}-${restaurantCategoryId ?? ''}-$crossAxisCount',
-                                ),
-                                padding: EdgeInsets.fromLTRB(edgePad, 0, edgePad, loadingMore ? SalesUiScaleSettings.scaled(40.0) : edgePad),
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  mainAxisSpacing: spacing,
-                                  crossAxisSpacing: spacing,
-                                  childAspectRatio: isRestaurant ? 0.76 : 0.82,
-                                ),
-                                itemCount: catalogProducts.length,
-                                itemBuilder: (context, i) => _DesktopProductCard(
-                                  key: ValueKey(catalogProducts[i].id),
-                                  product: catalogProducts[i],
-                                  usdRate: usdExchangeRate,
-                                  catalogSellPriceType: catalogSellPriceType,
-                                  showPurchasePrice: showPurchasePriceOnCards,
-                                  showUsdEquivalent: showUsdEquivalentOnCards,
-                                  showSkuInTitle: showSkuInProductTitle,
-                                  compact: salesLayoutMode == DesktopSalesLayoutMode.restaurant,
-                                  onTap: () => onProductTap(catalogProducts[i]),
+                      children: [
+                        NotificationListener<ScrollNotification>(
+                          onNotification: (n) {
+                            if (loadingMore || onLoadMoreProducts == null) return false;
+                            if (n is ScrollEndNotification &&
+                                n.metrics.pixels >= n.metrics.maxScrollExtent - 120) {
+                              onLoadMoreProducts!();
+                            }
+                            return false;
+                          },
+                          child: GridView.builder(
+                            key: ValueKey(
+                              'catalog-${query.trim()}-${categoryFilterId ?? ''}-${brandFilterId ?? ''}-${restaurantCategoryId ?? ''}-$crossAxisCount',
+                            ),
+                            padding: EdgeInsets.fromLTRB(
+                              edgePad,
+                              0,
+                              edgePad,
+                              loadingMore ? SalesUiScaleSettings.scaled(40.0) : edgePad,
+                            ),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              mainAxisSpacing: spacing,
+                              crossAxisSpacing: spacing,
+                              childAspectRatio: isRestaurant ? 0.76 : 0.82,
+                            ),
+                            itemCount: catalogProducts.length,
+                            itemBuilder: (context, i) => _DesktopProductCard(
+                              key: ValueKey(catalogProducts[i].id),
+                              product: catalogProducts[i],
+                              usdRate: usdExchangeRate,
+                              catalogSellPriceType: catalogSellPriceType,
+                              showPurchasePrice: showPurchasePriceOnCards,
+                              showUsdEquivalent: showUsdEquivalentOnCards,
+                              showSkuInTitle: showSkuInProductTitle,
+                              compact: salesLayoutMode == DesktopSalesLayoutMode.restaurant,
+                              onTap: () => onProductTap(catalogProducts[i]),
+                            ),
+                          ),
+                        ),
+                        if (loadingMore)
+                          const Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 8,
+                            child: Center(
+                              child: SizedBox(
+                                width: 28,
+                                height: 28,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: AppTheme.primary,
                                 ),
                               ),
                             ),
-                            if (loadingMore)
-                              const Positioned(
-                                left: 0,
-                                right: 0,
-                                bottom: 8,
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 28,
-                                    height: 28,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: AppTheme.primary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
+                          ),
+                      ],
+                    ),
         ),
       ],
     );
   }
 
-  Widget _buildCatalogRegisterSelector() {
-    final controlHeight = SalesUiScaleSettings.scaled(48.0);
-    final register = _selectedRegister();
-    final label = register != null
-        ? (register['name'] ?? register['title'] ?? cashRegisterLabel).toString()
-        : cashRegisterLabel;
-
-    if (cashRegisters.length > 1 && onCashRegisterSelected != null) {
-      return ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 140, maxWidth: 200),
-        child: Container(
-          height: controlHeight,
-          padding: EdgeInsets.symmetric(horizontal: SalesUiScaleSettings.scaled(12.0)),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: _sharp,
-            border: Border.all(color: AppTheme.divider),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<Map<String, dynamic>>(
-              isExpanded: true,
-              value: register,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textSecondary),
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
-              items: cashRegisters
-                  .map(
-                    (r) => DropdownMenuItem(
-                      value: r,
-                      child: Text(
-                        (r['name'] ?? r['title'] ?? 'Kassa').toString(),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (r) {
-                if (r != null) onCashRegisterSelected!(r);
-              },
-            ),
-          ),
-        ),
-      );
-    }
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 140, maxWidth: 200),
-      child: Container(
-        height: controlHeight,
-        padding: EdgeInsets.symmetric(horizontal: SalesUiScaleSettings.scaled(12.0)),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: _sharp,
-          border: Border.all(color: AppTheme.divider),
-        ),
-        alignment: Alignment.centerLeft,
-        child: Text(
-          label,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
-
   Widget _buildCatalogFilterButton() {
-    final controlSize = SalesUiScaleSettings.scaled(48.0);
-    return Material(
-      color: const Color(0xFFEAF2FF),
-      borderRadius: _sharp,
-      child: InkWell(
-        onTap: onFilterTap,
-        borderRadius: _sharp,
-        child: Container(
-          width: controlSize,
-          height: controlSize,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: _sharp,
-            border: Border.all(color: const Color(0xFF93C5FD), width: 1.3),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Icon(
-                Icons.tune_rounded,
-                size: 22,
-                color: Color(0xFF1D4ED8),
-              ),
-              if (!_isRestaurantMode)
-                Positioned(
-                  right: 5,
-                  bottom: 5,
-                  child: IgnorePointer(
-                    child: SalesShortcutKeyBadge(
-                      label: _shortcutLabel(SalesShortcutAction.toggleShowPurchasePrice),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return SalesPosToolbarIconButton(
+      icon: Icons.tune_rounded,
+      onTap: onFilterTap,
+      tooltip: 'Filtr',
+      badge: _isRestaurantMode
+          ? null
+          : SalesShortcutKeyBadge(
+              label: _shortcutLabel(SalesShortcutAction.toggleShowPurchasePrice),
+            ),
     );
   }
 
   Widget _buildCartPanel(BuildContext context) {
     final edgePad = SalesUiScaleSettings.scaled(12.0);
-    final clearBtnSize = SalesUiScaleSettings.scaled(48.0);
-    final clearIconSize = SalesUiScaleSettings.scaled(22.0);
+    final gap = _toolGap;
+    final h = SalesPosSearchField.height;
+    final headerBottom = SalesUiScaleSettings.scaled(8.0);
+
+    Widget cartBody() {
+      if (cartItems.isEmpty) {
+        return const Center(
+          child: Text(
+            "Bo'sh Savat",
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
+          ),
+        );
+      }
+      return ListView.builder(
+        padding: EdgeInsets.fromLTRB(edgePad, 0, edgePad, edgePad),
+        itemCount: cartItems.length,
+        itemBuilder: (context, i) {
+          final line = cartItems[i];
+          return _DesktopCartLine(
+            item: line,
+            expanded: identical(expandedCartItem, line),
+            qtyFocusNonce: cartQtyFocusNonce,
+            isQtyFocusTarget: identical(cartQtyFocusItem, line),
+            onToggleExpand: () => onToggleCartExpand(line),
+            onCollapse: onCollapseCartExpand,
+            onIncrement: () => onIncrement(line),
+            onDecrement: () => onDecrement(line),
+            onRemove: () => onRemoveCartItem(line),
+            onQuantityChanged: (q) => onCartQuantityChanged(line, q),
+            onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
+            onSellByPackChanged: (pack) => onCartSellByPackChanged(line, pack),
+            onSuspendCatalogSearchRefocus: onSuspendCatalogSearchRefocus,
+          );
+        },
+      );
+    }
 
     return ColoredBox(
       color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Qidiruv card ichida; dropdown ochilganda layoutda joy oladi (bosiladi).
           Padding(
-            padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, SalesUiScaleSettings.scaled(8.0)),
+            padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, headerBottom),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: customerSearchSection),
-                    const SizedBox(width: 8),
-                    Material(
-                      color: Colors.white,
-                      borderRadius: _sharp,
-                      child: InkWell(
+                    SizedBox(width: gap),
+                    SizedBox(
+                      height: h,
+                      child: SalesPosToolbarIconButton(
+                        icon: Icons.delete_outline_rounded,
+                        iconColor: Colors.red.shade400,
+                        borderColor: Colors.red.shade200,
                         onTap: onClearCart,
-                        borderRadius: _sharp,
-                        child: Container(
-                          width: clearBtnSize,
-                          height: clearBtnSize,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: _sharp,
-                            border: Border.all(color: Colors.red.shade200),
-                          ),
-                          child: Icon(Icons.delete_outline_rounded, size: clearIconSize, color: Colors.red.shade400),
-                        ),
+                        tooltip: 'Savatni tozalash',
                       ),
                     ),
                   ],
                 ),
                 if (isReturnMode) ...[
-                  const SizedBox(height: 8),
+                  SizedBox(height: gap),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFFF3E0),
-                      border: Border.fromBorderSide(BorderSide(color: Color(0xFFFFCC80))),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: _navCorners,
+                      border: const Border.fromBorderSide(
+                        BorderSide(color: Color(0xFFFFCC80)),
+                      ),
                     ),
                     child: const Text(
                       'Mahsulot tanlang va qaytarish qiling. Qarzli chek uchun mijoz tanlab «To\'lovsiz» to\'lovini ishlating — qarzi kamayadi (web bilan bir xil).',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF6D4C41)),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF6D4C41),
+                      ),
                     ),
                   ),
                 ],
@@ -831,37 +776,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                 ),
               ),
             ),
-          Expanded(
-            child: cartItems.isEmpty
-                ? const Center(
-                    child: Text(
-                      "Bo'sh Savat",
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: EdgeInsets.symmetric(horizontal: edgePad),
-                    itemCount: cartItems.length,
-                    itemBuilder: (context, i) {
-                      final line = cartItems[i];
-                      return _DesktopCartLine(
-                        item: line,
-                        expanded: identical(expandedCartItem, line),
-                        qtyFocusNonce: cartQtyFocusNonce,
-                        isQtyFocusTarget: identical(cartQtyFocusItem, line),
-                        onToggleExpand: () => onToggleCartExpand(line),
-                        onCollapse: onCollapseCartExpand,
-                        onIncrement: () => onIncrement(line),
-                        onDecrement: () => onDecrement(line),
-                        onRemove: () => onRemoveCartItem(line),
-                        onQuantityChanged: (q) => onCartQuantityChanged(line, q),
-                        onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
-                        onSellByPackChanged: (pack) => onCartSellByPackChanged(line, pack),
-                        onSuspendCatalogSearchRefocus: onSuspendCatalogSearchRefocus,
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: cartBody()),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             color: _totalBar,

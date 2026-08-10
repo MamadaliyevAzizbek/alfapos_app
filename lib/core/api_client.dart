@@ -224,7 +224,21 @@ class ApiClient {
       }
     }
 
+    // Laravel throttle (429) — inglizcha matnni tushunarli qilish.
+    if (response.statusCode == 429 || _isTooManyAttemptsMessage(message)) {
+      message =
+          'Juda ko\'p so\'rov yuborildi. 30–60 soniya kutib, qayta urinib ko\'ring.';
+    }
+
     throw ApiException(message, response.statusCode);
+  }
+
+  static bool _isTooManyAttemptsMessage(String message) {
+    final m = message.toLowerCase();
+    return m.contains('too many attempts') ||
+        m.contains('too many requests') ||
+        m.contains('rate limit') ||
+        m.contains('throttle');
   }
 
   /// Backend ba'zan `success:false` + muvaffaqiyat matni yuboradi — saqlash muvaffaqiyatli deb qabul qilinadi.

@@ -12,6 +12,7 @@ import '../../services/product_display_settings.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
+import '../../widgets/app_dropdown.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
@@ -376,23 +377,12 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                   ),
                 )
               else
-                DropdownButtonFormField<String>(
+                AppDropdownField<String>(
+                  label: 'Asosiy printer',
+                  hint: 'Printerni tanlang',
                   value: _selected,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: 'Asosiy printer',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  hint: const Text('Printerni tanlang'),
                   items: _printers
-                      .map(
-                        (n) => DropdownMenuItem(
-                          value: n,
-                          child: Text(n, overflow: TextOverflow.ellipsis),
-                        ),
-                      )
+                      .map((n) => appDropdownItem(value: n, label: n))
                       .toList(),
                   onChanged: (v) => setState(() {
                     _selected = v;
@@ -436,23 +426,12 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                     ),
                   )
                 else
-                  DropdownButtonFormField<String>(
+                  AppDropdownField<String>(
+                    label: 'Qo‘shimcha printer',
+                    hint: 'Ikkinchi printerni tanlang',
                     value: _secondarySelected,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Qo‘shimcha printer',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    hint: const Text('Ikkinchi printerni tanlang'),
                     items: _secondaryPrinterOptions
-                        .map(
-                          (n) => DropdownMenuItem(
-                            value: n,
-                            child: Text(n, overflow: TextOverflow.ellipsis),
-                          ),
-                        )
+                        .map((n) => appDropdownItem(value: n, label: n))
                         .toList(),
                     onChanged: (v) => setState(() => _secondarySelected = v),
                   ),
@@ -691,21 +670,16 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         ),
         SizedBox(
           width: 120,
-          child: DropdownButtonFormField<String>(
+          child: AppDropdownField<String>(
+            label: 'Tugma',
             value: current,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: 'Tugma',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            ),
+            variant: AppDropdownVariant.compact,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             items: SalesKeyboardShortcutsSettings.allowedKeyIds
                 .map(
-                  (k) => DropdownMenuItem(
+                  (k) => appDropdownItem(
                     value: k,
-                    child: Text(SalesKeyboardShortcutsSettings.formatKeyLabel(k)),
+                    label: SalesKeyboardShortcutsSettings.formatKeyLabel(k),
                   ),
                 )
                 .toList(),

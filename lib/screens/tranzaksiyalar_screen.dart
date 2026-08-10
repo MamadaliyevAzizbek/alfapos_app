@@ -11,6 +11,7 @@ import '../utils/invoice_edit_utils.dart';
 import '../utils/platform_layout.dart';
 import 'api_chek_detail_screen.dart';
 import 'desktop/desktop_shell_scope.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 class TranzaksiyalarScreen extends StatefulWidget {
   final int tabIndex;
@@ -39,7 +40,9 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   String _employeeFilterName = '';
 
   bool get _filterByEmployee =>
-      widget.filterByCurrentEmployee || (isDesktopPosLayout && widget.tabIndex == 6);
+      widget.filterByCurrentEmployee || isDesktopPosLayout;
+
+  bool get _desktop => isDesktopPosLayout;
 
   @override
   void initState() {
@@ -170,7 +173,207 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   @override
   Widget build(BuildContext context) {
     final count = _displayCount;
+    if (_desktop) return _buildDesktopScaffold(count);
+    return _buildMobileScaffold(count);
+  }
 
+  Widget _buildDesktopScaffold(int count) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: AppTheme.divider)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      style: const TextStyle(fontSize: 15),
+                      decoration: InputDecoration(
+                        hintText: "Chek ID (POS10033 yoki 10033)",
+                        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primary),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: AppTheme.divider),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: AppTheme.divider),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (count > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                    ),
+                    child: Text(
+                      '$count ta chek',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (_filterByEmployee)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_outline_rounded, color: Colors.blue.shade800, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _employeeFilterName.isNotEmpty && _employeeFilterName != 'Sotuvchi'
+                            ? "Faqat sizning cheklaringiz: $_employeeFilterName"
+                            : "Faqat sizning cheklaringiz",
+                        style: TextStyle(fontSize: 13, color: Colors.blue.shade900, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (_apiError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  "API dan savdolar yuklanmadi. Sana yoki tarmoqni tekshiring.",
+                  style: TextStyle(fontSize: 13, color: Colors.orange.shade900),
+                ),
+              ),
+            ),
+          Expanded(child: _buildDesktopTable()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopTable() {
+    final list = _filteredSales;
+    if (_apiLoading && _apiSales.isEmpty) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+    }
+    if (list.isEmpty) {
+      return Center(
+        child: Text(
+          _searchQuery.trim().isEmpty ? "Sotuvlar yo'q" : "«$_searchQuery» bo'yicha chek topilmadi",
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: AppTheme.divider),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Column(
+            children: [
+              Container(
+                color: const Color(0xFFF8FAFC),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                child: const Row(
+                  children: [
+                    Expanded(flex: 2, child: Text('SANA', style: _thStyle)),
+                    Expanded(flex: 3, child: Text('CHEK', style: _thStyle)),
+                    Expanded(flex: 3, child: Text('MIJOZ', style: _thStyle)),
+                    Expanded(
+                      flex: 2,
+                      child: Text('SUMMA', style: _thStyle, textAlign: TextAlign.end),
+                    ),
+                    SizedBox(
+                      width: 72,
+                      child: Text('AMAL', style: _thStyle, textAlign: TextAlign.center),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ThrottledRefreshIndicator(
+                  onRefresh: () => _load(force: true),
+                  child: ListView.builder(
+                    itemCount: list.length,
+                    itemBuilder: (context, index) {
+                      final sale = list[index];
+                      return _DesktopSaleRow(
+                        sale: sale,
+                        index: index,
+                        showEditButton: canShowInvoiceEditButton(sale),
+                        showDateEditButton: canShowInvoiceDateEditButton(sale),
+                        onTap: () => _showApiSaleDetail(context, sale),
+                        onEdit: canShowInvoiceEditButton(sale)
+                            ? () => _startEditSale(context, sale)
+                            : null,
+                        onEditDate: canShowInvoiceDateEditButton(sale)
+                            ? () => _editSaleDate(context, sale)
+                            : null,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const _thStyle = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w700,
+    color: AppTheme.textSecondary,
+    letterSpacing: 0.4,
+  );
+
+  Widget _buildMobileScaffold(int count) {
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -308,9 +511,10 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                       ],
                     ),
                   )
-                : RefreshIndicator(
-                    onRefresh: _load,
+                : ThrottledRefreshIndicator(
+                    onRefresh: () => _load(force: true),
                     child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _filteredSales.length,
                       itemBuilder: (context, index) {
@@ -322,12 +526,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                           showEditButton: showEdit,
                           showDateEditButton: showDateEdit,
                           onTap: () => _showApiSaleDetail(context, sale),
-                          onEdit: showEdit
-                              ? () => _startEditSale(context, sale)
-                              : null,
-                          onEditDate: showDateEdit
-                              ? () => _editSaleDate(context, sale)
-                              : null,
+                          onEdit: showEdit ? () => _startEditSale(context, sale) : null,
+                          onEditDate: showDateEdit ? () => _editSaleDate(context, sale) : null,
                         );
                       },
                     ),
@@ -389,6 +589,114 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       await _loadApiSales();
       if (mounted) setState(() {});
     }
+  }
+}
+
+class _DesktopSaleRow extends StatelessWidget {
+  final Map<String, dynamic> sale;
+  final int index;
+  final VoidCallback onTap;
+  final bool showEditButton;
+  final bool showDateEditButton;
+  final VoidCallback? onEdit;
+  final VoidCallback? onEditDate;
+
+  const _DesktopSaleRow({
+    required this.sale,
+    required this.index,
+    required this.onTap,
+    this.showEditButton = false,
+    this.showDateEditButton = false,
+    this.onEdit,
+    this.onEditDate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final id = sale['order_id'] ?? sale['invoice_id'] ?? sale['id'] ?? '—';
+    final idStr = id.toString();
+    final chek = idStr.startsWith('POS') ? idStr : 'POS$idStr';
+    final totalInt = parseAmountFromApi(sale['total'] ?? sale['grand_total'] ?? sale['total_amount'] ?? sale['sum']);
+    String customer = '—';
+    final c = sale['customer'];
+    if (c is String && c.trim().isNotEmpty) {
+      customer = c;
+    } else if (c is Map) {
+      final n = (c['name'] ?? c['first_name'] ?? '').toString().trim();
+      if (n.isNotEmpty) customer = n;
+    }
+    final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
+    final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '—';
+    final bg = index.isEven ? Colors.white : const Color(0xFFFAFBFC);
+
+    return Material(
+      color: bg,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppTheme.divider)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(dateStr, style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(chek, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  customer,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  '${formatThousands(totalInt)} UZS',
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                ),
+              ),
+              SizedBox(
+                width: 72,
+                child: Center(
+                  child: (showEditButton || showDateEditButton)
+                      ? PopupMenuButton<String>(
+                          tooltip: 'Amallar',
+                          icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 22),
+                          onSelected: (value) {
+                            if (value == 'edit') onEdit?.call();
+                            if (value == 'date') onEditDate?.call();
+                          },
+                          itemBuilder: (ctx) => [
+                            if (showEditButton)
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Chekni tahrirlash'),
+                              ),
+                            if (showDateEditButton)
+                              const PopupMenuItem(
+                                value: 'date',
+                                child: Text('Sanani tahrirlash'),
+                              ),
+                          ],
+                        )
+                      : Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

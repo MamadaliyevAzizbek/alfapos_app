@@ -9,16 +9,14 @@ import '../../widgets/auth_network_image.dart';
 import '../../utils/pos_navigation.dart';
 import 'desktop_shell_scope.dart';
 import 'asosiy_desktop_screen.dart';
-import '../hisobotlar_screen.dart';
-import '../kirimlar_screen.dart';
-import '../katalog_screen.dart';
-import '../mijozlar_screen.dart';
 import '../savatcha_screen.dart';
 import '../tranzaksiyalar_screen.dart';
 import '../xarajatlar_screen.dart';
 import 'sozlamalar_desktop_screen.dart';
 
 /// Desktop: chap sidebar + asosiy kontent.
+/// Faqat sotuv uchun: Statistika, Sotuv, Xarajatlar, Tranzaksiyalar, Sozlamalar.
+/// Mijozlar / Mahsulotlar / Kirimlar / Hisobotlar — web orqali.
 class DesktopShell extends StatefulWidget {
   final VoidCallback? onLogout;
 
@@ -36,21 +34,21 @@ class _DesktopShellState extends State<DesktopShell> {
 
   static const _sectionTitles = [
     'Statistika',
-    'Mijozlar',
-    'Mahsulotlar',
     "Sotuv bo'limi",
-    'Kirimlar',
     'Xarajatlar',
     'Tranzaksiyalar',
-    'Hisobotlar',
     'Sozlamalar',
   ];
+
+  static const int salesSectionIndex = 1;
+  static const int transactionsSectionIndex = 3;
+  static const int _sectionCount = 5;
 
   @override
   void initState() {
     super.initState();
     PosNavigation.openSalesSection = () => _go(salesSectionIndex);
-    PosNavigation.openTransactionsSection = () => _go(6);
+    PosNavigation.openTransactionsSection = () => _go(transactionsSectionIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) => syncSellerNameFromApi());
   }
 
@@ -91,36 +89,26 @@ class _DesktopShellState extends State<DesktopShell> {
       case 0:
         return const AsosiyDesktopScreen();
       case 1:
-        return const MijozlarScreen();
-      case 2:
-        return const KatalogScreen();
-      case 3:
         return SavatchaScreen(
-          isTabActive: _index == 3,
+          isTabActive: _index == salesSectionIndex,
           onLogout: widget.onLogout,
           onOpenSectionMenu: _openSectionMenu,
           onGlobalSync: _onGlobalSync,
         );
-      case 4:
-        return const KirimlarScreen();
-      case 5:
+      case 2:
         return const XarajatlarScreen();
-      case 6:
+      case 3:
         return TranzaksiyalarScreen(
-          tabIndex: 6,
+          tabIndex: transactionsSectionIndex,
           currentIndex: _index,
           filterByCurrentEmployee: true,
         );
-      case 7:
-        return const HisobotlarScreen();
-      case 8:
+      case 4:
         return const SozlamalarDesktopScreen();
       default:
         return const SizedBox.shrink();
     }
   }
-
-  static const int salesSectionIndex = 3;
 
   bool get _salesFullscreen => _index == salesSectionIndex;
 
@@ -191,7 +179,7 @@ class _DesktopShellState extends State<DesktopShell> {
                     syncing: _syncing,
                     child: IndexedStack(
                       index: _index,
-                      children: List.generate(9, _page),
+                      children: List.generate(_sectionCount, _page),
                     ),
                   ),
                 ),
@@ -283,15 +271,12 @@ class _DesktopSidebar extends StatelessWidget {
   static const double _labelSize = 15;
 
   /// Lucide — yupqa stroke, professional sidebar iconlari.
+  /// Sotuv POS: faqat kerakli bo‘limlar (qolganlari webda).
   static const _items = [
     (LucideIcons.layout_dashboard, 'Statistika'),
-    (LucideIcons.users, 'Mijozlar'),
-    (LucideIcons.package, 'Mahsulotlar'),
     (LucideIcons.shopping_cart, "Sotuv bo'limi"),
-    (LucideIcons.package_plus, 'Kirimlar'),
     (LucideIcons.wallet, 'Xarajatlar'),
     (LucideIcons.arrow_left_right, 'Tranzaksiyalar'),
-    (LucideIcons.file_text, 'Hisobotlar'),
     (LucideIcons.settings, 'Sozlamalar'),
   ];
 

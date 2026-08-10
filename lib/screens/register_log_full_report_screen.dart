@@ -10,8 +10,10 @@ import '../providers/cash_register_shift_provider.dart';
 import '../services/api_service.dart';
 import '../utils/cash_register_utils.dart';
 import '../utils/platform_layout.dart';
+import '../widgets/app_dropdown.dart';
 import 'api_chek_detail_screen.dart';
 import 'desktop/quick_cash_dialogs.dart';
+import '../widgets/throttled_refresh_indicator.dart';
 
 Future<void> openRegisterLogFullReport(
   BuildContext context, {
@@ -360,16 +362,6 @@ class _RegisterLogFullReportScreenState extends State<RegisterLogFullReportScree
             Text(subtitle, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Yangilash',
-            onPressed: _loadingCore ? null : () async {
-              await _loadCore();
-              if (_salesLoaded) await _reloadSales();
-            },
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
         bottom: TabBar(
           controller: _tabs,
           isScrollable: true,
@@ -384,52 +376,76 @@ class _RegisterLogFullReportScreenState extends State<RegisterLogFullReportScree
       body: _loadingCore && _info == null
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
           : _error != null && _info == null
-              ? _ErrorBody(message: _error!, onRetry: _loadCore)
+              ? _ErrorBody(
+                  message: _error!,
+                  onRetry: () async {
+                    await _loadCore();
+                    if (_salesLoaded) await _reloadSales();
+                  },
+                )
               : TabBarView(
                   controller: _tabs,
                   children: [
-                    _AnalyticsTab(
-                      info: _info ?? {},
-                      analytics: _analytics ?? {},
-                      expenses: _expenses,
-                      incomes: _incomes,
-                      totalExpenses: _totalExpenses,
-                      totalIncomes: _totalIncomes,
-                    ),
-                    _SalesTab(
-                      loading: _salesLoading,
-                      rows: _salesRows,
-                      employee: _salesEmployee,
-                      paymentType: _salesPaymentType,
-                      employeeOptions: _employeeOptions,
-                      paymentOptions: _paymentOptions,
-                      onEmployeeChanged: (v) {
-                        setState(() => _salesEmployee = v);
-                        unawaited(_reloadSales());
+                    ThrottledRefreshIndicator(
+                      onRefresh: () async {
+                        await _loadCore();
+                        if (_salesLoaded) await _reloadSales();
                       },
-                      onPaymentChanged: (v) {
-                        setState(() => _salesPaymentType = v);
-                        unawaited(_reloadSales());
+                      child: _AnalyticsTab(
+                        info: _info ?? {},
+                        analytics: _analytics ?? {},
+                        expenses: _expenses,
+                        incomes: _incomes,
+                        totalExpenses: _totalExpenses,
+                        totalIncomes: _totalIncomes,
+                      ),
+                    ),
+                    ThrottledRefreshIndicator(
+                      onRefresh: () async {
+                        await _loadCore();
+                        await _reloadSales();
                       },
-                      onTapSale: _showInvoiceDetail,
+                      child: _SalesTab(
+                        loading: _salesLoading,
+                        rows: _salesRows,
+                        employee: _salesEmployee,
+                        paymentType: _salesPaymentType,
+                        employeeOptions: _employeeOptions,
+                        paymentOptions: _paymentOptions,
+                        onEmployeeChanged: (v) {
+                          setState(() => _salesEmployee = v);
+                          unawaited(_reloadSales());
+                        },
+                        onPaymentChanged: (v) {
+                          setState(() => _salesPaymentType = v);
+                          unawaited(_reloadSales());
+                        },
+                        onTapSale: _showInvoiceDetail,
+                      ),
                     ),
-                    _CashListTab(
-                      isIncome: false,
-                      rows: _expenses,
-                      total: _totalExpenses,
-                      canAdd: _isOpen,
-                      deletingId: _deletingExpenseId,
-                      onAdd: () => _addCash(isIncome: false),
-                      onDelete: _deleteExpense,
+                    ThrottledRefreshIndicator(
+                      onRefresh: _loadCore,
+                      child: _CashListTab(
+                        isIncome: false,
+                        rows: _expenses,
+                        total: _totalExpenses,
+                        canAdd: _isOpen,
+                        deletingId: _deletingExpenseId,
+                        onAdd: () => _addCash(isIncome: false),
+                        onDelete: _deleteExpense,
+                      ),
                     ),
-                    _CashListTab(
-                      isIncome: true,
-                      rows: _incomes,
-                      total: _totalIncomes,
-                      canAdd: _isOpen,
-                      deletingId: _deletingIncomeId,
-                      onAdd: () => _addCash(isIncome: true),
-                      onDelete: _deleteIncome,
+                    ThrottledRefreshIndicator(
+                      onRefresh: _loadCore,
+                      child: _CashListTab(
+                        isIncome: true,
+                        rows: _incomes,
+                        total: _totalIncomes,
+                        canAdd: _isOpen,
+                        deletingId: _deletingIncomeId,
+                        onAdd: () => _addCash(isIncome: true),
+                        onDelete: _deleteIncome,
+                      ),
                     ),
                   ],
                 ),
@@ -445,23 +461,23 @@ class _ErrorBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
+    return ThrottledRefreshIndicator(
+      onRefresh: onRetry,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline_rounded, size: 48, color: Colors.orange.shade700),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Qayta yuklash'),
-            ),
-          ],
-        ),
+        children: [
+          const SizedBox(height: 80),
+          Icon(Icons.error_outline_rounded, size: 48, color: Colors.orange.shade700),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          const Text(
+            'Pastga tortib yangilang',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
       ),
     );
   }
@@ -503,6 +519,7 @@ class _AnalyticsTab extends StatelessWidget {
         .toList();
 
     return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           _InfoCard(
@@ -791,72 +808,36 @@ class _SalesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final narrow = MediaQuery.sizeOf(context).width < 520;
 
-    Widget employeeField() => DropdownButtonFormField<String>(
-          isExpanded: true,
-          initialValue: employeeOptions.any((e) => e['value'] == employee) ? employee : 'all',
-          decoration: const InputDecoration(
-            labelText: 'Xodim',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
+    Widget employeeField() => AppDropdownField<String>(
+          label: 'Xodim',
+          value: employeeOptions.any((e) => e['value'] == employee) ? employee : 'all',
+          variant: AppDropdownVariant.compact,
+          enabled: !loading,
           items: employeeOptions
               .map(
-                (e) => DropdownMenuItem(
-                  value: e['value'],
-                  child: Text(
-                    e['label'] ?? e['value']!,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                (e) => appDropdownItem(
+                  value: e['value']!,
+                  label: e['label'] ?? e['value']!,
                 ),
               )
               .toList(),
-          selectedItemBuilder: (context) => employeeOptions
-              .map(
-                (e) => Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text(
-                    e['label'] ?? e['value']!,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: loading ? null : (v) => onEmployeeChanged(v ?? 'all'),
+          onChanged: (v) => onEmployeeChanged(v ?? 'all'),
         );
 
-    Widget paymentField() => DropdownButtonFormField<String>(
-          isExpanded: true,
-          initialValue: paymentOptions.any((e) => e['value'] == paymentType) ? paymentType : 'all',
-          decoration: const InputDecoration(
-            labelText: "To'lov turi",
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
+    Widget paymentField() => AppDropdownField<String>(
+          label: "To'lov turi",
+          value: paymentOptions.any((e) => e['value'] == paymentType) ? paymentType : 'all',
+          variant: AppDropdownVariant.compact,
+          enabled: !loading,
           items: paymentOptions
               .map(
-                (e) => DropdownMenuItem(
-                  value: e['value'],
-                  child: Text(
-                    e['label'] ?? e['value']!,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                (e) => appDropdownItem(
+                  value: e['value']!,
+                  label: e['label'] ?? e['value']!,
                 ),
               )
               .toList(),
-          selectedItemBuilder: (context) => paymentOptions
-              .map(
-                (e) => Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text(
-                    e['label'] ?? e['value']!,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: loading ? null : (v) => onPaymentChanged(v ?? 'all'),
+          onChanged: (v) => onPaymentChanged(v ?? 'all'),
         );
 
     return Column(

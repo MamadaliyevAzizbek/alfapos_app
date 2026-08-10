@@ -6,7 +6,6 @@ import '../models/receipt_design_config.dart';
 import 'receipt_logo_image.dart';
 import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
-import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
 
@@ -38,7 +37,6 @@ class ThermalReceiptPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasQueueNumber = ThermalReceiptFormatter.hasRestaurantQueueLine(lines);
     if (lines.isEmpty && !_showLogo) {
       return SizedBox(
         width: width,
@@ -73,13 +71,13 @@ class ThermalReceiptPreview extends StatelessWidget {
             if (line.isEmpty)
               const SizedBox(height: 6)
             else
-              _line(line, hasQueueNumber: hasQueueNumber),
+              _line(line),
         ],
       ),
     );
   }
 
-  Widget _line(String line, {bool hasQueueNumber = false}) {
+  Widget _line(String line) {
     if (ThermalReceiptProductTitleText.isGapLine(line)) {
       return const SizedBox(height: 2);
     }
@@ -119,12 +117,12 @@ class ThermalReceiptPreview extends StatelessWidget {
 
     if (ThermalReceiptLargeText.isLargeLine(line)) {
       return Padding(
-        padding: EdgeInsets.symmetric(vertical: hasQueueNumber ? 2 : 10),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Text(
           ThermalReceiptLargeText.unwrap(line),
           textAlign: TextAlign.center,
           style: _previewText.copyWith(
-            fontSize: hasQueueNumber ? 36 : ThermalReceiptLargeText.previewFontSize,
+            fontSize: ThermalReceiptLargeText.previewFontSize,
             fontWeight: FontWeight.w700,
             height: 1.05,
           ),
@@ -150,12 +148,13 @@ class ThermalReceiptPreview extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
+      padding: EdgeInsets.symmetric(vertical: isTotal ? 3 : 1),
       child: ReceiptStrikethroughText.richLine(
         text,
         style: _previewText.copyWith(
-          fontSize: isTotal ? 14 : 12,
-          fontWeight: isTotal || centered ? FontWeight.w700 : FontWeight.w500,
+          fontSize: isTotal ? 18 : 12,
+          fontWeight: isTotal || centered ? FontWeight.w800 : FontWeight.w500,
+          height: isTotal ? 1.25 : 1.35,
         ),
         textAlign: centered ? TextAlign.center : TextAlign.start,
         bold: isTotal || centered,

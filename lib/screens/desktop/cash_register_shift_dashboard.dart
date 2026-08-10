@@ -14,6 +14,7 @@ import '../../utils/platform_layout.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import 'quick_cash_dialogs.dart';
 import '../register_log_full_report_screen.dart';
+import '../../widgets/throttled_refresh_indicator.dart';
 
 /// Desktop: dialog. Mobil: to‘liq ekran. UI darhol ochiladi, hisobot fon rejimida yangilanadi.
 Future<void> openCashRegisterShiftDashboard(BuildContext context) async {
@@ -69,12 +70,6 @@ class CashRegisterShiftDashboardScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
         title: const Text('Kassa smenalari'),
-        actions: [
-          IconButton(
-            onPressed: () => CashRegisterShiftProvider.instance.loadShiftDetail(),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
       body: SafeArea(
         child: CashRegisterShiftDashboardBody(
@@ -335,7 +330,7 @@ class _CashRegisterShiftDashboardBodyState extends State<CashRegisterShiftDashbo
     final loadFailed = !contentLoading && _shift.shiftAnalytics == null && _shift.error != null;
 
     if (widget.compact || widget.mobileLayout) {
-      return RefreshIndicator(
+      return ThrottledRefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
