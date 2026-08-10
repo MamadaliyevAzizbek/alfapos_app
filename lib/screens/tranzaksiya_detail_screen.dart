@@ -567,10 +567,12 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       );
       if (!mounted) return false;
       if (result.ok) {
+        // Sotuvdan keyin avtomatik/manual chop: muvaffaqiyat xabari kerak emas.
         if (!silent) AppNotify.success(context, result.message);
         return true;
       }
-      AppNotify.warning(context, result.message);
+      // silent: printer topilmasa ham banner ko‘rsatilmasin.
+      if (!silent) AppNotify.warning(context, result.message);
       return false;
     } catch (e) {
       if (mounted) AppNotify.error(context, 'Chop etish xatosi: $e');
@@ -972,7 +974,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
               _closeDesktopPayment();
             }
           },
-          onPrint: _printThermalReceipt,
+          onPrint: () => _printThermalReceipt(silent: true),
           onPrintPrecheck: _printPrecheckReceipt,
           debtAmount: _desktopDebtAmount(),
           allocatedPayments: allocatedPayments,

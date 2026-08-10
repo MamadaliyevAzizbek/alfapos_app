@@ -200,10 +200,7 @@ class EscPosReceiptBuilder {
           ),
         );
       } else {
-        final lower = text.toLowerCase();
-        final isTotal = lower.contains('umumiy summa') ||
-            lower.contains('jami') ||
-            lower.contains('итого');
+        final isTotal = _isTotalAmountLine(text);
         if (ReceiptStrikethroughText.containsMarker(text)) {
           bytes.addAll(
             _printMarkedLine(
@@ -211,8 +208,10 @@ class EscPosReceiptBuilder {
               text,
               codeTable: codeTable,
               codePage: codePage,
-              maxWidth: maxWidth,
+              maxWidth: isTotal ? (maxWidth ~/ 2).clamp(12, maxWidth) : maxWidth,
               bold: isTotal,
+              height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
+              width: isTotal ? PosTextSize.size2 : PosTextSize.size1,
             ),
           );
         } else {
@@ -223,10 +222,12 @@ class EscPosReceiptBuilder {
                 codeTable: codeTable,
                 fontType: PosFontType.fontA,
                 bold: isTotal,
+                // Do‘kon va restoran: umumiy summa 2×2 (keng va baland).
                 height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
-                width: isTotal ? PosTextSize.size1 : PosTextSize.size1,
+                width: isTotal ? PosTextSize.size2 : PosTextSize.size1,
               ),
-              maxCharsPerLine: maxWidth,
+              maxCharsPerLine:
+                  isTotal ? (maxWidth ~/ 2).clamp(12, maxWidth) : maxWidth,
             ),
           );
         }
@@ -247,6 +248,20 @@ class EscPosReceiptBuilder {
     return bytes;
   }
 
+  /// Umumiy summa qatori (do‘kon / restoran) — kattalashtirish uchun.
+  static bool _isTotalAmountLine(String text) {
+    final lower = text.toLowerCase().trim();
+    if (lower.contains('umumiy summa')) return true;
+    if (lower.contains('итого')) return true;
+    // «Jami - …» / «Jami: …», lekin «Jami og'irlik» emas.
+    if (lower.startsWith('jami') &&
+        !lower.contains('og') &&
+        !lower.contains('оғ')) {
+      return true;
+    }
+    return false;
+  }
+
   static List<int> _printMarkedLine(
     Generator g,
     String text, {
@@ -255,6 +270,8 @@ class EscPosReceiptBuilder {
     required int maxWidth,
     bool bold = false,
     PosFontType fontType = PosFontType.fontA,
+    PosTextSize height = PosTextSize.size1,
+    PosTextSize width = PosTextSize.size1,
   }) {
     final bytes = <int>[];
     for (final seg in ReceiptStrikethroughText.parseSegments(text)) {
@@ -267,6 +284,8 @@ class EscPosReceiptBuilder {
             fontType: fontType,
             bold: bold,
             underline: seg.strike,
+            height: height,
+            width: width,
           ),
           maxCharsPerLine: maxWidth,
         ),

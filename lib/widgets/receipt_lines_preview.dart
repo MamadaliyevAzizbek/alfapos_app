@@ -148,13 +148,13 @@ class ThermalReceiptPreview extends StatelessWidget {
     }
 
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: isTotal ? 3 : 1),
+      padding: EdgeInsets.symmetric(vertical: isTotal ? 4 : 1),
       child: ReceiptStrikethroughText.richLine(
         text,
         style: _previewText.copyWith(
-          fontSize: isTotal ? 18 : 12,
-          fontWeight: isTotal || centered ? FontWeight.w800 : FontWeight.w500,
-          height: isTotal ? 1.25 : 1.35,
+          fontSize: isTotal ? 26 : 12,
+          fontWeight: isTotal || centered ? FontWeight.w900 : FontWeight.w500,
+          height: isTotal ? 1.2 : 1.35,
         ),
         textAlign: centered ? TextAlign.center : TextAlign.start,
         bold: isTotal || centered,

@@ -67,10 +67,10 @@ class ApiReceiptFormattedPreview extends StatelessWidget {
         text,
         textAlign: centered ? TextAlign.center : TextAlign.start,
         style: TextStyle(
-          fontSize: isTotal ? 14 : 13,
-          fontWeight: isTotal || (centered && text.length < 30) ? FontWeight.w700 : FontWeight.w500,
+          fontSize: isTotal ? 24 : 13,
+          fontWeight: isTotal || (centered && text.length < 30) ? FontWeight.w900 : FontWeight.w500,
           color: Colors.black,
-          height: 1.35,
+          height: isTotal ? 1.2 : 1.35,
         ),
       ),
     );
