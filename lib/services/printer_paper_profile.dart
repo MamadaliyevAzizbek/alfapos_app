@@ -29,21 +29,25 @@ abstract class PrinterPaperProfile {
     return _compactPatterns.any(n.contains);
   }
 
-  /// XP-80C pichoq ~15 mm pastda: 3 qator yetadi, 5+ qator isrof.
+  /// XP-80C pichoq ~15–18 mm: 6 qator — oxirgi qatorlar kesilmasin.
   static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 3;
+    if (isXprinter80(printerName)) return 6;
     return 2;
   }
+
+  /// ESC 3 n — 24 yopishib ketadi; 32 qatorlar orasini ozgina ochadi.
+  static const int lineSpacingDots = 32;
 
   /// Chop etish maydoni: chap margin 0, to‘liq 80mm kenglik (576 nuqta).
   static List<int> fullWidthMarginBytes() => const [
         29, 76, 0, 0, // GS L 0 — chap margin
         29, 87, 0x40, 2, // GS W 576 — print kengligi
-        27, 51, 24, // ESC 3 24 — ixcham qator oralig‘i
+        27, 51, lineSpacingDots,
       ];
 
-  /// Logo `image()` dan keyin ESC 2 qator oralig‘ini kengaytiradi — qayta ixcham.
-  static List<int> restoreCompactSpacingBytes() => const [27, 51, 24];
+  /// Logo `image()` dan keyin ESC 2 qator oralig‘ini kengaytiradi — qayta tiklash.
+  static List<int> restoreCompactSpacingBytes() =>
+      const [27, 51, lineSpacingDots];
 
   /// Kesishdan oldin minimal feed (cut() ichidagi 5 qator emas).
   static List<int> minimalCutBytes({

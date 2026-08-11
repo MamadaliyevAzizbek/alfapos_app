@@ -13,7 +13,7 @@ import '../utils/thermal_receipt_logo_fit.dart';
 
 const _previewText = TextStyle(
   color: Colors.black,
-  height: 1.35,
+  height: 1.5,
   fontFamily: 'monospace',
   fontWeight: FontWeight.w500,
 );
@@ -134,9 +134,9 @@ class ThermalReceiptPreview extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: _previewText.copyWith(
             fontSize: ThermalReceiptTotalText.previewAmountSize,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w800,
             fontFamily: 'monospace',
-            height: 1.35,
+            height: 1.55,
           ),
         ),
       );

@@ -5,6 +5,7 @@ import 'package:alfapos_app/utils/receipt_strikethrough_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
 import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_total_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -191,8 +192,20 @@ void main() {
 
     expect(feedBeforeCut(restaurantBytes), feedBeforeCut(shopBytes));
     expect(feedBeforeCut(restaurantBytes), 2);
-    // GS ! — faqat navbat raqami kattalashtiriladi.
+    // GS ! — navbat raqami va umumiy summa (balandlik 2×).
     expect(restaurantBytes.contains(29), isTrue);
+  });
+
+  test('umumiy summa is bold Font A with double height', () async {
+    final bytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: [
+        ThermalReceiptTotalText.line('Umumiy summa', "4,000 so'm"),
+      ],
+    );
+    // ESC E 1 — bold
+    expect(bytes, containsAllInOrder([0x1B, 0x45, 1]));
+    // GS ! — width 1×, height 2×
+    expect(bytes, containsAllInOrder([0x1D, 0x21, 0x01]));
   });
 
   test('standard receipt uses minimal feed before cut', () async {
@@ -205,7 +218,7 @@ void main() {
     expect(bytes[feedIndex + 1], 2);
   });
 
-  test('XP-80C uses 3-line feed and compact spacing, not g.cut waste', () async {
+  test('XP-80C uses 6-line feed and compact spacing, not g.cut waste', () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
       printerName: 'Xprinter XP-80C',
@@ -213,10 +226,10 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 3);
+    expect(bytes[feedIndex + 1], 6);
     expect(bytes[feedIndex + 2], 0x1D); // GS
     expect(bytes[feedIndex + 3], 0x56); // V
     expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed
-    expect(bytes, containsAllInOrder([27, 51, 24]));
+    expect(bytes, containsAllInOrder([27, 51, 32]));
   });
 }

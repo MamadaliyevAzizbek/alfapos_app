@@ -1,13 +1,13 @@
-/// Do‘kon / restoran chekidagi «Umumiy summa» — katta shrift, Compact/Font B emas.
+/// Do‘kon / restoran chekidagi «Umumiy summa» — Font A, qalin, biroz balandroq.
 abstract class ThermalReceiptTotalText {
   ThermalReceiptTotalText._();
 
   static const marker = '!TOTAL!';
   static const fieldSep = '\u001f';
 
-  /// Preview — termal Font A qatori bilan bir xil.
-  static const double previewLabelSize = 12;
-  static const double previewAmountSize = 12;
+  /// Preview — qalin, oddiy qatordan biroz katta.
+  static const double previewLabelSize = 15;
+  static const double previewAmountSize = 15;
 
   static String line(String label, String value) =>
       '$marker${label.trim()}$fieldSep${value.trim()}';

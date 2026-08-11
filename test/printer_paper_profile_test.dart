@@ -11,7 +11,7 @@ void main() {
     ]) {
       expect(PrinterPaperProfile.isXprinter80(name), isTrue, reason: name);
       expect(PrinterPaperProfile.needsCompactLayout(name), isTrue, reason: name);
-      expect(PrinterPaperProfile.feedBeforeCut(name), 3, reason: name);
+      expect(PrinterPaperProfile.feedBeforeCut(name), 6, reason: name);
     }
   });
 
@@ -22,10 +22,10 @@ void main() {
     expect(PrinterPaperProfile.feedBeforeCut('Generic'), 2);
   });
 
-  test('restore spacing is ESC 3 24', () {
+  test('restore spacing is ESC 3 32', () {
     expect(
       PrinterPaperProfile.restoreCompactSpacingBytes(),
-      [27, 51, 24],
+      [27, 51, 32],
     );
   });
 }

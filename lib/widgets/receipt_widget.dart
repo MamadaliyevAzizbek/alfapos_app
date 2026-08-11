@@ -480,7 +480,7 @@ class ReceiptWidget extends StatelessWidget {
       ],
       ..._buildSummaryLines(
         [totalRow],
-        headerStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w500, height: 1.2),
+        headerStyle.copyWith(fontSize: 16, fontWeight: FontWeight.w800, height: 1.2),
         labelWidth: cols.labelWidth,
         valueWidth: cols.valueWidth,
         bold: true,

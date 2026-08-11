@@ -251,7 +251,7 @@ class EscPosReceiptBuilder {
     return bytes;
   }
 
-  /// Termal Font A, 1×1, boldsiz — to‘lov qatorlari bilan bir xil shrift.
+  /// Font A, qalin, balandligi 2× — bir qatorda qoladi, to‘lov qatoridan ajraladi.
   static List<int> _printTotalBlock(
     Generator g,
     ({String label, String value}) total, {
@@ -266,14 +266,22 @@ class EscPosReceiptBuilder {
       if (value.isNotEmpty) value,
     ].join(' - ');
     if (text.isEmpty) return const [];
-    return g.textEncoded(
-      EscPosTextCodec.encodeSync(text, codePage: codePage),
-      styles: PosStyles(
-        codeTable: codeTable,
-        fontType: PosFontType.fontA,
+    // 2× balandlik ~48 nuqta: ESC 3 32 yetmaydi — keyingi qator ustiga chiqadi.
+    return <int>[
+      27, 51, 56,
+      ...g.textEncoded(
+        EscPosTextCodec.encodeSync(text, codePage: codePage),
+        styles: PosStyles(
+          codeTable: codeTable,
+          fontType: PosFontType.fontA,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size1,
+        ),
+        maxCharsPerLine: maxWidth,
       ),
-      maxCharsPerLine: maxWidth,
-    );
+      ...PrinterPaperProfile.restoreCompactSpacingBytes(),
+    ];
   }
 
   static List<int> _printMarkedLine(
