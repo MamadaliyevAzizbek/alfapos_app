@@ -5,17 +5,17 @@ import 'package:image/image.dart' as img;
 abstract class ThermalReceiptLogoFit {
   ThermalReceiptLogoFit._();
 
-  /// 80mm: ~32 mm kenglik, ~10 mm balandlik.
-  static const int width80 = 240;
-  static const int height80 = 72;
+  /// 80mm: kvadrat logo ~32 mm — 72 px tushunarsiz kichik edi.
+  static const int width80 = 384;
+  static const int height80 = 256;
 
   /// 58mm: biroz ixchamroq.
-  static const int width58 = 184;
-  static const int height58 = 56;
+  static const int width58 = 256;
+  static const int height58 = 160;
 
   /// Sozlamalar / ekran preview (logical px).
-  static const double previewWidth = 240;
-  static const double previewHeight = 72;
+  static const double previewWidth = 192;
+  static const double previewHeight = 128;
 
   static ({int width, int height}) boxFor({required bool mm58}) => mm58
       ? (width: width58, height: height58)
@@ -24,18 +24,28 @@ abstract class ThermalReceiptLogoFit {
   /// Rasmni [maxW]×[maxH] ichiga to‘liq sig‘diradi (contain), kichik bo‘lsa ham.
   static img.Image fitToBox(img.Image src, int maxW, int maxH) {
     if (src.width <= 0 || src.height <= 0 || maxW <= 0 || maxH <= 0) return src;
-    final scaleW = maxW / src.width;
-    final scaleH = maxH / src.height;
+    final prepared = _flattenOnWhite(src);
+    final scaleW = maxW / prepared.width;
+    final scaleH = maxH / prepared.height;
     final scale = scaleW < scaleH ? scaleW : scaleH;
-    final w = (src.width * scale).round().clamp(1, maxW);
-    final h = (src.height * scale).round().clamp(1, maxH);
-    if (w == src.width && h == src.height) return src;
+    final w = (prepared.width * scale).round().clamp(1, maxW);
+    final h = (prepared.height * scale).round().clamp(1, maxH);
+    if (w == prepared.width && h == prepared.height) return prepared;
     return img.copyResize(
-      src,
+      prepared,
       width: w,
       height: h,
-      interpolation: scale < 1 ? img.Interpolation.average : img.Interpolation.linear,
+      interpolation: scale < 1 ? img.Interpolation.average : img.Interpolation.cubic,
     );
+  }
+
+  /// PNG shaffofligi termalda qora dog‘ bo‘lmasin.
+  static img.Image _flattenOnWhite(img.Image src) {
+    if (!src.hasAlpha) return src;
+    final out = img.Image(width: src.width, height: src.height);
+    img.fill(out, color: img.ColorRgb8(255, 255, 255));
+    img.compositeImage(out, src);
+    return out;
   }
 
   static img.Image fit(img.Image src, {required bool mm58}) {

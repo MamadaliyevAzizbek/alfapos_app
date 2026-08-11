@@ -85,6 +85,7 @@ class EscPosReceiptBuilder {
       final mm58 = paperSize == PaperSize.mm58;
       final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
       if (logoImage != null) {
+        bytes.addAll(g.feed(1));
         // XP-80C: GS v 0 — qator oralig‘ini buzmaydi. Boshqa: ESC * + keyin ESC 3 24.
         if (xp80) {
           bytes.addAll(g.imageRaster(logoImage, align: PosAlign.center));

@@ -832,7 +832,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       children: [
         _sectionHeader(
           'Chek sozlamalari',
-          'Chek dizayni va printerga chiqadigan matn ko‘rinishi.',
+          'Matnlar standart. Faqat logo o‘zgartiriladi.',
         ),
         const SizedBox(height: 20),
         _card(child: ReceiptDesignEditorPanel(onSaved: _loadLocalReceiptPreview)),

@@ -38,7 +38,7 @@ class ReceiptDesignConfig {
     this.showLogo = true,
     this.logoFilePath,
     this.storeTitle = '',
-    this.useBranchNameAsTitle = false,
+    this.useBranchNameAsTitle = true,
     this.showDateTime = true,
     this.receiptNumberLabel = 'Chek raqami',
     this.sellerLabel = 'Sotuvchi',
@@ -49,7 +49,7 @@ class ReceiptDesignConfig {
     this.clientPhoneLabel = 'Mijoz telefoni',
     this.showClientPhone = true,
     this.clientAddressLabel = 'Mijoz manzili',
-    this.showClientAddress = false,
+    this.showClientAddress = true,
     this.discountLabel = 'Chegirma',
     this.totalLabel = 'Umumiy summa',
     this.footerText = 'Спасибо за покупку!',
@@ -67,6 +67,14 @@ class ReceiptDesignConfig {
   });
 
   static const defaults = ReceiptDesignConfig();
+
+  /// Saqlangan logoni qoldirib, matn sozlamalarini standartga qaytaradi.
+  factory ReceiptDesignConfig.standardFrom(ReceiptDesignConfig saved) {
+    return ReceiptDesignConfig(
+      showLogo: true,
+      logoFilePath: saved.logoFilePath,
+    );
+  }
 
   ReceiptDesignConfig copyWith({
     bool? showLogo,
@@ -171,7 +179,7 @@ class ReceiptDesignConfig {
       showLogo: json['showLogo'] as bool? ?? true,
       logoFilePath: json['logoFilePath'] as String?,
       storeTitle: json['storeTitle'] as String? ?? '',
-      useBranchNameAsTitle: json['useBranchNameAsTitle'] as bool? ?? false,
+      useBranchNameAsTitle: json['useBranchNameAsTitle'] as bool? ?? true,
       showDateTime: json['showDateTime'] as bool? ?? true,
       receiptNumberLabel: json['receiptNumberLabel'] as String? ?? 'Chek raqami',
       sellerLabel: json['sellerLabel'] as String? ?? 'Sotuvchi',
@@ -182,7 +190,7 @@ class ReceiptDesignConfig {
       clientPhoneLabel: json['clientPhoneLabel'] as String? ?? 'Mijoz telefoni',
       showClientPhone: json['showClientPhone'] as bool? ?? true,
       clientAddressLabel: json['clientAddressLabel'] as String? ?? 'Mijoz manzili',
-      showClientAddress: json['showClientAddress'] as bool? ?? false,
+      showClientAddress: json['showClientAddress'] as bool? ?? true,
       discountLabel: json['discountLabel'] as String? ?? 'Chegirma',
       totalLabel: json['totalLabel'] as String? ?? 'Umumiy summa',
       footerText: json['footerText'] as String? ?? 'Спасибо за покупку!',

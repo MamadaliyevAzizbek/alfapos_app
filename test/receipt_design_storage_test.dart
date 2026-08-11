@@ -84,6 +84,37 @@ void main() {
     expect(File(oldPath).existsSync(), isFalse);
   });
 
+  test('reload ignores saved custom store title', () async {
+    SharedPreferences.setMockInitialValues({
+      'receipt_design_config_v1':
+          '{"showLogo":true,"storeTitle":"ssssss","useBranchNameAsTitle":false}',
+    });
+    final loaded = await ReceiptDesignStorage.reload();
+    expect(loaded.storeTitle, isEmpty);
+    expect(loaded.useBranchNameAsTitle, isTrue);
+  });
+
+  test('old showLogo false still installs bundled default logo', () async {
+    SharedPreferences.setMockInitialValues({
+      'receipt_design_config_v1': '{"showLogo":false}',
+    });
+    final loaded = await ReceiptDesignStorage.reload();
+    expect(loaded.showLogo, isTrue);
+    expect(loaded.logoFilePath, isNotNull);
+    expect(File(loaded.logoFilePath!).existsSync(), isTrue);
+  });
+
+  test('load seeds bundled Untitled-1-08 as default logo', () async {
+    final loaded = await ReceiptDesignStorage.load();
+    expect(loaded.showLogo, isTrue);
+    expect(loaded.logoFilePath, isNotNull);
+    expect(File(loaded.logoFilePath!).existsSync(), isTrue);
+    expect(
+      File(loaded.logoFilePath!).lengthSync(),
+      greaterThan(1000),
+    );
+  });
+
   test('removeLogo clears path and deletes file', () async {
     final source = File('${tempDir.path}/logo.png');
     await source.writeAsBytes([9, 9, 9]);
@@ -95,8 +126,13 @@ void main() {
     final path = cfg.logoFilePath!;
 
     cfg = await ReceiptDesignStorage.removeLogo(cfg);
+    await ReceiptDesignStorage.save(cfg);
     expect(cfg.showLogo, isFalse);
     expect(cfg.logoFilePath, isNull);
     expect(File(path).existsSync(), isFalse);
+
+    ReceiptDesignStorage.invalidateCache();
+    final after = await ReceiptDesignStorage.reload();
+    expect(after.showLogo, isFalse);
   });
 }

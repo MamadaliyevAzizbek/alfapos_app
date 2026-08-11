@@ -193,6 +193,7 @@ class ReceiptWidget extends StatelessWidget {
               design.logoFilePath != null &&
               design.logoFilePath!.isNotEmpty &&
               File(design.logoFilePath!).existsSync()) ...[
+            const SizedBox(height: 14),
             Center(
               child: ReceiptLogoImage(
                 path: design.logoFilePath!,
@@ -298,18 +299,13 @@ class ReceiptWidget extends StatelessWidget {
               sellerPhone != null &&
               sellerPhone!.trim().isNotEmpty)
             Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}', style: textStyle),
-          if (design.showClientLine &&
-              clientName != null &&
-              clientName!.trim().isNotEmpty)
+          if ((clientName ?? '').trim().isNotEmpty) ...[
             Text('${design.clientLabel}: ${clientName!.trim()}', style: textStyle),
-          if (design.showClientPhone &&
-              clientPhone != null &&
-              clientPhone!.trim().isNotEmpty)
-            Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}', style: textStyle),
-          if (design.showClientAddress &&
-              clientAddress != null &&
-              clientAddress!.trim().isNotEmpty)
-            Text('${design.clientAddressLabel}: ${clientAddress!.trim()}', style: textStyle),
+            if ((clientPhone ?? '').trim().isNotEmpty)
+              Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}', style: textStyle),
+            if ((clientAddress ?? '').trim().isNotEmpty)
+              Text('${design.clientAddressLabel}: ${clientAddress!.trim()}', style: textStyle),
+          ],
           if ((description ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Tavsif: ${description!.trim()}', style: textStyle),

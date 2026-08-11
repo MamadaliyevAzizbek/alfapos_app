@@ -31,7 +31,7 @@ abstract class PrinterPaperProfile {
 
   /// XP-80C pichoq ~15–18 mm: 6 qator — oxirgi qatorlar kesilmasin.
   static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 6;
+    if (isXprinter80(printerName)) return 7;
     return 2;
   }
 

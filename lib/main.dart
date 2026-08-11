@@ -6,9 +6,13 @@ import 'package:flutter/services.dart';
 import 'app.dart';
 import 'core/api_http.dart';
 import 'core/desktop_runtime.dart';
+import 'services/receipt_design_storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await ReceiptDesignStorage.load();
+  } catch (_) {}
   if (!kIsWeb && isDesktopNative) {
     HttpOverrides.global = AlfaposHttpOverrides();
     // SSL zanjiri — faqat Windows (macOS da keraksiz HEAD so‘rovini olib tashlash)

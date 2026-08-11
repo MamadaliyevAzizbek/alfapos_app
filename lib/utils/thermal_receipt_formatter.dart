@@ -362,20 +362,17 @@ class ThermalReceiptFormatter {
         d.sellerPhone!.trim().isNotEmpty) {
       _appendLeftLine(lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
     }
-    if (config.showClientLine &&
-        d.clientName != null &&
-        d.clientName!.trim().isNotEmpty) {
-      _appendLeftLine(lines, '${config.clientLabel}: ${d.clientName!.trim()}');
-    }
-    if (config.showClientPhone &&
-        d.clientPhone != null &&
-        d.clientPhone!.trim().isNotEmpty) {
-      _appendLeftLine(lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
-    }
-    if (config.showClientAddress &&
-        d.clientAddress != null &&
-        d.clientAddress!.trim().isNotEmpty) {
-      _appendLeftLine(lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
+    final clientName = d.clientName?.trim() ?? '';
+    if (clientName.isNotEmpty) {
+      _appendLeftLine(lines, '${config.clientLabel}: $clientName');
+      final phone = d.clientPhone?.trim() ?? '';
+      if (phone.isNotEmpty) {
+        _appendLeftLine(lines, '${config.clientPhoneLabel}: $phone');
+      }
+      final address = d.clientAddress?.trim() ?? '';
+      if (address.isNotEmpty) {
+        _appendLeftLine(lines, '${config.clientAddressLabel}: $address');
+      }
     }
     lines.add('');
   }

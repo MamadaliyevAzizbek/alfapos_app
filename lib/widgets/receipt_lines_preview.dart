@@ -62,6 +62,7 @@ class ThermalReceiptPreview extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_showLogo) ...[
+            const SizedBox(height: 14),
             Center(
               child: ReceiptLogoImage(
                 path: design.logoFilePath!,

@@ -25,9 +25,9 @@ void main() {
   });
 
   test('wide banner keeps aspect and does not exceed height', () {
-    final out = ThermalReceiptLogoFit.fitToBox(solid(2000, 200), 240, 72);
-    expect(out.width, 240);
-    expect(out.height, 24);
+    final out = ThermalReceiptLogoFit.fitToBox(solid(2000, 200), 384, 256);
+    expect(out.width, 384);
+    expect(out.height, 38);
   });
 
   test('58mm box is smaller than 80mm', () {

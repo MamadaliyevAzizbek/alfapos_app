@@ -269,4 +269,40 @@ void main() {
     expect(lines.any((l) => l.contains("so'm")), isFalse);
     expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isFalse);
   });
+
+  test('client lines appear only when a client is selected', () {
+    ThermalReceiptPrintData base({String? name, String? phone, String? address}) {
+      return ThermalReceiptPrintData(
+        storeName: 'Filial',
+        dateTime: DateTime(2026, 8, 11, 18, 0),
+        receiptNumber: 'POS1',
+        sellerName: 'Kassir',
+        clientName: name,
+        clientPhone: phone,
+        clientAddress: address,
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Non',
+            quantity: '1 dona',
+            unitPrice: '4,000',
+            lineTotal: '4,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '4,000'),
+        ],
+        totalAmount: '4,000',
+      );
+    }
+
+    final without = ThermalReceiptFormatter.toPrintLines(base());
+    expect(without.any((l) => l.toLowerCase().contains('mijoz')), isFalse);
+
+    final withClient = ThermalReceiptFormatter.toPrintLines(
+      base(name: 'Ali', phone: '+99890', address: 'Toshkent'),
+    );
+    expect(withClient.any((l) => l.contains('Mijoz: Ali')), isTrue);
+    expect(withClient.any((l) => l.contains('+99890')), isTrue);
+    expect(withClient.any((l) => l.contains('Toshkent')), isTrue);
+  });
 }
