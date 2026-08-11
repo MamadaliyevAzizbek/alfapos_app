@@ -8,10 +8,14 @@ import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
+import '../utils/thermal_receipt_total_text.dart';
+import '../utils/thermal_receipt_logo_fit.dart';
 
 const _previewText = TextStyle(
   color: Colors.black,
   height: 1.35,
+  fontFamily: 'monospace',
+  fontWeight: FontWeight.w500,
 );
 
 /// Termal printer chiqishi — logo + matn qatorlari (sozlamalar ko‘rinishi).
@@ -47,7 +51,7 @@ class ThermalReceiptPreview extends StatelessWidget {
     return Container(
       key: ValueKey('receipt_preview_${design.logoFilePath}_${design.showLogo}'),
       width: width,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: const Color(0xFFE2E8F0)),
@@ -61,15 +65,16 @@ class ThermalReceiptPreview extends StatelessWidget {
             Center(
               child: ReceiptLogoImage(
                 path: design.logoFilePath!,
-                height: 56,
+                width: ThermalReceiptLogoFit.previewWidth,
+                height: ThermalReceiptLogoFit.previewHeight,
                 fit: BoxFit.contain,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
           ],
           for (final line in lines)
             if (line.isEmpty)
-              const SizedBox(height: 6)
+              const SizedBox(height: 4)
             else
               _line(line),
         ],
@@ -115,6 +120,28 @@ class ThermalReceiptPreview extends StatelessWidget {
       );
     }
 
+    if (ThermalReceiptTotalText.isTotalLine(line)) {
+      final total = ThermalReceiptTotalText.parse(line);
+      final text = [
+        if (total.label.isNotEmpty) total.label,
+        if (total.value.isNotEmpty) total.value,
+      ].join(' - ');
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: _previewText.copyWith(
+            fontSize: ThermalReceiptTotalText.previewAmountSize,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'monospace',
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+
     if (ThermalReceiptLargeText.isLargeLine(line)) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -148,16 +175,17 @@ class ThermalReceiptPreview extends StatelessWidget {
     }
 
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: isTotal ? 4 : 1),
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: ReceiptStrikethroughText.richLine(
         text,
         style: _previewText.copyWith(
-          fontSize: isTotal ? 26 : 12,
-          fontWeight: isTotal || centered ? FontWeight.w900 : FontWeight.w500,
-          height: isTotal ? 1.2 : 1.35,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'monospace',
+          height: 1.35,
         ),
         textAlign: centered ? TextAlign.center : TextAlign.start,
-        bold: isTotal || centered,
+        bold: false,
       ),
     );
   }

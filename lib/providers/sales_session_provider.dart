@@ -7,7 +7,6 @@ import '../core/api_pacing.dart';
 import '../core/auth_storage.dart';
 import '../models/cart_item.dart';
 import '../services/hold_order_register_tags_storage.dart';
-import '../services/product_catalog_storage.dart';
 import '../services/sales_session_storage.dart';
 import '../models/product.dart';
 import '../providers/clients_provider.dart';
@@ -117,13 +116,11 @@ class SalesSessionProvider extends ChangeNotifier {
       if (cid.isNotEmpty) _filterListsCompanyId = cid;
     }
 
-    // Avval mahsulotlar katalogi (to‘g‘ri ombor), eski sotuv keshi faqat zaxira.
+    // Yagona manba — mahsulotlar katalogi.
     var products = ProductsProvider.instance.items;
     if (products.isEmpty) {
-      products = await ProductCatalogStorage.loadCatalog();
-    }
-    if (products.isEmpty) {
-      products = await SalesSessionStorage.loadProducts();
+      await ProductsProvider.instance.warmFromCache();
+      products = ProductsProvider.instance.items;
     }
     if (products.isEmpty) return false;
 
@@ -163,9 +160,6 @@ class SalesSessionProvider extends ChangeNotifier {
   }
 
   Future<void> _persistSessionSnapshot() async {
-    if (salesProducts.isNotEmpty) {
-      await SalesSessionStorage.saveProducts(salesProducts);
-    }
     await SalesSessionStorage.saveMeta({
       'branchId': branchId,
       'branchName': branchName,
@@ -634,6 +628,7 @@ class SalesSessionProvider extends ChangeNotifier {
         brands: brands,
       );
       page = ProductsProvider.instance.withCatalogStockAll(page);
+      ProductsProvider.instance.mergeSalesOverlay(page);
       if (reset) {
         salesProducts = page;
       } else {

@@ -3,6 +3,7 @@ import 'package:alfapos_app/utils/api_receipt_html_parser.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
 import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_total_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -110,6 +111,44 @@ void main() {
     );
   });
 
+  test('shop and restaurant totals use large total marker not compact bold', () {
+    List<String> build({required bool restaurant}) {
+      return ThermalReceiptFormatter.toPrintLines(
+        ThermalReceiptPrintData(
+          storeName: restaurant ? 'Restoran' : "Do'kon",
+          dateTime: DateTime(2026, 6, 10, 14, 30),
+          receiptNumber: 'POS1',
+          sellerName: 'Kassir',
+          products: const [
+            ThermalReceiptProductLine(
+              name: 'Non',
+              quantity: '1 dona',
+              unitPrice: '4,000',
+              lineTotal: '4,000',
+            ),
+          ],
+          payments: const [
+            ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '4,000'),
+          ],
+          totalAmount: '4,000',
+          isRestaurantLayout: restaurant,
+        ),
+      );
+    }
+
+    for (final lines in [build(restaurant: false), build(restaurant: true)]) {
+      expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
+      expect(
+        lines.any(
+          (l) =>
+              ThermalReceiptCompactText.isCompactBoldLine(l) &&
+              ThermalReceiptCompactText.unwrap(l).toLowerCase().contains('umumiy'),
+        ),
+        isFalse,
+      );
+    }
+  });
+
   test('payment and total use aligned dash rows on receipt', () {
     final lines = ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
@@ -134,20 +173,27 @@ void main() {
       ),
     );
 
-    String plain(String line) => ThermalReceiptCompactText.isAnyCompactLine(line)
-        ? ThermalReceiptCompactText.unwrap(line)
-        : line;
+    String plain(String line) {
+      if (ThermalReceiptTotalText.isTotalLine(line)) {
+        final t = ThermalReceiptTotalText.parse(line);
+        return '${t.label} - ${t.value}';
+      }
+      return ThermalReceiptCompactText.isAnyCompactLine(line)
+          ? ThermalReceiptCompactText.unwrap(line)
+          : line;
+    }
 
-    final summary = lines.map(plain).where((l) => l.contains(' - ')).toList();
-    expect(summary.length, greaterThanOrEqualTo(2));
-    expect(summary.any((l) => l.contains('Naqd pul') && l.contains('1')), isTrue);
-    expect(summary.any((l) => l.contains('Umumiy summa') && l.contains('1')), isTrue);
-
-    final dashPositions = summary.map((l) => l.indexOf(' - ')).toSet();
-    expect(dashPositions.length, 1);
+    final payments = lines.map(plain).where((l) => l.contains('Naqd pul')).toList();
+    expect(payments.any((l) => l.contains(' - ') && l.contains('1')), isTrue);
+    expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
+    final total = ThermalReceiptTotalText.parse(
+      lines.firstWhere(ThermalReceiptTotalText.isTotalLine),
+    );
+    expect(total.label.toLowerCase(), contains('umumiy summa'));
+    expect(total.value, contains('1'));
   });
 
-  test('receipt lines end with bottom buffer after total', () {
+  test('receipt lines do not waste empty paper after total', () {
     final lines = ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
         storeName: 'AI-CHA',
@@ -162,8 +208,8 @@ void main() {
     );
 
     expect(lines, isNotEmpty);
-    expect(lines.last, isEmpty);
-    expect(lines.any((l) => l.contains('Umumiy summa')), isTrue);
+    expect(lines.last.trim(), isNotEmpty);
+    expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
   });
 
   test('restaurant layout matches shop receipt with queue number only', () {
@@ -205,7 +251,14 @@ void main() {
     expect(lines.any((l) => l.contains('Kassir')), isTrue);
     expect(lines.any((l) => l.contains('Chek raqami')), isTrue);
     expect(lines.any((l) => l.contains('Naqd pul')), isTrue);
-    expect(lines.any((l) => l.contains('Umumiy summa')), isTrue);
+    expect(
+      lines.any(
+        (l) =>
+            ThermalReceiptTotalText.isTotalLine(l) ||
+            l.contains('Umumiy summa'),
+      ),
+      isTrue,
+    );
     expect(lines.any(ThermalReceiptLargeText.isLargeLine), isTrue);
     expect(
       lines.any((l) => ThermalReceiptLargeText.isLargeLine(l) && ThermalReceiptLargeText.unwrap(l) == '7'),

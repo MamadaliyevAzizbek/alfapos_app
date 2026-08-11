@@ -25,16 +25,16 @@ void main() {
     expect(loaded.single.priceUzs, 1000);
   });
 
-  test('sync queue round-trip', () async {
-    const job = ProductSyncJob(
-      jobId: '1',
-      productId: 'local_123',
-      isCreate: true,
+  test('sync meta round-trip', () async {
+    final meta = ProductCatalogSyncMeta(
+      count: 2,
+      totalQuantity: '10',
+      sampleFingerprint: 'a:1:2',
+      savedAt: DateTime.utc(2026, 1, 1),
     );
-    await ProductCatalogStorage.saveSyncQueue([job]);
-    final loaded = await ProductCatalogStorage.loadSyncQueue();
-    expect(loaded.length, 1);
-    expect(loaded.single.productId, 'local_123');
-    expect(loaded.single.isCreate, isTrue);
+    await ProductCatalogStorage.saveSyncMeta(meta);
+    final loaded = await ProductCatalogStorage.loadSyncMeta();
+    expect(loaded, isNotNull);
+    expect(loaded!.matches(meta), isTrue);
   });
 }

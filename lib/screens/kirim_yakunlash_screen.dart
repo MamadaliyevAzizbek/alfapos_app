@@ -5,7 +5,6 @@ import '../core/constants.dart';
 import '../core/input_formatters.dart';
 import '../core/theme.dart';
 import '../models/receive_supplier.dart';
-import '../providers/products_provider.dart';
 import '../providers/receive_session_provider.dart';
 import '../services/api_service.dart';
 import '../utils/receive_payment_types.dart';
@@ -30,6 +29,11 @@ class _KirimYakunlashScreenState extends State<KirimYakunlashScreen> {
     _commentCtrl.text = _session.comment;
     if (_session.deliveryCostUzs > 0) {
       _deliveryCtrl.text = formatThousands(_session.deliveryCostUzs);
+    }
+    if (!_session.isReady) {
+      _session.loadInit().then((_) {
+        if (mounted) setState(() {});
+      });
     }
   }
 
@@ -61,7 +65,6 @@ class _KirimYakunlashScreenState extends State<KirimYakunlashScreen> {
     setState(() => _submitting = true);
     try {
       final res = await _session.submitReceive();
-      await ProductsProvider.instance.loadFromApi();
       if (!mounted) return;
       final msg = (res['message'] ?? '').toString();
       AppNotify.success(context, msg.isNotEmpty ? msg : 'Kirim saqlandi');

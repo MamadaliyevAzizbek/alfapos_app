@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import '../utils/platform_layout.dart';
+import 'ios_style_modals.dart';
 
 /// Dropdown varianti — barcha stil shu yerda markazlashgan.
 enum AppDropdownVariant {
@@ -64,11 +66,69 @@ class AppDropdownField<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!isDesktopPosLayout) {
+      return _buildMobileSheetField(context);
+    }
     return switch (variant) {
       AppDropdownVariant.navbar => _buildNavbar(context),
       AppDropdownVariant.inline => _buildInline(context),
       AppDropdownVariant.compact || AppDropdownVariant.field => _buildFormField(context),
     };
+  }
+
+  String _labelOf(DropdownMenuItem<T> item) {
+    final child = item.child;
+    if (child is Text) return child.data ?? child.toString();
+    return item.value?.toString() ?? '';
+  }
+
+  Future<void> _openPicker(BuildContext context) async {
+    if (!enabled || onChanged == null || items.isEmpty) return;
+    final picked = await IosStyleModals.showPicker<T>(
+      context: context,
+      title: label ?? hint ?? 'Tanlang',
+      options: [
+        for (final item in items)
+          if (item.enabled && item.value is T) (value: item.value as T, label: _labelOf(item)),
+      ],
+      selected: _safeValue(),
+    );
+    if (picked != null) onChanged!(picked);
+  }
+
+  Widget _buildMobileSheetField(BuildContext context) {
+    final compact = variant == AppDropdownVariant.compact;
+    final selected = _safeValue();
+    final selectedLabel = _selectedLabel() ?? hint ?? '';
+
+    return FormField<T>(
+      initialValue: selected,
+      validator: validator,
+      builder: (state) {
+        return InkWell(
+          onTap: enabled ? () => _openPicker(context) : null,
+          borderRadius: radius,
+          child: InputDecorator(
+            decoration: _decoration(compact: compact).copyWith(
+              suffixIcon: _dropdownIcon(size: compact ? 20 : 22),
+              errorText: state.errorText,
+            ),
+            isEmpty: selected == null && selectedLabel.isEmpty,
+            child: Text(
+              selectedLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? compactFontSize : fieldFontSize,
+                fontWeight: FontWeight.w600,
+                color: selected == null ? labelColor : valueColor,
+                height: 1.2,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   InputDecoration _decoration({required bool compact}) {

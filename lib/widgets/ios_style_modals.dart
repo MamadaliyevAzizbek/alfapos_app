@@ -28,24 +28,27 @@ class AppModals {
   }
 
   /// Pastki varaq — oq fon, tutqich chizig'i, soyasiz (iOS uslubi).
+  /// [isScrollControlled] har doim true: klaviatura ochilganda overflow bo‘lmasin.
   static Future<T?> showSheet<T>({
     required BuildContext context,
     required Widget child,
-    bool isScrollControlled = false,
+    bool isScrollControlled = true,
     bool showGrabber = true,
   }) {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: isScrollControlled,
+      useRootNavigator: true,
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       barrierColor: _barrier(),
       elevation: 0,
       builder: (ctx) {
-        final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
-        final maxSheetHeight = MediaQuery.sizeOf(ctx).height * 0.82;
+        final mq = MediaQuery.of(ctx);
+        final keyboard = mq.viewInsets.bottom;
+        final maxSheetHeight = (mq.size.height - keyboard).clamp(160.0, mq.size.height);
         return Padding(
-          padding: EdgeInsets.only(bottom: bottom),
+          padding: EdgeInsets.only(bottom: keyboard),
           child: Align(
             alignment: Alignment.bottomCenter,
             child: sheetSurface(
@@ -57,7 +60,10 @@ class AppModals {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (showGrabber) grabber(),
-                      child,
+                      Flexible(
+                        fit: FlexFit.loose,
+                        child: child,
+                      ),
                     ],
                   ),
                 ),
@@ -81,6 +87,7 @@ class AppModals {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       barrierColor: _barrier(),
@@ -207,8 +214,26 @@ class AppModals {
     required String title,
     required List<String> options,
     required ValueChanged<String> onSelect,
+    String? selected,
   }) {
-    return showSheet<void>(
+    return showPicker<String>(
+      context: context,
+      title: title,
+      options: [for (final o in options) (value: o, label: o)],
+      selected: selected,
+    ).then((v) {
+      if (v != null) onSelect(v);
+    });
+  }
+
+  /// Generic pastki tanlov — default dropdown o‘rniga.
+  static Future<T?> showPicker<T>({
+    required BuildContext context,
+    required String title,
+    required List<({T value, String label})> options,
+    T? selected,
+  }) {
+    return showSheet<T>(
       context: context,
       isScrollControlled: true,
       showGrabber: true,
@@ -236,13 +261,22 @@ class AppModals {
                 child: ListView.builder(
                   itemCount: options.length,
                   itemBuilder: (_, i) {
-                    final label = options[i];
+                    final opt = options[i];
+                    final isSelected = selected != null && opt.value == selected;
                     return ListTile(
-                      title: Text(label),
-                      onTap: () {
-                        onSelect(label);
-                        Navigator.pop(sheetCtx);
-                      },
+                      title: Text(
+                        opt.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          color: isSelected ? AppTheme.primary : AppTheme.textPrimary,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_rounded, color: AppTheme.primary)
+                          : null,
+                      onTap: () => Navigator.pop(sheetCtx, opt.value),
                     );
                   },
                 ),

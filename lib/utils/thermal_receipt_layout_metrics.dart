@@ -1,13 +1,15 @@
 import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
+import 'thermal_receipt_logo_fit.dart';
+import 'thermal_receipt_total_text.dart';
 
 /// Chek skrinshoti va chop etish uchun o‘lcham hisob-kitobi.
 abstract class ThermalReceiptLayoutMetrics {
   ThermalReceiptLayoutMetrics._();
 
   static const double receiptLogicalWidth = 302;
-  static const double containerPadding = 12;
-  static const double logoBlockHeight = 64;
+  static const double containerPadding = 6;
+  static const double logoBlockHeight = ThermalReceiptLogoFit.previewHeight + 4;
 
   /// Qatorlar soniga qarab taxminiy balandlik (ekran chegarasidan qat’i nazar).
   static double estimateHeight({
@@ -26,14 +28,15 @@ abstract class ThermalReceiptLayoutMetrics {
         height += 20 + (ThermalReceiptLargeText.previewFontSize * 1.1);
         continue;
       }
+      if (ThermalReceiptTotalText.isTotalLine(line)) {
+        height += 4 + (ThermalReceiptTotalText.previewAmountSize * 1.35);
+        continue;
+      }
       if (ThermalReceiptCompactText.isCompactLine(line)) {
         height += 4 + (11 * 1.35);
         continue;
       }
-      final text = line.startsWith('^') ? line.substring(1) : line;
-      final isTotal = text.toLowerCase().contains('umumiy summa');
-      final fontSize = isTotal ? 26.0 : 12.0;
-      height += 4 + (fontSize * 1.35);
+      height += 4 + (12.0 * 1.35);
     }
 
     // Xavfsiz zaxira — uzun nomlar va shrift farqlari uchun.

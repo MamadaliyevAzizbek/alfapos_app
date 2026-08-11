@@ -10,10 +10,12 @@ import '../providers/products_provider.dart';
 import '../providers/receive_session_provider.dart';
 import '../providers/sales_session_provider.dart';
 import '../providers/transactions_provider.dart';
+import '../services/app_data_sync.dart';
+import '../services/company_cache_store.dart';
 import '../services/hold_order_register_tags_storage.dart';
+import '../services/product_catalog_storage.dart';
 import 'api_http.dart';
 import 'api_sync_throttle.dart';
-import 'auth_storage.dart';
 import 'seller_preferences.dart';
 import '../widgets/throttled_refresh_indicator.dart';
 
@@ -27,6 +29,7 @@ Future<void> resetAppSessionForAccountChange({
 }) async {
   ApiHttp.resetClient();
   ApiSyncThrottle.clearAll();
+  AppDataSync.resetCooldown();
   PullRefreshGuard.reset();
 
   CartProvider.instance.clear();
@@ -41,7 +44,8 @@ Future<void> resetAppSessionForAccountChange({
   await CategoriesProvider.instance.resetForAccountChange();
 
   await clearUserProfileCache();
-  await _clearSalesSessionDiskCache();
+  await ProductCatalogStorage.clearAll();
+  await CompanyCacheStore.clearBusinessCaches();
   await HoldOrderRegisterTagsStorage.clear();
 
   if (clearSavedLoginForm) {
@@ -50,10 +54,4 @@ Future<void> resetAppSessionForAccountChange({
     await prefs.remove(_keyLoginLogin);
     await prefs.remove(_keyLoginPassword);
   }
-}
-
-Future<void> _clearSalesSessionDiskCache() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.remove(await companyStorageKey('alfapos_sales_products_v1'));
-  await prefs.remove(await companyStorageKey('alfapos_sales_meta_v1'));
 }

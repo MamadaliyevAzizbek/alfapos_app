@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/input_formatters.dart';
-import '../services/api_service.dart';
+import '../services/reports_repository.dart';
 import '../widgets/throttled_refresh_indicator.dart';
 
 class KirimTarixScreen extends StatefulWidget {
@@ -34,13 +34,10 @@ class _KirimTarixScreenState extends State<KirimTarixScreen> {
     try {
       final from = '${_from.year}-${_from.month.toString().padLeft(2, '0')}-${_from.day.toString().padLeft(2, '0')}';
       final to = '${_to.year}-${_to.month.toString().padLeft(2, '0')}-${_to.day.toString().padLeft(2, '0')}';
-      final res = await ReportsApi.getReceivingReport(
-        body: ReportsApi.receivingListBody(from: from, to: to, rowLimit: 100),
+      final res = await ReportsRepository.instance.getReceivingReport(
+        body: ReportsRepository.receivingListBody(from: from, to: to, rowLimit: 100),
       );
-      final raw = res['datarows'] ?? res['data'] ?? res['rows'];
-      _rows = raw is List
-          ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
-          : [];
+      _rows = ReportsRepository.extractRows(res);
     } catch (e) {
       _error = e.toString();
       _rows = [];

@@ -546,7 +546,10 @@ class _SalesHoldOrdersSheetState extends State<SalesHoldOrdersSheet> {
     Object? loadError;
     try {
       if (!ProductsProvider.instance.isLoaded) {
-        await ProductsProvider.instance.loadFromApi();
+        await ProductsProvider.instance.warmFromCache();
+        if (!ProductsProvider.instance.isLoaded) {
+          await ProductsProvider.instance.refreshFromServer(force: false);
+        }
       }
       resume = await HoldOrderCart.fetchResume(h);
     } catch (e) {

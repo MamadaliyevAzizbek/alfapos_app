@@ -44,7 +44,7 @@ class BarcodeProductLookup {
     final catalog = ProductsProvider.instance;
     if (!catalog.isLoaded || catalog.items.isEmpty) {
       try {
-        await catalog.loadFromStorage();
+        await catalog.warmFromCache();
       } catch (_) {}
     }
 

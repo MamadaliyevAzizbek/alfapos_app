@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../models/expense.dart';
 import '../services/api_service.dart';
+import '../services/company_cache_store.dart';
 import '../core/api_client.dart';
 
 class ExpensesProvider extends ChangeNotifier {
@@ -35,6 +38,7 @@ class ExpensesProvider extends ChangeNotifier {
     _expenseCategories = [];
     _lastRawExpenses = null;
     notifyListeners();
+    unawaited(CompanyCacheStore.remove(CompanyCacheStore.expenses));
   }
 
   int? get _firstPaymentTypeId {
@@ -51,7 +55,30 @@ class ExpensesProvider extends ChangeNotifier {
     return v is int ? v : int.tryParse(v.toString());
   }
 
-  Future<void> loadFromStorage() async => loadFromApi();
+  Future<void> warmFromCache() async {
+    if (_list.isNotEmpty) return;
+    final decoded = await CompanyCacheStore.readJson(CompanyCacheStore.expenses);
+    if (decoded is! List) return;
+    try {
+      _list = decoded
+          .whereType<Map>()
+          .map((e) => Expense.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      if (_list.isNotEmpty) {
+        _loaded = true;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> refreshFromServer({bool force = false, DateTime? fromDate, DateTime? toDate}) async {
+    await loadFromApi(fromDate: fromDate, toDate: toDate);
+  }
+
+  Future<void> loadFromStorage() async {
+    await warmFromCache();
+    await loadFromApi();
+  }
 
   Future<void> loadFromApi({DateTime? fromDate, DateTime? toDate}) async {
     _loadError = null;
@@ -77,6 +104,7 @@ class ExpensesProvider extends ChangeNotifier {
       _loaded = true;
       _loading = false;
       notifyListeners();
+      unawaited(_persistCache());
     } on ApiException catch (e) {
       _loadError = e.message;
       _loaded = true;
@@ -118,6 +146,14 @@ class ExpensesProvider extends ChangeNotifier {
     if (idNum == null) return;
     await ExpensesApi.deleteExpense(idNum);
     await loadFromApi();
+  }
+
+  Future<void> _persistCache() async {
+    if (_list.isEmpty) return;
+    await CompanyCacheStore.writeJson(
+      CompanyCacheStore.expenses,
+      _list.map((e) => e.toJson()).toList(),
+    );
   }
 
   int getTotalForDay(DateTime day) {

@@ -9,13 +9,15 @@ import '../core/theme.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
 import '../providers/receive_session_provider.dart';
-import '../services/api_service.dart';
 import '../utils/product_search.dart' as product_search;
-import '../utils/receive_products.dart';
+import '../widgets/ios_style_modals.dart';
 import '../widgets/product_tile.dart';
 import 'kirim_qoralamalar_screen.dart';
-import 'kirim_savat_screen.dart';
+import 'kirim_savat_screen.dart' show ReceiveCartEditValues, ReceiveCartItemEditSheet;
 import 'kirim_tarix_screen.dart';
+import 'kirim_yakunlash_screen.dart';
+import '../models/receive_cart_item.dart';
+import '../services/receive_draft_storage.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/platform_layout.dart';
 import 'desktop/desktop_shell_scope.dart';
@@ -46,10 +48,15 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     _init();
   }
 
-  Future<void> _init() async {
-    await ProductsProvider.instance.loadFromStorage();
-    await _session.loadInit();
-    if (mounted) await _searchProducts('');
+  Future<void> _init({bool force = false}) async {
+    // Sotuv/Mahsulotlar kabi: UI darhol, kesh + fon sync.
+    unawaited(ProductsProvider.instance.loadFromStorage(refreshInBackground: true));
+    if (force) {
+      await _session.loadInit(force: true);
+    } else {
+      unawaited(_session.loadInit());
+    }
+    if (mounted) setState(() {});
   }
 
   void _onCatalogUpdated() {
@@ -72,40 +79,57 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     if (mounted) setState(() {});
   }
 
+  List<Product> get _localCatalog =>
+      ProductsProvider.instance.withCatalogStockAll(ProductsProvider.instance.items);
+
+  List<Product> _mergeSearchResults(String query, List<Product> local) {
+    final q = query.trim();
+    if (q.isEmpty || _products.isEmpty) return local;
+    final seen = local.map((p) => p.id).toSet();
+    final merged = [...local];
+    for (final p in _products) {
+      if (!product_search.productMatchesSearchQuery(p, q)) continue;
+      if (seen.add(p.id)) merged.add(p);
+    }
+    return product_search.sortProductsBySearchRelevance(merged, q);
+  }
+
   Future<void> _searchProducts(String q) async {
+    final query = q.trim();
     if (!mounted) return;
-    setState(() {
-      _loadingProducts = true;
-      _productsError = null;
-    });
+    if (query.isEmpty) {
+      setState(() {
+        _products = [];
+        _loadingProducts = false;
+        _productsError = null;
+      });
+      return;
+    }
+    final hasLocal = product_search.filterProductsByQuery(_localCatalog, query).isNotEmpty;
+    if (!hasLocal) {
+      setState(() {
+        _loadingProducts = true;
+        _productsError = null;
+      });
+    }
     try {
-      List<Product> list;
-      if (q.trim().isEmpty) {
-        final res = await ReceivesApi.getReceivesProducts(body: {
-          'orderType': 'receiving',
-          'rowLimit': 200,
-          'offset': 0,
-          if (_session.branchId != null) 'currentBranch': _session.branchId,
-        });
-        list = ReceiveProducts.productsFromApiResponse(res);
-      } else {
-        list = await _session.searchProducts(q);
-      }
-      list = ProductsProvider.instance.withCatalogStockAll(list);
-      if (mounted) {
-        setState(() {
-          _products = list;
-          _loadingProducts = false;
-        });
-      }
+      final list = ProductsProvider.instance.withCatalogStockAll(
+        await _session.searchProducts(query),
+      );
+      if (!mounted || _query.trim() != query) return;
+      setState(() {
+        _products = list;
+        _loadingProducts = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
+      if (!mounted || _query.trim() != query) return;
+      setState(() {
+        _loadingProducts = false;
+        if (!hasLocal) {
           _products = [];
-          _loadingProducts = false;
           _productsError = e.toString();
-        });
-      }
+        }
+      });
     }
   }
 
@@ -161,30 +185,99 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     });
   }
 
-  void _addProduct(Product p) {
+  void _addProduct(Product p, {num quantity = 1}) {
     final aligned = ProductsProvider.instance.withCatalogStock(p);
-    _session.addToCart(aligned);
-    AppNotify.success(context, '${aligned.name} savatga qo\'shildi');
+    _session.addToCart(aligned, quantity: quantity);
+    _searchController.clear();
+    setState(() => _query = '');
+  }
+
+  Future<void> _saveDraft() async {
+    if (_session.cart.isEmpty) {
+      AppNotify.info(context, 'Savat bo\'sh');
+      return;
+    }
+    try {
+      await ReceiveDraftStorage.saveFromSession(_session);
+      if (mounted) AppNotify.success(context, 'Qoralama saqlandi');
+    } catch (e) {
+      if (mounted) AppNotify.error(context, '$e');
+    }
+  }
+
+  Future<void> _editCartItem(ReceiveCartItem item) async {
+    final productId = item.product.id;
+    _session.pauseNotify();
+    ReceiveCartEditValues? values;
+    try {
+      values = await IosStyleModals.showSheet<ReceiveCartEditValues?>(
+        context: context,
+        isScrollControlled: true,
+        showGrabber: true,
+        child: ReceiveCartItemEditSheet(item: item),
+      );
+    } catch (_) {
+      _session.resumeNotify();
+      rethrow;
+    }
+    if (!mounted || values == null) {
+      _session.resumeNotify();
+      if (mounted) setState(() {});
+      return;
+    }
+    _session.updateCartItemByProductId(
+      productId,
+      quantity: values.quantity,
+      purchasePriceUzs: values.purchasePriceUzs,
+      sellPriceUzs: values.sellPriceUzs,
+    );
+    _session.resumeNotify();
+    setState(() {});
+  }
+
+  void _clearCart() {
+    if (_session.cart.isEmpty) return;
+    _session.clearCart();
   }
 
   Product _displayProduct(Product p) => ProductsProvider.instance.withCatalogStock(p);
 
   List<Product> get _filtered {
     final q = _query.trim();
-    if (q.isEmpty) return _products;
-    return product_search.filterProductsByQuery(_products, q);
+    if (q.isEmpty) return const [];
+    final local = product_search.filterProductsByQuery(_localCatalog, q);
+    return _mergeSearchResults(q, local);
   }
 
   @override
   Widget build(BuildContext context) {
-    final supplier = _session.selectedSupplier;
+    final items = _session.cart;
+    final showSearchResults = _query.trim().isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(Strings.kirimlar),
+        title: Row(
+          children: [
+            const Text(Strings.kirimlar),
+            if (items.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${items.length}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),
@@ -202,106 +295,47 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
               MaterialPageRoute(builder: (_) => const KirimQoralamalarScreen()),
             ),
           ),
+          if (items.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+              onPressed: _clearCart,
+            ),
         ],
       ),
-      body: _session.initLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _session.initError != null
-              ? ThrottledRefreshIndicator(
-                  onRefresh: _init,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
-                    children: [
-                      const SizedBox(height: 80),
-                      Text(_session.initError!, textAlign: TextAlign.center),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Pastga tortib yangilang',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: AppTheme.textSecondary),
-                      ),
-                    ],
-                  ),
-                )
-              : Column(
+      body: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: InkWell(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const KirimSavatScreen()),
-                        ).then((_) {
-                          if (mounted) _searchProducts(_query);
-                        }),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFD6E8FF)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.local_shipping_outlined, color: AppTheme.primary),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  supplier?.name ?? 'Yetkazib beruvchi (yakunlashda tanlanadi)',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: supplier != null ? AppTheme.textPrimary : AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryLight,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  'Savat: ${_session.cartCount}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.primary,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                       child: Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: _searchController,
                               onChanged: _onSearchChanged,
-                              onSubmitted: _searchProducts,
+                              onSubmitted: (q) async {
+                                final trimmed = q.trim();
+                                if (trimmed.isEmpty) return;
+                                await _searchProducts(trimmed);
+                              },
                               decoration: const InputDecoration(
-                                hintText: 'Mahsulot yoki shtrix kod',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                hintText: Strings.artikulShtrixIsm,
                                 prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textSecondary),
                               ),
                             ),
                           ),
                           if (!isDesktopPosLayout) ...[
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8),
                             Material(
                               color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                               child: InkWell(
                                 onTap: _openScanner,
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(10),
                                 child: const Padding(
-                                  padding: EdgeInsets.all(14),
-                                  child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 26),
+                                  padding: EdgeInsets.all(11),
+                                  child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 22),
                                 ),
                               ),
                             ),
@@ -311,82 +345,138 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
                     ),
                     Expanded(
                       child: ThrottledRefreshIndicator(
-                        onRefresh: _init,
-                        child: _buildProductList(),
+                        onRefresh: () => _init(force: true),
+                        child: showSearchResults
+                            ? _buildSearchResults()
+                            : items.isEmpty
+                                ? _buildEmptyCart()
+                                : ListView.builder(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    itemCount: items.length,
+                                    itemBuilder: (context, index) {
+                                      final item = items[index];
+                                      return _ReceiveLineTile(
+                                        item: item,
+                                        onTap: () => _editCartItem(item),
+                                        onIncrement: () => _session.updateCartItem(
+                                          item,
+                                          quantity: item.quantity + 1,
+                                        ),
+                                        onDecrement: () {
+                                          if (item.quantity > 1) {
+                                            _session.updateCartItem(item, quantity: item.quantity - 1);
+                                          } else {
+                                            _session.removeFromCart(item);
+                                          }
+                                        },
+                                        onQuantityChanged: (q) => _session.updateCartItem(item, quantity: q),
+                                      );
+                                    },
+                                  ),
                       ),
                     ),
+                    if (items.isNotEmpty && !showSearchResults)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _saveDraft,
+                                icon: const Icon(Icons.bookmark_outline_rounded, size: 20),
+                                label: const Text('Qoralama'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 44,
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  await Navigator.push<void>(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const KirimYakunlashScreen()),
+                                  );
+                                  if (mounted) setState(() {});
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(Strings.keyingisi),
+                                    SizedBox(width: 4),
+                                    Icon(Icons.arrow_forward_rounded, size: 18),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
-      bottomNavigationBar: _session.cartCount > 0 ? _buildCartBottomBar() : null,
     );
   }
 
-  Widget _buildCartBottomBar() {
-    final count = _session.cartCount;
-    final total = _session.cartTotalUzs;
-    return Material(
-      elevation: 8,
-      color: Colors.white,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Savat: $count ta mahsulot',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                  ),
-                  Text(
-                    '${formatThousands(total)} so\'m',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: AppTheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const KirimSavatScreen()),
-                  ).then((_) {
-                    if (mounted) _searchProducts(_query);
-                  }),
-                  icon: const Icon(Icons.shopping_cart_rounded),
-                  label: Text('Savat ($count)'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ],
-          ),
+  Widget _buildEmptyCart() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(32),
+      children: [
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.12),
+        Icon(
+          Icons.qr_code_2_rounded,
+          size: 80,
+          color: AppTheme.textSecondary.withValues(alpha: 0.4),
         ),
-      ),
+        const SizedBox(height: 20),
+        const Text(
+          'Kirim savati bo\'sh',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Mahsulot qidiring yoki shtrix-kodni skanerlang',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+        ),
+        if (!isDesktopPosLayout) ...[
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _openScanner,
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            label: const Text(Strings.skaner),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
-  Widget _buildProductList() {
-    if (_loadingProducts) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 120),
-          Center(child: CircularProgressIndicator()),
-        ],
-      );
+  Widget _buildSearchResults() {
+    final list = _filtered;
+    if (list.isEmpty && _loadingProducts) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
     }
-    if (_productsError != null) {
+    if (list.isEmpty && _productsError != null) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24),
@@ -402,7 +492,6 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
         ],
       );
     }
-    final list = _filtered;
     if (list.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -416,27 +505,236 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     }
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(16, 0, 16, _session.cartCount > 0 ? 8 : 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: list.length,
       itemBuilder: (context, index) {
         final p = _displayProduct(list[index]);
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: ListTile(
-            leading: SizedBox(
-              width: 56,
-              height: 56,
-              child: ProductTile.buildProductImage(p, boxSize: 56),
-            ),
-            title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(
-              'Omborda: ${p.stockDisplayText} · Kelish: ${p.costPriceUzs ?? 0}',
-            ),
-            trailing: const Icon(Icons.add_circle_outline_rounded, color: AppTheme.primary),
-            onTap: () => _addProduct(p),
-          ),
+        return ProductTile(
+          product: p,
+          primaryPriceLabel: 'Kelish: ${formatThousands(p.costPriceUzs ?? 0)} so\'m',
+          secondaryPriceLabel: 'Sotish: ${p.priceFormatted}',
+          showBarcode: true,
+          showMenu: false,
+          onTap: () => _addProduct(p),
         );
       },
+    );
+  }
+}
+
+class _ReceiveLineTile extends StatefulWidget {
+  final ReceiveCartItem item;
+  final VoidCallback onTap;
+  final VoidCallback onIncrement;
+  final VoidCallback onDecrement;
+  final ValueChanged<num> onQuantityChanged;
+
+  const _ReceiveLineTile({
+    required this.item,
+    required this.onTap,
+    required this.onIncrement,
+    required this.onDecrement,
+    required this.onQuantityChanged,
+  });
+
+  @override
+  State<_ReceiveLineTile> createState() => _ReceiveLineTileState();
+}
+
+class _ReceiveLineTileState extends State<_ReceiveLineTile> {
+  bool _editing = false;
+  late TextEditingController _controller;
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _qty(widget.item.quantity));
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReceiveLineTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_editing && !_focusNode.hasFocus) {
+      final t = _qty(widget.item.quantity);
+      if (_controller.text != t) _controller.text = t;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus && _editing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _focusNode.hasFocus || !_editing) return;
+        _applyAndClose();
+      });
+    }
+  }
+
+  void _startEditing() {
+    _controller.text = _qty(widget.item.quantity);
+    setState(() => _editing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_editing) return;
+      _focusNode.requestFocus();
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    });
+  }
+
+  void _applyAndClose() {
+    final s = _controller.text.trim().replaceAll(',', '.').replaceAll(' ', '');
+    final q = num.tryParse(s);
+    if (q != null && q > 0) {
+      widget.onQuantityChanged(q);
+    } else {
+      _controller.text = _qty(widget.item.quantity);
+    }
+    if (mounted) setState(() => _editing = false);
+  }
+
+  static String _qty(num q) {
+    if (q == q.roundToDouble()) return q.toInt().toString();
+    return q.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final p = item.product;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: AppTheme.cardBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: ProductTile.buildProductImage(p, boxSize: 56),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${formatThousands(item.lineTotalUzs)} so\'m',
+                            style: const TextStyle(
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            'Kelish ${_qty(item.quantity)} × ${formatThousands(item.purchasePriceUzs)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.cardBg,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.remove_rounded, size: 20),
+                    onPressed: () {
+                      if (_editing) _applyAndClose();
+                      widget.onDecrement();
+                    },
+                  ),
+                  SizedBox(
+                    width: 48,
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      readOnly: !_editing,
+                      showCursor: _editing,
+                      enableInteractiveSelection: _editing,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        border: InputBorder.none,
+                      ),
+                      onTap: () {
+                        if (!_editing) {
+                          _startEditing();
+                        } else {
+                          _controller.selection = TextSelection(
+                            baseOffset: 0,
+                            extentOffset: _controller.text.length,
+                          );
+                        }
+                      },
+                      onSubmitted: (_) => _applyAndClose(),
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    onPressed: () {
+                      if (_editing) _applyAndClose();
+                      widget.onIncrement();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

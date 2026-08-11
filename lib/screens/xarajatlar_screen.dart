@@ -31,7 +31,9 @@ class _XarajatlarScreenState extends State<XarajatlarScreen> with DesktopShellSy
     final today = DateTime(now.year, now.month, now.day);
     _range = DateTimeRange(start: today, end: today);
     _expenses.addListener(_onChanged);
-    _expenses.loadFromApi(fromDate: _range.start, toDate: _range.end);
+    _expenses.warmFromCache().then((_) {
+      _expenses.refreshFromServer(fromDate: _range.start, toDate: _range.end);
+    });
   }
 
   void _onChanged() => setState(() {});

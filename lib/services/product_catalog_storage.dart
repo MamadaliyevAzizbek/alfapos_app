@@ -1,30 +1,22 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../models/product.dart';
+import 'company_cache_store.dart';
 
-/// Mahalliy mahsulot katalogi va serverga yuborish navbati.
+/// Mahalliy mahsulot katalogi (kompaniya keshi).
 class ProductCatalogStorage {
   ProductCatalogStorage._();
 
-  static const _catalogKey = 'alfapos_product_catalog_v1';
-  static const _queueKey = 'alfapos_product_sync_queue_v1';
-  static const _metaKey = 'alfapos_product_catalog_meta_v1';
-
   static Future<void> saveCatalog(List<Product> products) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = products.map((p) => p.toJson()).toList();
-    await prefs.setString(_catalogKey, jsonEncode(list));
+    await CompanyCacheStore.writeJson(
+      CompanyCacheStore.productCatalog,
+      products.map((p) => p.toJson()).toList(),
+    );
   }
 
   static Future<List<Product>> loadCatalog() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_catalogKey);
-    if (raw == null || raw.isEmpty) return [];
+    final decoded = await CompanyCacheStore.readJson(CompanyCacheStore.productCatalog);
+    if (decoded is! List) return [];
     try {
-      final list = jsonDecode(raw) as List<dynamic>;
-      return list
+      return decoded
           .whereType<Map>()
           .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
           .where((p) => p.id.isNotEmpty)
@@ -35,46 +27,27 @@ class ProductCatalogStorage {
   }
 
   static Future<void> saveSyncMeta(ProductCatalogSyncMeta meta) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_metaKey, jsonEncode(meta.toJson()));
+    await CompanyCacheStore.writeJson(CompanyCacheStore.productCatalogMeta, meta.toJson());
   }
 
   static Future<ProductCatalogSyncMeta?> loadSyncMeta() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_metaKey);
-    if (raw == null || raw.isEmpty) return null;
+    final decoded = await CompanyCacheStore.readJson(CompanyCacheStore.productCatalogMeta);
+    if (decoded is! Map) return null;
     try {
-      final map = jsonDecode(raw);
-      if (map is! Map) return null;
-      return ProductCatalogSyncMeta.fromJson(Map<String, dynamic>.from(map));
+      return ProductCatalogSyncMeta.fromJson(Map<String, dynamic>.from(decoded));
     } catch (_) {
       return null;
     }
   }
 
   static Future<void> clearSyncMeta() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_metaKey);
+    await CompanyCacheStore.remove(CompanyCacheStore.productCatalogMeta);
   }
 
-  static Future<void> saveSyncQueue(List<ProductSyncJob> jobs) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_queueKey, jsonEncode(jobs.map((j) => j.toJson()).toList()));
-  }
-
-  static Future<List<ProductSyncJob>> loadSyncQueue() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_queueKey);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final list = jsonDecode(raw) as List<dynamic>;
-      return list
-          .whereType<Map>()
-          .map((e) => ProductSyncJob.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-    } catch (_) {
-      return [];
-    }
+  static Future<void> clearAll() async {
+    await CompanyCacheStore.remove(CompanyCacheStore.productCatalog);
+    await CompanyCacheStore.remove(CompanyCacheStore.productCatalogMeta);
+    await CompanyCacheStore.remove(CompanyCacheStore.productSyncQueueLegacy);
   }
 }
 
@@ -131,37 +104,6 @@ class ProductCatalogSyncMeta {
       totalQuantity: totalQuantity,
       sampleFingerprint: sample,
       savedAt: DateTime.now(),
-    );
-  }
-}
-
-/// Orqa fonda serverga yuborish vazifasi.
-class ProductSyncJob {
-  final String jobId;
-  final String productId;
-  final bool isCreate;
-  final bool deleteImage;
-
-  const ProductSyncJob({
-    required this.jobId,
-    required this.productId,
-    required this.isCreate,
-    this.deleteImage = false,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'jobId': jobId,
-        'productId': productId,
-        'isCreate': isCreate,
-        'deleteImage': deleteImage,
-      };
-
-  factory ProductSyncJob.fromJson(Map<String, dynamic> json) {
-    return ProductSyncJob(
-      jobId: json['jobId']?.toString() ?? '',
-      productId: json['productId']?.toString() ?? '',
-      isCreate: json['isCreate'] == true,
-      deleteImage: json['deleteImage'] == true,
     );
   }
 }

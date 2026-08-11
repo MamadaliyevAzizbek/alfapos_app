@@ -130,25 +130,19 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   Future<void> _onRefresh() async {
     // To‘liq force sync qilmaymiz — 429 (Too Many Attempts) xavfi.
-    if (isDesktopPosLayout) {
-      await _products.loadFromStorage(refreshInBackground: true);
-    } else {
-      await _products.loadFromStorage(refreshInBackground: true);
-      if (_sales.initError == null) {
-        await _sales.loadProducts(reset: true, searchValue: '');
-        _sales.setSearchQuery('');
-      }
+    await _products.loadFromStorage(refreshInBackground: true);
+    if (_sales.initError == null) {
+      await _sales.loadProducts(reset: true, searchValue: '');
+      _sales.setSearchQuery('');
     }
     if (mounted) setState(() {});
   }
 
-  /// Mahsulotlar (Katalog) bilan bir xil manba — to'liq mahalliy + sotuv katalogi.
+  /// Yagona katalog — ProductsProvider.
   List<Product> _catalogProductsForSearch() {
-    final merged = _mergeUniqueProducts([
-      ...ProductsProvider.instance.withCatalogStockAll(_products.items),
-      ...ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts),
-    ]);
-    return _sortCatalogProducts(merged);
+    return _sortCatalogProducts(
+      ProductsProvider.instance.withCatalogStockAll(_products.items),
+    );
   }
 
   List<Product> get _mobileCatalogProducts {
@@ -295,7 +289,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (!mounted) return;
       if (isDesktopPosLayout) {
         _desktopSalesLayoutMode = await DesktopSalesLayoutSettings.getMode();
-        await _products.loadFromStorage(refreshInBackground: false);
+        await _products.warmFromCache();
         await _sales.init(localFirst: true);
         _sales.applyCatalogStock();
         await _sales.reloadFilterLists();
@@ -303,7 +297,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           _sales.applyCatalogStock();
           if (mounted) setState(() {});
         }));
-        unawaited(CategoriesProvider.instance.loadFromStorage(refreshInBackground: false));
+        unawaited(CategoriesProvider.instance.warmFromCache());
         unawaited(_refreshSavedOrdersCount());
         unawaited(ThermalReceiptPrinter.warmup());
         unawaited(_reloadCategoryOrder());
@@ -768,16 +762,6 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     });
   }
 
-  List<Product> _mergeUniqueProducts(Iterable<Product> sources) {
-    final seen = <String>{};
-    final merged = <Product>[];
-    for (final p in sources) {
-      if (p.id.isEmpty || !seen.add(p.id)) continue;
-      merged.add(p);
-    }
-    return merged;
-  }
-
   List<Product> _mergeSearchResults(String query, List<Product> local) {
     final q = query.trim();
     if (q.isEmpty) return local;
@@ -792,33 +776,25 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return product_search.sortProductsBySearchRelevance(merged, q);
   }
 
-  /// Desktop: kategoriya/brend tanlanganida server filtri, aks holda to'liq katalog.
+  /// Desktop: kategoriya/brend tanlanganida filtr, aks holda to'liq katalog.
   List<Product> get _desktopBrowseProducts {
     final hasCatBrand = _sales.categoryId != null || _sales.brandId != null;
-    List<Product> list;
+    var list = List<Product>.from(_catalogProductsForSearch());
 
     if (hasCatBrand) {
-      final merged = _mergeUniqueProducts([
-        ..._sales.salesProducts,
-        ...ProductsProvider.instance.withCatalogStockAll(_products.items),
-      ]);
       if (!_sales.productsLoading && _sales.salesProducts.isNotEmpty) {
-        list = List<Product>.from(_sales.salesProducts);
+        list = ProductsProvider.instance.withCatalogStockAll(_sales.salesProducts);
       } else {
         list = ProductCatalogFilter.apply(
-          merged,
+          list,
           categoryId: _sales.categoryId,
           brandId: _sales.brandId,
           categories: _sales.categories,
           brands: _sales.brands,
         );
       }
-    } else {
-      list = _mergeUniqueProducts([
-        ...ProductsProvider.instance.withCatalogStockAll(_products.items),
-        ..._sales.salesProducts,
-      ]);
-      if (list.isEmpty) list = _sales.catalogProductsVisible;
+    } else if (list.isEmpty) {
+      list = _sales.catalogProductsVisible;
     }
 
     if (_sales.hideZeroStock) {

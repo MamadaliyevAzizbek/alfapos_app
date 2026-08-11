@@ -49,7 +49,10 @@ class _DesktopShellState extends State<DesktopShell> {
     super.initState();
     PosNavigation.openSalesSection = () => _go(salesSectionIndex);
     PosNavigation.openTransactionsSection = () => _go(transactionsSectionIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) => syncSellerNameFromApi());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      syncSellerNameFromApi();
+      AppDataSync.warmAll();
+    });
   }
 
   @override
@@ -69,7 +72,7 @@ class _DesktopShellState extends State<DesktopShell> {
       });
 
   Future<void> _onGlobalSync() async {
-    if (_syncing || AppDataSync.isRunning) return;
+    if (_syncing || AppDataSync.isForceSyncBlocked) return;
     setState(() => _syncing = true);
     try {
       await AppDataSync.syncAll(force: true);
@@ -227,21 +230,27 @@ class _DesktopTopBar extends StatelessWidget {
                   ),
                 ),
               ),
-              TextButton.icon(
-                onPressed: syncing ? null : onSync,
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF2563EB),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                icon: syncing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
-                      )
-                    : const Icon(Icons.sync_rounded, size: 22),
-                label: const Text('Sinxronlash'),
+              ValueListenableBuilder<int>(
+                valueListenable: AppDataSync.forceCooldownSeconds,
+                builder: (context, left, _) {
+                  final cooling = left > 0;
+                  return TextButton.icon(
+                    onPressed: (syncing || cooling) ? null : onSync,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF2563EB),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    icon: syncing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                          )
+                        : const Icon(Icons.sync_rounded, size: 22),
+                    label: Text(cooling ? 'Sinxronlash ($left)' : 'Sinxronlash'),
+                  );
+                },
               ),
             ],
           ),

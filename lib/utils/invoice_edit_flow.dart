@@ -18,71 +18,110 @@ class InvoiceEditFlow {
 
   static Future<String?> _askEditReason(BuildContext context) async {
     final ctrl = TextEditingController();
-    final content = Padding(
-      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.paddingOf(context).bottom + 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Chekni tahrirlash',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Tahrirlash sababini kiriting (majburiy). Eski chek bekor qilinadi, yangi chek yaratiladi.',
-            style: TextStyle(fontSize: 14, height: 1.35),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            maxLines: 3,
-            minLines: 2,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              hintText: 'Masalan: noto‘g‘ri miqdor kiritilgan',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    String? reason;
+    try {
+      if (isDesktopPosLayout) {
+        reason = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            title: const Text('Chekni tahrirlash', style: TextStyle(fontWeight: FontWeight.w700)),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Tahrirlash sababini kiriting (majburiy). Eski chek bekor qilinadi, yangi chek yaratiladi.',
+                    style: TextStyle(fontSize: 14, height: 1.35),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    maxLines: 3,
+                    minLines: 2,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      hintText: 'Masalan: noto‘g‘ri miqdor kiritilgan',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Bekor qilish')),
+              FilledButton(
+                onPressed: () {
+                  final t = ctrl.text.trim();
+                  if (t.isEmpty) {
+                    AppNotify.warning(ctx, 'Tahrirlash sababi majburiy');
+                    return;
+                  }
+                  Navigator.pop(ctx, t);
+                },
+                child: const Text('Davom etish'),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          Builder(
-            builder: (ctx) => IosStyleModals.sheetPillCancelSaveRow(
-              cancelLabel: 'Bekor qilish',
+        );
+      } else {
+        reason = await IosStyleModals.showSheet<String>(
+          context: context,
+          showGrabber: true,
+          child: Builder(
+            builder: (sheetCtx) => IosStyleModals.sheetKeyboardForm(
+              context: sheetCtx,
               saveLabel: 'Davom etish',
-              onCancel: () => Navigator.pop(ctx),
+              body: const [
+                Text(
+                  'Chekni tahrirlash',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Tahrirlash sababini kiriting (majburiy). Eski chek bekor qilinadi, yangi chek yaratiladi.',
+                  style: TextStyle(fontSize: 14, height: 1.35),
+                ),
+                SizedBox(height: 12),
+              ],
+              middle: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  maxLines: 3,
+                  minLines: 2,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: 'Masalan: noto‘g‘ri miqdor kiritilgan',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              onCancel: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(sheetCtx);
+              },
               onSave: () {
                 final t = ctrl.text.trim();
                 if (t.isEmpty) {
-                  AppNotify.warning(ctx, 'Tahrirlash sababi majburiy');
+                  AppNotify.warning(sheetCtx, 'Tahrirlash sababi majburiy');
                   return;
                 }
-                Navigator.pop(ctx, t);
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(sheetCtx, t);
               },
             ),
           ),
-        ],
-      ),
-    );
-
-    final String? reason;
-    if (isDesktopPosLayout) {
-      reason = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          contentPadding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          content: SizedBox(width: 440, child: content),
-        ),
-      );
-    } else {
-      reason = await IosStyleModals.showSheet<String>(
-        context: context,
-        showGrabber: true,
-        child: content,
-      );
+        );
+      }
+    } finally {
+      Future<void>.delayed(const Duration(milliseconds: 400), ctrl.dispose);
     }
-    ctrl.dispose();
     return reason;
   }
 
@@ -112,7 +151,10 @@ class InvoiceEditFlow {
       await sess.ensureSalesSettingsLoaded();
       if (!ProductsProvider.instance.isLoaded) {
         try {
-          await ProductsProvider.instance.loadFromApi();
+          await ProductsProvider.instance.warmFromCache();
+          if (!ProductsProvider.instance.isLoaded) {
+            await ProductsProvider.instance.refreshFromServer(force: false);
+          }
         } catch (_) {}
       }
       final res = await SalesApi.getEditableOrder(orderId, orderType: 'sales');
@@ -134,10 +176,15 @@ class InvoiceEditFlow {
 
       sess.setPendingInvoiceEdit(resume, hold);
       if (!context.mounted) return true;
-      if (popCurrentRoute && Navigator.canPop(context)) {
-        Navigator.pop(context, 'invoice_edit');
-      }
-      PosNavigation.openSalesSection?.call();
+      FocusManager.instance.primaryFocus?.unfocus();
+      final nav = Navigator.of(context);
+      final shouldPop = popCurrentRoute && nav.canPop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (shouldPop && nav.mounted) {
+          nav.pop('invoice_edit');
+        }
+        PosNavigation.openSalesSection?.call();
+      });
       return true;
     } on ApiException catch (e) {
       if (context.mounted) AppNotify.error(context, e.message);

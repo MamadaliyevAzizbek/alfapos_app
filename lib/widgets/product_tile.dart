@@ -129,25 +129,25 @@ class ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           child: Row(
             children: [
               Container(
-                width: 72,
-                height: 72,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
                   color: AppTheme.cardBg,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: ProductTile.buildProductImage(product),
+                child: ProductTile.buildProductImage(product, boxSize: 56),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,58 +158,59 @@ class ProductTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
-                        fontSize: 16,
+                        fontSize: 14,
+                        height: 1.2,
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 3),
                     Text(
                       primaryPriceLabel ?? product.priceFormatted,
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 13,
                         color: AppTheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     if (secondaryPriceLabel != null) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       Text(
                         secondaryPriceLabel!,
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: AppTheme.textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       'Miqdor: ${product.stockDisplayText}',
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: AppTheme.textSecondary,
                       ),
                     ),
                     if (showBarcode) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       Text(
                         'Barcode: ${product.barcode != null && product.barcode!.isNotEmpty ? product.barcode! : '—'}',
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: AppTheme.textSecondary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (product.additionalBarcodes != null && product.additionalBarcodes!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 1),
                         Text(
                           "Qo'shimcha: ${product.additionalBarcodes!.take(3).join(', ')}${product.additionalBarcodes!.length > 3 ? '…' : ''}",
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppTheme.textSecondary,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
@@ -219,7 +220,8 @@ class ProductTile extends StatelessWidget {
               ),
               if (showMenu)
                 IconButton(
-                  icon: const Icon(Icons.more_vert_rounded),
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.more_vert_rounded, size: 20),
                   onPressed: onMenu,
                 ),
             ],

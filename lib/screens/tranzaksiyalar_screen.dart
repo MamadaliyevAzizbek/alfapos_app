@@ -4,13 +4,14 @@ import '../core/constants.dart';
 import '../core/seller_preferences.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
-import '../services/api_service.dart';
+import '../services/reports_repository.dart';
 import '../utils/current_employee_sales_filter.dart';
 import '../utils/invoice_edit_flow.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/platform_layout.dart';
 import 'api_chek_detail_screen.dart';
 import 'desktop/desktop_shell_scope.dart';
+import '../widgets/ios_style_modals.dart';
 import '../widgets/throttled_refresh_indicator.dart';
 
 class TranzaksiyalarScreen extends StatefulWidget {
@@ -117,7 +118,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
 
     Map<String, dynamic>? res;
     try {
-      final body = ReportsApi.salesListBody(
+      final body = ReportsRepository.salesListBody(
         from: from,
         to: to,
         rowLimit: 200,
@@ -129,7 +130,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       if (searchValue != null && searchValue.trim().isNotEmpty) {
         body['searchValue'] = searchValue.trim();
       }
-      res = await ReportsApi.getSales(body: body);
+      res = await ReportsRepository.instance.getSales(body: body);
     } catch (e) {
       _apiError = e.toString();
       res = null;
@@ -544,7 +545,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     Map<String, dynamic> detail = {};
     String? loadError;
     try {
-      detail = await ReportsApi.getInvoiceDetails(orderId);
+      detail = await ReportsRepository.instance.getInvoiceDetails(orderId);
     } catch (e) {
       loadError = e.toString().replaceFirst('Exception: ', '');
       try {
@@ -552,8 +553,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
         final to = now.toIso8601String().substring(0, 10);
         final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
         final invoice = (sale['invoice_id'] ?? sale['order_id'] ?? sale['id'] ?? '').toString();
-        detail = await ReportsApi.getSalesAllDetails(
-          body: ReportsApi.salesAllDetailsBody(
+        detail = await ReportsRepository.instance.getSalesAllDetails(
+          body: ReportsRepository.salesAllDetailsBody(
             from: from,
             to: to,
             rowLimit: 200,
@@ -590,6 +591,81 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       if (mounted) setState(() {});
     }
   }
+}
+
+void _showSaleActionsSheet(
+  BuildContext context, {
+  required bool showEdit,
+  required bool showDateEdit,
+  VoidCallback? onEdit,
+  VoidCallback? onEditDate,
+}) {
+  IosStyleModals.showSheet<void>(
+    context: context,
+    showGrabber: true,
+    child: Builder(
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Amallar',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          if (showEdit)
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.edit_rounded, color: AppTheme.primary, size: 22),
+              ),
+              title: const Text('Chekni tahrirlash'),
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                onEdit?.call();
+              },
+            ),
+          if (showDateEdit)
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 22),
+              ),
+              title: const Text('Sanani tahrirlash'),
+              titleTextStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                onEditDate?.call();
+              },
+            ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    ),
+  );
 }
 
 class _DesktopSaleRow extends StatelessWidget {
@@ -733,91 +809,128 @@ class _ApiSaleTile extends StatelessWidget {
         sale['is_invoice_edited'] == true ||
         sale['is_invoice_edited'] == '1';
 
+    final chekId = idStr.startsWith('POS') ? idStr : 'POS$idStr';
+    final subtitle = [
+      if (dateStr.isNotEmpty) dateStr,
+      if (customer.isNotEmpty) customer,
+    ].join(' • ');
+    final showMenu = showEditButton || showDateEditButton;
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isEdited ? Colors.blue.shade50 : Colors.teal.shade50,
-          child: Icon(
-            isEdited ? Icons.edit_note_rounded : Icons.receipt_long_rounded,
-            color: isEdited ? Colors.blue.shade700 : Colors.teal.shade700,
-            size: 22,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+          child: SizedBox(
+            height: 48,
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: isEdited ? Colors.blue.shade50 : Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isEdited ? Icons.edit_note_rounded : Icons.receipt_long_rounded,
+                    color: isEdited ? Colors.blue.shade700 : Colors.teal.shade700,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Chek #$chekId',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                height: 1.15,
+                              ),
+                            ),
+                          ),
+                          if (isEdited) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                'Tahrir',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.blue.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${formatThousands(totalInt)} UZS',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primary,
+                    fontSize: 13,
+                  ),
+                ),
+                if (showMenu)
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: IconButton(
+                      tooltip: 'Amallar',
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 20),
+                      onPressed: () => _showSaleActionsSheet(
+                        context,
+                        showEdit: showEditButton,
+                        showDateEdit: showDateEditButton,
+                        onEdit: onEdit,
+                        onEditDate: onEditDate,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 6),
+              ],
+            ),
           ),
         ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                "Chek #${idStr.startsWith('POS') ? idStr : 'POS$idStr'}",
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            if (isEdited)
-              Container(
-                margin: const EdgeInsets.only(left: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.blue.shade100),
-                ),
-                child: Text(
-                  'Tahrir',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.blue.shade800),
-                ),
-              ),
-          ],
-        ),
-        subtitle: Text([if (dateStr.isNotEmpty) dateStr, if (customer.isNotEmpty) customer].join(' • ')),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "${formatThousands(totalInt)} UZS",
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: AppTheme.primary,
-                fontSize: 15,
-              ),
-            ),
-            if (showEditButton || showDateEditButton) ...[
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                tooltip: 'Amallar',
-                icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 22),
-                onSelected: (value) {
-                  if (value == 'edit') onEdit?.call();
-                  if (value == 'date') onEditDate?.call();
-                },
-                itemBuilder: (ctx) => [
-                  if (showEditButton)
-                    const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit_rounded, size: 20),
-                          SizedBox(width: 10),
-                          Text('Chekni tahrirlash'),
-                        ],
-                      ),
-                    ),
-                  if (showDateEditButton)
-                    const PopupMenuItem(
-                      value: 'date',
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_month_rounded, size: 20),
-                          SizedBox(width: 10),
-                          Text('Sanani tahrirlash'),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-        onTap: onTap,
       ),
     );
   }

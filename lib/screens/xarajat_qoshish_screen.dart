@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/expense.dart';
 import '../providers/expenses_provider.dart';
 import '../utils/platform_layout.dart';
+import '../widgets/app_dropdown.dart';
 
 /// Yangi xarajat — mobil: to‘liq ekran; desktop: dialog (dropdown, bottom sheet emas).
 class XarajatQoshishScreen extends StatefulWidget {
@@ -178,18 +179,14 @@ class _XarajatQoshishScreenState extends State<XarajatQoshishScreen> {
         ),
         if (expenseCategories.isNotEmpty) ...[
           const SizedBox(height: 14),
-          DropdownButtonFormField<int>(
+          AppDropdownField<int>(
+            label: 'Xarajat kategoriyasi',
             value: categoryValue,
-            decoration: _fieldDecoration('Xarajat kategoriyasi'),
-            isExpanded: true,
             items: expenseCategories
                 .map((c) {
                   final id = _parseId(c);
                   if (id == null) return null;
-                  return DropdownMenuItem<int>(
-                    value: id,
-                    child: Text(_itemLabel(c), overflow: TextOverflow.ellipsis),
-                  );
+                  return appDropdownItem(value: id, label: _itemLabel(c));
                 })
                 .whereType<DropdownMenuItem<int>>()
                 .toList(),
@@ -198,18 +195,14 @@ class _XarajatQoshishScreenState extends State<XarajatQoshishScreen> {
         ],
         if (paymentTypes.isNotEmpty) ...[
           const SizedBox(height: 14),
-          DropdownButtonFormField<int>(
+          AppDropdownField<int>(
+            label: "To'lov turi",
             value: paymentValue,
-            decoration: _fieldDecoration("To'lov turi"),
-            isExpanded: true,
             items: paymentTypes
                 .map((c) {
                   final id = _parseId(c);
                   if (id == null) return null;
-                  return DropdownMenuItem<int>(
-                    value: id,
-                    child: Text(_itemLabel(c), overflow: TextOverflow.ellipsis),
-                  );
+                  return appDropdownItem(value: id, label: _itemLabel(c));
                 })
                 .whereType<DropdownMenuItem<int>>()
                 .toList(),

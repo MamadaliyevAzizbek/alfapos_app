@@ -401,10 +401,11 @@ class _YangiTovarScreenState extends State<YangiTovarScreen> {
       final picker = ImagePicker();
       final xFile = await picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 88,
-        requestFullMetadata: false,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
+        // Kamerada EXIF kerak — aks holda vertikal rasm yonboshi saqlanadi.
+        requestFullMetadata: true,
       );
       if (!mounted) return;
       if (xFile != null) {

@@ -448,13 +448,24 @@ class _LoginScreenState extends State<LoginScreen> {
                       Center(
                         child: Column(
                           children: [
-                            const Text(
-                              Strings.appName,
-                              style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimary,
-                                letterSpacing: -0.5,
+                            SizedBox(
+                              width: 220,
+                              height: 52,
+                              child: ClipRect(
+                                child: Image.asset(
+                                  'Untitled-1-03.png',
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.center,
+                                  errorBuilder: (_, __, ___) => const Text(
+                                    'alfapos',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 8),

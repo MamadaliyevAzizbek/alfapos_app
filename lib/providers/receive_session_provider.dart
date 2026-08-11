@@ -5,8 +5,8 @@ import '../core/api_client.dart';
 import '../models/product.dart';
 import '../models/receive_cart_item.dart';
 import '../models/receive_supplier.dart';
-import '../core/api_pacing.dart';
 import '../services/api_service.dart';
+import '../services/app_data_sync.dart';
 import '../utils/receive_payment_types.dart';
 import '../utils/receive_products.dart';
 import '../utils/receive_store_body.dart';
@@ -31,6 +31,10 @@ class ReceiveSessionProvider extends ChangeNotifier {
 
   bool initLoading = false;
   String? initError;
+  bool _initialized = false;
+  bool _initInFlight = false;
+
+  bool get isReady => _initialized;
 
   int _notifyPauseDepth = 0;
   bool _notifyPending = false;
@@ -76,6 +80,8 @@ class ReceiveSessionProvider extends ChangeNotifier {
     editReason = null;
     initLoading = false;
     initError = null;
+    _initialized = false;
+    _initInFlight = false;
     notifyListeners();
   }
 
@@ -160,35 +166,44 @@ class ReceiveSessionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadInit() async {
-    initLoading = true;
-    initError = null;
-    notifyListeners();
+  Future<void> loadInit({bool force = false}) async {
+    if (_initInFlight) return;
+    if (_initialized && !force) return;
+    _initInFlight = true;
+    // Savat UI bloklanmasin — spinner faqat birinchi ochilishda va kesh yo‘qida.
+    final blockUi = !_initialized;
+    if (blockUi) {
+      initLoading = true;
+      initError = null;
+      notifyListeners();
+    }
     try {
-      final suppliersRes = await ContactsApi.getSuppliers();
-      await ApiPacing.staggerPause();
-      final paymentRes = await ReceivesApi.getPaymentTypes();
-      await ApiPacing.staggerPause();
-      final branchesRes = await ReceivesApi.getBranches();
-      await ApiPacing.staggerPause();
-      final currenciesRes = await ReceivesApi.getCurrencies();
-
-      suppliers = ReceiveSupplier.listFromResponse(suppliersRes);
-      paymentTypes = ReceivePaymentTypes.parseAndFilter(paymentRes);
-      if (paymentTypes.isNotEmpty) {
+      final results = await Future.wait([
+        ContactsApi.getSuppliers(),
+        ReceivesApi.getPaymentTypes(),
+        ReceivesApi.getBranches(),
+        ReceivesApi.getCurrencies(),
+      ]);
+      suppliers = ReceiveSupplier.listFromResponse(results[0]);
+      paymentTypes = ReceivePaymentTypes.parseAndFilter(results[1]);
+      if (paymentTypes.isNotEmpty && selectedPaymentType == null) {
         selectedPaymentType = paymentTypes.first;
       }
-      branchId = _parseDefaultBranchId(branchesRes);
+      branchId = _parseDefaultBranchId(results[2]);
+      usdExchangeRate = _parseUsdRate(results[3]);
       if (branchId != null) {
-        try {
-          await ReceivesApi.setBranch(branchId: branchId!);
-        } catch (_) {}
+        unawaited(() async {
+          try {
+            await ReceivesApi.setBranch(branchId: branchId!);
+          } catch (_) {}
+        }());
       }
-      usdExchangeRate = _parseUsdRate(currenciesRes);
+      _initialized = true;
       initError = null;
     } catch (e) {
-      initError = e.toString();
+      if (!_initialized) initError = e.toString();
     } finally {
+      _initInFlight = false;
       initLoading = false;
       notifyListeners();
     }
@@ -304,6 +319,7 @@ class ReceiveSessionProvider extends ChangeNotifier {
       usdRate: usdExchangeRate,
     );
     final res = await ReceivesApi.storeReceive(body);
+    unawaited(AppDataSync.afterStockChangingWrite());
     _cart.clear();
     editOrderId = null;
     editReason = null;

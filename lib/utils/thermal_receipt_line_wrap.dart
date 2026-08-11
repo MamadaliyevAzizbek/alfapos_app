@@ -1,6 +1,7 @@
 import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_product_title_text.dart';
+import 'thermal_receipt_total_text.dart';
 
 /// 80mm termal printer uchun qator uzunligi (Font A).
 const int kThermalChars80mm = 48;
@@ -28,6 +29,7 @@ class ThermalReceiptLineWrap {
       }
       if (ThermalReceiptLargeText.isLargeLine(line) ||
           ThermalReceiptCompactText.isAnyCompactLine(line) ||
+          ThermalReceiptTotalText.isTotalLine(line) ||
           ThermalReceiptProductTitleText.isAnySpecialLine(line)) {
         out.add(line);
         continue;

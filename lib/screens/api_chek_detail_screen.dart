@@ -108,7 +108,10 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
 
   Future<void> _prepareCatalog() async {
     try {
-      await ProductsProvider.instance.loadFromApi();
+      await ProductsProvider.instance.warmFromCache();
+      if (!ProductsProvider.instance.isLoaded || ProductsProvider.instance.items.isEmpty) {
+        await ProductsProvider.instance.refreshFromServer(force: false);
+      }
     } catch (_) {}
     if (mounted) setState(() => _catalogReady = true);
   }
@@ -208,7 +211,6 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
     final alreadyReturned = isSaleAlreadyReturned(widget.sale, invoiceDetail: inv);
     final showReturnButton = canShowReturnSaleButton(widget.sale, invoiceDetail: inv);
     final showEditButton = canShowInvoiceEditButton(widget.sale, invoiceDetail: inv);
-    final showDateEditButton = canShowInvoiceDateEditButton(widget.sale, invoiceDetail: inv);
     final isEdited = widget.sale['is_invoice_edited'] == 1 ||
         widget.sale['is_invoice_edited'] == true ||
         widget.sale['is_invoice_edited'] == '1';
@@ -217,35 +219,6 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Chek #$posTitle"),
-        actions: [
-          if (showEditButton)
-            IconButton(
-              tooltip: 'Tahrirlash',
-              icon: const Icon(Icons.edit_rounded),
-              onPressed: () async {
-                await InvoiceEditFlow.startFullEdit(
-                  context,
-                  widget.sale,
-                  invoiceDetail: inv,
-                  popCurrentRoute: true,
-                );
-              },
-            ),
-          if (showDateEditButton)
-            IconButton(
-              tooltip: 'Sanani tahrirlash',
-              icon: const Icon(Icons.calendar_month_rounded),
-              onPressed: () async {
-                final ok = await InvoiceEditFlow.editSaleDate(
-                  context,
-                  widget.sale,
-                  invoiceDetail: inv,
-                  popCurrentRoute: true,
-                );
-                if (ok && mounted) setState(() {});
-              },
-            ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -421,29 +394,6 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
                 ),
               ),
             ],
-            if (showDateEditButton) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final ok = await InvoiceEditFlow.editSaleDate(
-                      context,
-                      widget.sale,
-                      invoiceDetail: inv,
-                      popCurrentRoute: true,
-                    );
-                    if (ok && mounted) setState(() {});
-                  },
-                  icon: const Icon(Icons.calendar_month_rounded, size: 22),
-                  label: const Text('Sanani tahrirlash'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ],
 
             if (showReturnButton) ...[
             const SizedBox(height: 32),
@@ -574,8 +524,10 @@ class _StaticSectionCard extends StatelessWidget {
   }
 }
 
-/// Faqat Savatcha: ochiladi-yopiladi (qora fon flash oldini olish bilan).
-class _CollapsibleSectionCard extends StatelessWidget {
+/// Faqat Savatcha: ochiladi-yopiladi.
+/// ExpansionTile + lokal Theme ishlatilmaydi — overlay yopilganda
+/// `_dependents.isEmpty` assertionini keltirib chiqarmaslik uchun.
+class _CollapsibleSectionCard extends StatefulWidget {
   final String title;
   final Widget child;
   final bool initiallyExpanded;
@@ -585,6 +537,13 @@ class _CollapsibleSectionCard extends StatelessWidget {
     required this.child,
     this.initiallyExpanded = true,
   });
+
+  @override
+  State<_CollapsibleSectionCard> createState() => _CollapsibleSectionCardState();
+}
+
+class _CollapsibleSectionCardState extends State<_CollapsibleSectionCard> {
+  late bool _open = widget.initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -599,30 +558,35 @@ class _CollapsibleSectionCard extends StatelessWidget {
         side: BorderSide(color: borderColor),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          splashFactory: NoSplash.splashFactory,
-          listTileTheme: const ListTileThemeData(
-            tileColor: Colors.transparent,
-            selectedTileColor: Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Icon(
+                    _open ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                    color: Colors.grey.shade700,
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        child: ExpansionTile(
-          initiallyExpanded: initiallyExpanded,
-          maintainState: true,
-          backgroundColor: Colors.white,
-          collapsedBackgroundColor: Colors.white,
-          shape: const Border(),
-          collapsedShape: const Border(),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          title: Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-          children: [child],
-        ),
+          if (_open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: widget.child,
+            ),
+        ],
       ),
     );
   }
@@ -864,21 +828,21 @@ class _CartItemRow extends StatelessWidget {
   }
 
   static Widget _lineThumbnail(Map<String, dynamic> row) {
-    const box = 56.0;
+    const box = 40.0;
     final placeholder = Container(
       width: box,
       height: box,
       decoration: BoxDecoration(
         color: AppTheme.cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
       ),
       alignment: Alignment.center,
-      child: const Icon(Icons.inventory_2_outlined, color: AppTheme.textSecondary),
+      child: const Icon(Icons.inventory_2_outlined, color: AppTheme.textSecondary, size: 20),
     );
     final p = _resolvedProduct(row);
     if (p != null) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         child: SizedBox(
           width: box,
           height: box,
@@ -891,7 +855,7 @@ class _CartItemRow extends StatelessWidget {
     final file = File(raw);
     if (file.existsSync()) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         child: Image.file(
           file,
           width: box,
@@ -904,7 +868,7 @@ class _CartItemRow extends StatelessWidget {
     final url = ProductImageUtils.resolveToUrl(raw);
     if (url.isEmpty) return placeholder;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(10),
       child: AuthNetworkImage(
         url: url,
         width: box,
@@ -968,44 +932,50 @@ class _CartItemRow extends StatelessWidget {
     final codeLine = _displayCodeLine(row);
     final barcodeShown = codeLine.isNotEmpty ? codeLine : '—';
 
+    final subtitle = [
+      if (barcodeShown != '—') barcodeShown,
+      if (sum > 0) '${formatThousands(sum)} UZS',
+    ].join(' · ');
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          _lineThumbnail(row),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(
-                  barcodeShown,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
-                  ),
-                ),
-                if (sum > 0) ...[
-                  const SizedBox(height: 2),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SizedBox(
+        height: 48,
+        child: Row(
+          children: [
+            _lineThumbnail(row),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    '${formatThousands(sum)} UZS',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.textSecondary,
-                      height: 1.25,
-                    ),
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.15),
                   ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          _QtyChip(text: qtyStr),
-        ],
+            const SizedBox(width: 8),
+            _QtyChip(text: qtyStr),
+          ],
+        ),
       ),
     );
   }
@@ -1017,16 +987,34 @@ class _QtyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade300, width: 2),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textSecondary),
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300, width: 1.5),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                text,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textSecondary,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

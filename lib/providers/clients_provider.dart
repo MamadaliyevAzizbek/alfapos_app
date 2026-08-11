@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
+import '../services/company_cache_store.dart';
 import '../utils/customer_filter_options.dart';
 import '../utils/customer_groups_list.dart';
 import '../core/api_client.dart';
@@ -139,6 +142,26 @@ class Client {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'full_name': name,
+        'email': email,
+        'phone_number': phone,
+        'address': address,
+        'due_amount': dueAmount,
+        'balance': balance,
+        'due_payment_date': duePaymentDate,
+        'debt_limit': debtLimit,
+        'orders_due_debt': ordersDueDebt,
+        'journal_net_debt': journalNetDebt,
+        'customer_group_id': customerGroupId,
+        'customer_group_title': customerGroupName,
+        'supplier_name': supplierName,
+        'supplier_id': supplierId,
+        'customer_group_discount': customerGroupDiscount,
+        'customer_group_discount_price_type': customerGroupDiscountPriceType,
+      };
+
   static num? _parseNum(dynamic v) {
     if (v == null) return null;
     if (v is num) return v;
@@ -253,9 +276,41 @@ class ClientsProvider extends ChangeNotifier {
     _lastLoadedAt = null;
     _inFlightLoad = null;
     notifyListeners();
+    unawaited(CompanyCacheStore.remove(CompanyCacheStore.clients));
   }
 
-  Future<void> loadFromStorage({bool force = false}) async => loadFromApi(force: force);
+  Future<void> warmFromCache() async {
+    if (_items.isNotEmpty) return;
+    final decoded = await CompanyCacheStore.readJson(CompanyCacheStore.clients);
+    if (decoded is! List) return;
+    try {
+      _items = decoded
+          .whereType<Map>()
+          .map((e) => Client.fromApiJson(Map<String, dynamic>.from(e)))
+          .where((c) => c.id.isNotEmpty)
+          .toList();
+      if (_items.isNotEmpty) {
+        _loaded = true;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> refreshFromServer({bool force = false}) async =>
+      loadFromApi(force: force);
+
+  Future<void> loadFromStorage({bool force = false}) async {
+    if (!force) await warmFromCache();
+    await loadFromApi(force: force);
+  }
+
+  Future<void> _persistCache() async {
+    if (_items.isEmpty) return;
+    await CompanyCacheStore.writeJson(
+      CompanyCacheStore.clients,
+      _items.map((c) => c.toJson()).toList(),
+    );
+  }
 
   /// API javobidan ro'yxatni chiqarish (customers/data/datarows — to'g'ri yoki data ichida)
   static List<dynamic> _extractList(Map<String, dynamic> res) {
@@ -375,6 +430,9 @@ class ClientsProvider extends ChangeNotifier {
       _loaded = true;
       _lastLoadedAt = DateTime.now();
       notifyListeners();
+      if (reset && searchValue.isEmpty) {
+        unawaited(_persistCache());
+      }
     } on ApiException catch (e) {
       _loadError = e.message;
       if (reset) _items = [];

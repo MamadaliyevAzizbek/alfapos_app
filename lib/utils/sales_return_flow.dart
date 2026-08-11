@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import '../core/api_client.dart';
 import '../core/input_formatters.dart';
 import '../providers/sales_session_provider.dart';
 import '../services/api_service.dart';
+import '../services/app_data_sync.dart';
 import 'tolovsiz_payment.dart';
 
 /// Chek orqali qaytarish — [SALES_RETURNS_API.md] (web = desktop).
@@ -167,7 +170,9 @@ class SalesReturnFlow {
       body['currentBranch'] = sess.branchId;
     }
 
-    return SalesApi.storeSale(body);
+    final res = await SalesApi.storeSale(body);
+    unawaited(AppDataSync.afterStockChangingWrite());
+    return res;
   }
 
   static Map<String, dynamic>? _findTolovsizPaymentType(List<Map<String, dynamic>> types) {

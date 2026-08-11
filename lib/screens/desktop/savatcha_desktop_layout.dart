@@ -11,6 +11,7 @@ import '../../widgets/product_tile.dart';
 import '../../widgets/restaurant_category_chips.dart';
 import '../../widgets/sales_shortcut_key_badge.dart';
 import '../../widgets/sales_pos_search_field.dart';
+import '../../services/app_data_sync.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
 import '../../services/sales_ui_scale_settings.dart';
@@ -364,21 +365,55 @@ class SavatchaDesktopLayout extends StatelessWidget {
             ),
           ),
         ],
-        if (onGlobalSync != null) ...[
+        if (onOpenShiftDashboard != null) ...[
           SizedBox(width: gap),
-          _navSquareIconButton(
-            tooltip: 'Sinxronlash',
-            onPressed: globalSyncing ? null : onGlobalSync,
-            icon: globalSyncing
-                ? SizedBox(
-                    width: SalesUiScaleSettings.navbarIconSize(),
-                    height: SalesUiScaleSettings.navbarIconSize(),
-                    child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
-                  )
-                : Icon(Icons.sync_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navBlue),
+          SizedBox(
+            height: _navBtnHeight,
+            child: OutlinedButton.icon(
+              onPressed: onOpenShiftDashboard,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _navInactive,
+                backgroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(
+                  horizontal: SalesUiScaleSettings.scaled(compact ? 12 : 14),
+                ),
+                minimumSize: Size(0, _navBtnHeight),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                side: const BorderSide(color: _chromeBorder),
+                shape: const RoundedRectangleBorder(borderRadius: _navCorners),
+              ),
+              icon: Icon(Icons.point_of_sale_outlined, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
+              label: Text(
+                cashRegisterLabel,
+                style: TextStyle(
+                  fontSize: SalesUiScaleSettings.scaled(compact ? 14 : 15),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
         ],
-        if (onLogout != null || onOpenShiftDashboard != null) ...[
+        if (onGlobalSync != null) ...[
+          SizedBox(width: gap),
+          ValueListenableBuilder<int>(
+            valueListenable: AppDataSync.forceCooldownSeconds,
+            builder: (context, left, _) {
+              final cooling = left > 0;
+              return _navSquareIconButton(
+                tooltip: cooling ? 'Sinxronlash ($left s)' : 'Sinxronlash',
+                onPressed: (globalSyncing || cooling) ? null : onGlobalSync,
+                icon: globalSyncing
+                    ? SizedBox(
+                        width: SalesUiScaleSettings.navbarIconSize(),
+                        height: SalesUiScaleSettings.navbarIconSize(),
+                        child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                      )
+                    : Icon(Icons.sync_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navBlue),
+              );
+            },
+          ),
+        ],
+        if (onLogout != null) ...[
           SizedBox(width: gap),
           SizedBox(
             width: _navBtnHeight,
@@ -404,35 +439,19 @@ class SavatchaDesktopLayout extends StatelessWidget {
                 ),
               ),
               onSelected: (value) {
-                if (value == 'shift') onOpenShiftDashboard?.call();
                 if (value == 'logout') onLogout?.call();
               },
               itemBuilder: (context) => [
-                if (onOpenShiftDashboard != null)
-                  PopupMenuItem<String>(
-                    value: 'shift',
-                    child: Row(
-                      children: [
-                        Icon(Icons.point_of_sale_outlined, size: 20, color: AppTheme.textPrimary),
-                        const SizedBox(width: 10),
-                        Text(
-                          cashRegisterLabel,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
+                      SizedBox(width: 10),
+                      Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
+                    ],
                   ),
-                if (onLogout != null)
-                  const PopupMenuItem<String>(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout_rounded, size: 20, color: AppTheme.textPrimary),
-                        SizedBox(width: 10),
-                        Text('Chiqish', style: TextStyle(fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
+                ),
               ],
             ),
           ),
@@ -1342,10 +1361,10 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     });
   }
 
-  Widget _buildInlineQuantityControl() {
+  Widget _buildInlineQuantityControl({bool tight = false}) {
     if (_inlineQtyEditing) {
       return SizedBox(
-        width: 52,
+        width: tight ? 40 : 48,
         child: Focus(
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -1395,10 +1414,10 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       onTap: _startInlineQtyEdit,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 6, vertical: 4),
         child: Text(
           _qtyText(widget.item.quantity),
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: tight ? 14 : 15),
         ),
       ),
     );
@@ -1446,29 +1465,42 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     return null;
   }
 
-  Widget _buildLinePriceAndTotal() {
+  Widget _oneLineAmount(String text, {double fontSize = 14}) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerRight,
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: fontSize,
+          height: 1.1,
+          color: AppTheme.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLinePriceAndTotal({required bool tight}) {
+    final fontSize = tight ? 13.0 : 14.0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _buildInlinePriceControl(),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 88,
-          child: Text(
-            formatThousands(widget.item.total),
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
-          ),
-        ),
+        _buildInlinePriceControl(tight: tight),
+        SizedBox(width: tight ? 6 : 8),
+        _oneLineAmount(formatThousands(widget.item.total), fontSize: fontSize),
       ],
     );
   }
 
-  Widget _buildInlinePriceControl() {
+  Widget _buildInlinePriceControl({bool tight = false}) {
     if (_inlinePriceEditing) {
       return SizedBox(
-        width: 80,
+        width: tight ? 84 : 96,
         child: TextField(
           controller: _priceController,
           focusNode: _priceFocusNode,
@@ -1505,14 +1537,10 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       onTap: _startInlinePriceEdit,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: SizedBox(
-          width: 72,
-          child: Text(
-            formatThousands(widget.item.unitPriceDisplay),
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppTheme.textPrimary),
-          ),
+        padding: EdgeInsets.symmetric(horizontal: tight ? 2 : 4, vertical: 4),
+        child: _oneLineAmount(
+          formatThousands(widget.item.unitPriceDisplay),
+          fontSize: tight ? 13 : 14,
         ),
       ),
     );
@@ -1647,41 +1675,58 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 onTap: widget.onToggleExpand,
                 splashFactory: NoSplash.splashFactory,
                 highlightColor: const Color(0xFFF1F5F9),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                        icon: Icon(
-                          widget.expanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
-                          color: AppTheme.textSecondary,
-                        ),
-                        onPressed: widget.onToggleExpand,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final tight = constraints.maxWidth < 460;
+                    final iconBox = tight ? 28.0 : 32.0;
+                    return Padding(
+                      padding: EdgeInsets.fromLTRB(tight ? 2 : 4, tight ? 5 : 6, tight ? 2 : 4, tight ? 5 : 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(minWidth: iconBox, minHeight: iconBox),
+                            icon: Icon(
+                              widget.expanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+                              size: tight ? 20 : 22,
+                              color: AppTheme.textSecondary,
+                            ),
+                            onPressed: widget.onToggleExpand,
+                          ),
+                          Expanded(
+                            child: Text(
+                              p.name,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: tight ? 13 : 14,
+                                height: 1.15,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: tight ? 2 : 4),
+                          _qtyCircleButton(Icons.remove, widget.onDecrement, compact: tight),
+                          _buildInlineQuantityControl(tight: tight),
+                          _qtyCircleButton(Icons.add, widget.onIncrement, primary: true, compact: tight),
+                          SizedBox(width: tight ? 4 : 6),
+                          _buildLinePriceAndTotal(tight: tight),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(minWidth: iconBox, minHeight: iconBox),
+                            icon: Icon(Icons.delete_outline_rounded, size: tight ? 18 : 20, color: AppTheme.textSecondary),
+                            onPressed: widget.onRemove,
+                            tooltip: "O'chirish",
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: Text(
-                          p.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: AppTheme.textPrimary),
-                        ),
-                      ),
-                      _qtyCircleButton(Icons.remove, widget.onDecrement),
-                      _buildInlineQuantityControl(),
-                      _qtyCircleButton(Icons.add, widget.onIncrement, primary: true),
-                      const SizedBox(width: 8),
-                      _buildLinePriceAndTotal(),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.textSecondary),
-                        onPressed: widget.onRemove,
-                        tooltip: "O'chirish",
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -1710,7 +1755,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     );
   }
 
-  Widget _qtyCircleButton(IconData icon, VoidCallback onPressed, {bool primary = false}) {
+  Widget _qtyCircleButton(IconData icon, VoidCallback onPressed, {bool primary = false, bool compact = false}) {
     return Material(
       color: Colors.transparent,
       shape: const CircleBorder(),
@@ -1718,8 +1763,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
         customBorder: const CircleBorder(),
         onTap: onPressed,
         child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(icon, size: 20, color: primary ? AppTheme.primary : AppTheme.textSecondary),
+          padding: EdgeInsets.all(compact ? 3 : 4),
+          child: Icon(icon, size: compact ? 18 : 20, color: primary ? AppTheme.primary : AppTheme.textSecondary),
         ),
       ),
     );

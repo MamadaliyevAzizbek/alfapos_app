@@ -356,23 +356,6 @@ class ProductsApi {
   /// [localImagePath] bo‘lsa MOBILE_API_DOCS.md bo‘yicha `multipart/form-data`, `image` fayl.
   /// Aks holda JSON body (shu jumladan `image_base64` bo‘lishi mumkin).
   /// Yangi mahsulot va tahrirlashda rasm — bir xil multipart (`image` fayl).
-  static int? _variantIdFromData(Map<String, dynamic> data) {
-    final direct = data['variantID'] ?? data['variant_id'];
-    if (direct is int && direct > 0) return direct;
-    if (direct != null) {
-      final n = int.tryParse(direct.toString());
-      if (n != null && n > 0) return n;
-    }
-    final vd = data['variantDetails'];
-    if (vd is List && vd.isNotEmpty && vd.first is Map) {
-      final id = (vd.first as Map)['id'];
-      if (id is int && id > 0) return id;
-      final n = int.tryParse(id?.toString() ?? '');
-      if (n != null && n > 0) return n;
-    }
-    return null;
-  }
-
   static bool _isPlaceholderImagePath(String? raw) {
     if (raw == null || raw.trim().isEmpty) return true;
     final l = raw.toLowerCase();
@@ -435,7 +418,7 @@ class ProductsApi {
     return '/products/$id/edit';
   }
 
-  /// Avval JSON base64 (`image`), keyin multipart — server `public/uploads/products/`.
+  /// Bitta multipart `image`, kerak bo‘lsa bitta JSON. Ko‘p marta qayta yuborilmaydi.
   static Future<Map<String, dynamic>> _postProductWithImageFallback(
     String path,
     Map<String, dynamic> data,
@@ -446,70 +429,34 @@ class ProductsApi {
       return ApiClient.post(path, body: data);
     }
 
+    ApiException? lastError;
+    try {
+      final res = await _postMultipartWithImageField(path, data, localImagePath, 'image');
+      if (_responseHasProductImage(res) || !_isProductStorePath(path)) return res;
+      final editPath = _switchStorePathToEditAfterCreate(path, res);
+      if (editPath != null) {
+        try {
+          final editRes = await _postMultipartWithImageField(editPath, data, localImagePath, 'image');
+          if (_responseHasProductImage(editRes)) return editRes;
+        } on ApiException catch (e) {
+          lastError = e;
+        }
+      }
+      return res;
+    } on ApiException catch (e) {
+      lastError = e;
+    }
+
     final b64 = await _readImageBase64(localImagePath);
     if (b64 == null) {
-      throw ApiException('Rasm fayli o\'qilmadi', 400);
+      throw lastError ?? ApiException('Rasm fayli o\'qilmadi', 400);
     }
     final dataUri = _imageDataUri(localImagePath, b64);
-
-    ApiException? lastError;
-    Map<String, dynamic>? lastOk;
-    var effectivePath = path;
-    var storeCreateDone = false;
-
-    final jsonBodies = <Map<String, dynamic>>[
-      {...data, 'image': dataUri, 'image_base64': b64},
-      {...data, 'image': dataUri},
-      {...data, 'image_base64': b64},
-      {...data, 'productImage': dataUri},
-    ];
-    for (final body in jsonBodies) {
-      if (storeCreateDone && _isProductStorePath(effectivePath)) break;
-      try {
-        final res = await ApiClient.post(effectivePath, body: body);
-        if (_responseHasProductImage(res)) return res;
-        lastOk = res;
-        if (_isProductStorePath(effectivePath)) {
-          storeCreateDone = true;
-          final editPath = _switchStorePathToEditAfterCreate(effectivePath, res);
-          if (editPath != null) {
-            effectivePath = editPath;
-          } else {
-            break;
-          }
-        }
-      } on ApiException catch (e) {
-        lastError = e;
-      }
+    try {
+      return await ApiClient.post(path, body: {...data, 'image': dataUri});
+    } on ApiException catch (e) {
+      throw lastError ?? e;
     }
-
-    final multipartFields = <String>['image', 'productImage', 'product_image'];
-    final variantId = _variantIdFromData(data);
-    if (variantId != null) {
-      multipartFields.addAll(['variant_image', 'variantDetails[0][image]']);
-    }
-    for (final field in multipartFields) {
-      if (storeCreateDone && _isProductStorePath(effectivePath)) break;
-      try {
-        final res = await _postMultipartWithImageField(effectivePath, data, localImagePath, field);
-        if (_responseHasProductImage(res)) return res;
-        lastOk = res;
-        if (_isProductStorePath(effectivePath)) {
-          storeCreateDone = true;
-          final editPath = _switchStorePathToEditAfterCreate(effectivePath, res);
-          if (editPath != null) {
-            effectivePath = editPath;
-          } else {
-            break;
-          }
-        }
-      } on ApiException catch (e) {
-        lastError = e;
-      }
-    }
-
-    if (lastOk != null) return lastOk;
-    throw lastError ?? ApiException('Rasm yuborilmadi', 500);
   }
 
   /// Yangi mahsulot — web bilan bir xil (`wholesalePrice`, pachka maydonlari).
@@ -522,38 +469,7 @@ class ProductsApi {
       return ApiClient.post('/products/store', body: data);
     }
 
-    var res = await _postProductWithImageFallback('/products/store', data, localImagePath);
-    if (_responseHasProductImage(res)) return res;
-
-    final id = _productIdFromResponse(res);
-    if (id == null) return res;
-
-    final patch = Map<String, dynamic>.from(data);
-    if (imageHintProduct != null) {
-      try {
-        final fresh = await getProduct(id);
-        final raw = fresh['data'] ?? fresh['product'] ?? fresh;
-        if (raw is Map) {
-          final parsed = Product.fromApiJson(Map<String, dynamic>.from(raw));
-          final vid = parsed.variantId;
-          if (vid != null && vid > 0) {
-            patch['variantID'] = vid;
-            patch['variantDetails'] = [
-              ProductWebStoreBody.variantDetailEntry(vid, imageHintProduct),
-            ];
-          }
-        }
-      } catch (_) {}
-    }
-
-    try {
-      res = await _postProductWithImageFallback(
-        '/products/$id/edit',
-        patch,
-        localImagePath,
-      );
-    } catch (_) {}
-    return res;
+    return _postProductWithImageFallback('/products/store', data, localImagePath);
   }
 
   /// Eski V1 — cheklangan maydonlar; faqat fallback.

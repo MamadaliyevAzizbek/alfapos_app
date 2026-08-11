@@ -49,8 +49,8 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   List<String> _categoryOrderIds = [];
 
   Future<void> _pullRefreshCatalog() async {
-    await _products.loadFromStorage(refreshInBackground: true);
-    await _categories.loadFromApiIfStale();
+    await _products.refreshFromServer(force: false);
+    await _categories.refreshFromServer(force: false);
     if (mounted) setState(() {});
   }
 
@@ -72,7 +72,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   }
 
   Future<void> _bootstrapCatalog() async {
-    await _products.loadFromStorage(refreshInBackground: false);
+    await _products.warmFromCache();
     await _products.ensureFullCatalogLoaded();
     if (mounted) setState(() {});
   }
@@ -153,12 +153,15 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(Strings.navMahsulotlar),
+        toolbarHeight: 0,
         bottom: TabBar(
           controller: _tabController,
+          labelPadding: EdgeInsets.zero,
+          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           tabs: const [
-            Tab(text: 'Mahsulotlar'),
-            Tab(text: Strings.kategoriyalar),
+            Tab(height: 40, text: 'Mahsulotlar'),
+            Tab(height: 40, text: Strings.kategoriyalar),
           ],
         ),
       ),
@@ -176,7 +179,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
           child: Row(
             children: [
               Expanded(
@@ -227,10 +230,10 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
           child: SizedBox(
             width: double.infinity,
-            height: 40,
+            height: 36,
             child: FilledButton.icon(
               onPressed: () async {
                 final saved = await Navigator.of(context).push<bool>(
@@ -389,35 +392,23 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
             ),
           ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          child: Material(
-            color: AppTheme.primary,
-            borderRadius: BorderRadius.circular(28),
-            elevation: 2,
-            shadowColor: AppTheme.primary.withValues(alpha: 0.4),
-            child: InkWell(
-              onTap: () => _showAddCategory(context),
-              borderRadius: BorderRadius.circular(28),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_circle_outline_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                    SizedBox(width: 12),
-                    Text(
-                      "Yangi kategoriya qo'shish",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+          child: SizedBox(
+            width: double.infinity,
+            height: 36,
+            child: FilledButton.icon(
+              onPressed: () => _showAddCategory(context),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text(
+                "Yangi kategoriya qo'shish",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),

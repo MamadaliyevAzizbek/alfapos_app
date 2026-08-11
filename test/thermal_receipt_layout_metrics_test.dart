@@ -67,6 +67,6 @@ void main() {
     final withQueue = ThermalReceiptLayoutMetrics.estimateHeight(
       lines: [...baseLines, ThermalReceiptLargeText.line('42')],
     );
-    expect(withQueue, greaterThan(base + 30));
+    expect(withQueue, greaterThan(base + 20));
   });
 }

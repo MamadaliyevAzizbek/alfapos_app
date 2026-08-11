@@ -89,10 +89,10 @@ class _EditCategorySheetBodyState extends State<_EditCategorySheetBody> {
       final picker = ImagePicker();
       final xFile = await picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 88,
-        requestFullMetadata: false,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
+        requestFullMetadata: true,
       );
       if (!mounted || xFile == null) return;
       final persisted = await ProductImageUpload.persistFromXFile(xFile);

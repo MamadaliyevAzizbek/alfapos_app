@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../core/constants.dart';
 import '../core/seller_preferences.dart';
 import '../core/theme.dart';
+import '../services/app_data_sync.dart';
 import '../utils/platform_layout.dart';
 import '../utils/pos_navigation.dart';
 import 'asosiy_screen.dart';
@@ -33,6 +34,8 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   final Set<int> _builtTabs = {0};
+  final _menuHostKey = GlobalKey<_MenuTabHostState>();
+  final List<Widget?> _tabCache = List<Widget?>.filled(5, null);
 
   @override
   void initState() {
@@ -44,7 +47,10 @@ class _MainShellState extends State<MainShell> {
         _currentIndex = 2;
       });
     };
-    WidgetsBinding.instance.addPostFrameCallback((_) => syncSellerNameFromApi());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      syncSellerNameFromApi();
+      AppDataSync.warmAll();
+    });
   }
 
   @override
@@ -55,7 +61,12 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  Widget _screenAt(int index) {
+  Widget _cachedTab(int index) {
+    if (!_builtTabs.contains(index)) return const SizedBox.shrink();
+    return _tabCache[index] ??= _createTab(index);
+  }
+
+  Widget _createTab(int index) {
     switch (index) {
       case 0:
         return const AsosiyScreen();
@@ -66,10 +77,24 @@ class _MainShellState extends State<MainShell> {
       case 3:
         return TranzaksiyalarScreen(tabIndex: 3, currentIndex: _currentIndex);
       case 4:
-        return MenuScreen(onLogout: widget.onLogout);
+        return _MenuTabHost(key: _menuHostKey, onLogout: widget.onLogout);
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  bool get _menuCanPop =>
+      _currentIndex == 4 && (_menuHostKey.currentState?.canPop ?? false);
+
+  void _selectTab(int index) {
+    if (_currentIndex == index && index == 4) {
+      _menuHostKey.currentState?.popToRoot();
+      return;
+    }
+    setState(() {
+      _builtTabs.add(index);
+      _currentIndex = index;
+    });
   }
 
   @override
@@ -92,10 +117,16 @@ class _MainShellState extends State<MainShell> {
         ? systemBottom + 2.0
         : (systemBottom > 0 ? systemBottom : 4.0);
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_menuCanPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _menuHostKey.currentState?.pop();
+      },
+      child: Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: List.generate(5, (i) => _builtTabs.contains(i) ? _screenAt(i) : const SizedBox.shrink()),
+        children: List.generate(5, _cachedTab),
       ),
       bottomNavigationBar: ClipRect(
         child: _navUsesBackdropBlur
@@ -105,6 +136,7 @@ class _MainShellState extends State<MainShell> {
               )
             : _buildNavBar(navTopPad, navBottomPad, compactNav, iconOnlyNav, frosted: false),
       ),
+    ),
     );
   }
 
@@ -162,10 +194,7 @@ class _MainShellState extends State<MainShell> {
       selected: selected,
       button: true,
       child: InkWell(
-        onTap: () => setState(() {
-          _builtTabs.add(index);
-          _currentIndex = index;
-        }),
+        onTap: () => _selectTab(index),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: iconOnly ? 2 : 2, vertical: iconOnly ? 2 : 2),
@@ -200,6 +229,41 @@ class _MainShellState extends State<MainShell> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Menu tab navigator — IndexedStack rebuildida qayta yaratilmaydi.
+class _MenuTabHost extends StatefulWidget {
+  final VoidCallback? onLogout;
+
+  const _MenuTabHost({super.key, this.onLogout});
+
+  @override
+  State<_MenuTabHost> createState() => _MenuTabHostState();
+}
+
+class _MenuTabHostState extends State<_MenuTabHost> {
+  final _navKey = GlobalKey<NavigatorState>();
+
+  bool get canPop => _navKey.currentState?.canPop() ?? false;
+
+  void pop() {
+    final nav = _navKey.currentState;
+    if (nav != null && nav.canPop()) nav.pop();
+  }
+
+  void popToRoot() {
+    _navKey.currentState?.popUntil((route) => route.isFirst);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Navigator(
+      key: _navKey,
+      onGenerateRoute: (_) => MaterialPageRoute(
+        builder: (_) => MenuScreen(onLogout: widget.onLogout),
       ),
     );
   }

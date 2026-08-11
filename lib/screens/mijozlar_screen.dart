@@ -641,6 +641,61 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
     }
   }
 
+  void _showGroupActionsSheet(Map<String, dynamic> group) {
+    IosStyleModals.showSheet<void>(
+      context: context,
+      showGrabber: true,
+      child: Builder(
+        builder: (sheetContext) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Amallar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              ),
+            ),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.edit_rounded, color: AppTheme.primary, size: 22),
+              ),
+              title: const Text('Tahrirlash'),
+              titleTextStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openGroupForm(group: group);
+              },
+            ),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
+              ),
+              title: Text("O'chirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _confirmDeleteGroup(group);
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildGroupActionMenu(Map<String, dynamic> group) {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert, size: 24, color: AppTheme.textSecondary),
@@ -1107,13 +1162,21 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
           ),
           if (_mobileTab == 1) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
               child: SizedBox(
                 width: double.infinity,
+                height: 36,
                 child: FilledButton.icon(
                   onPressed: _groupsLoading ? null : () => _openGroupForm(),
-                  icon: const Icon(Icons.group_add_rounded),
-                  label: const Text("Guruh qo'shish"),
+                  icon: const Icon(Icons.group_add_rounded, size: 18),
+                  label: const Text(
+                    "Guruh qo'shish",
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                 ),
               ),
             ),
@@ -1150,8 +1213,10 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
               onSubmitted: (_) => _applySearch(),
               decoration: InputDecoration(
                 hintText: 'Mijoz ismi yoki telefon',
+                isDense: true,
                 filled: true,
                 fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
                 suffixIcon: _search.isNotEmpty
                     ? IconButton(
@@ -1170,46 +1235,22 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                _filterChip('Barcha guruhlar', _filters.groupId == 'all', () {
-                  _applyFilters(CustomersListFilters(
-                    groupId: 'all',
-                    statusId: _filters.statusId,
-                    debtBalance: _filters.debtBalance,
-                  ));
-                }),
-                const SizedBox(width: 6),
-                _filterChip('Qarzi bor', _filters.debtBalance == 'has_debt', () {
-                  _applyFilters(CustomersListFilters(
-                    groupId: _filters.groupId,
-                    statusId: _filters.statusId,
-                    debtBalance: _filters.debtBalance == 'has_debt' ? 'all' : 'has_debt',
-                  ));
-                }),
-                const SizedBox(width: 6),
-                _filterChip('Balansi bor', _filters.debtBalance == 'has_balance', () {
-                  _applyFilters(CustomersListFilters(
-                    groupId: _filters.groupId,
-                    statusId: _filters.statusId,
-                    debtBalance: _filters.debtBalance == 'has_balance' ? 'all' : 'has_balance',
-                  ));
-                }),
-              ],
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
             child: SizedBox(
               width: double.infinity,
+              height: 36,
               child: FilledButton.icon(
                 onPressed: () => _openAddCustomer(),
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text("Yangi mijoz qo'shish"),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                label: const Text(
+                  "Yangi mijoz qo'shish",
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
           ),
@@ -1228,7 +1269,7 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
             label,
             textAlign: TextAlign.center,
@@ -1273,25 +1314,65 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
           final title = CustomerGroupsListParser.groupTitle(g);
           final discount = CustomerGroupsListParser.groupDiscount(g);
           final isDefault = CustomerGroupsListParser.groupIsDefault(g);
-          return Container(
+          return Card(
             margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.divider),
-            ),
-            child: ListTile(
-              title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(
-                'Chegirma: ${_formatGroupDiscount(discount)}${isDefault ? ' • Standart' : ''}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: discount == 0
-                      ? AppTheme.textSecondary
-                      : (discount < 0 ? const Color(0xFF16A34A) : const Color(0xFFDC2626)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+              child: SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.groups_rounded, color: AppTheme.primary, size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, height: 1.15),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Chegirma: ${_formatGroupDiscount(discount)}${isDefault ? ' • Standart' : ''}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.15,
+                              color: discount == 0
+                                  ? AppTheme.textSecondary
+                                  : (discount < 0 ? const Color(0xFF16A34A) : const Color(0xFFDC2626)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: IconButton(
+                        tooltip: 'Amallar',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 20),
+                        onPressed: () => _showGroupActionsSheet(g),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              trailing: _buildGroupActionMenu(g),
             ),
           );
         },
@@ -1351,29 +1432,170 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
   Widget _mobileCard(Client c) {
     final debt = (c.dueAmount ?? 0).round();
     final balance = (c.balance ?? 0).round();
-    return Container(
+    final group = _groupTitleFor(c);
+    final subtitle = [
+      if ((c.phone ?? '').trim().isNotEmpty) c.phone!.trim(),
+      if (group != '—') group,
+    ].join(' · ');
+    final moneyLabel = debt > 0
+        ? _fmtAmount(debt)
+        : (balance != 0 ? _fmtAmount(balance) : null);
+    final moneyColor = debt > 0 ? const Color(0xFFDC2626) : const Color(0xFF16A34A);
+
+    return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.divider),
-      ),
-      child: ListTile(
+      child: InkWell(
         onTap: () => _openDetail(c),
-        title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+          child: SizedBox(
+            height: 48,
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.person_rounded, color: AppTheme.primary, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          height: 1.15,
+                        ),
+                      ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (moneyLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    moneyLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: moneyColor,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: IconButton(
+                    tooltip: 'Amallar',
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 20),
+                    onPressed: () => _showClientActionsSheet(c),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showClientActionsSheet(Client c) {
+    final hasDebt = (c.dueAmount ?? 0) > 0;
+    IosStyleModals.showSheet<void>(
+      context: context,
+      showGrabber: true,
+      child: Builder(
+        builder: (sheetContext) => Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (c.phone != null && c.phone!.isNotEmpty) Text(c.phone!),
-            Text('Guruh: ${_groupTitleFor(c)}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            if (_supplierTitleFor(c) != '—')
-              Text('Taminotchi: ${_supplierTitleFor(c)}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            if (debt > 0)
-              Text('Qarz: ${_fmtAmount(debt)}', style: const TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w600)),
-            if (balance != 0) Text('Balans: ${_fmtAmount(balance)}', style: const TextStyle(color: Color(0xFF16A34A))),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Amallar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              ),
+            ),
+            if (hasDebt)
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.credit_card_rounded, color: Colors.blue.shade700, size: 22),
+                ),
+                title: const Text(Strings.umumiyTolash),
+                titleTextStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _openDetail(c, openPayment: true);
+                },
+              ),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.edit_rounded, color: AppTheme.primary, size: 22),
+              ),
+              title: const Text('Tahrirlash'),
+              titleTextStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showEditCustomer(c);
+              },
+            ),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
+              ),
+              title: Text("O'chirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _confirmDelete(c);
+              },
+            ),
+            const SizedBox(height: 16),
           ],
         ),
-        trailing: _buildActionMenu(c),
       ),
     );
   }
@@ -1508,15 +1730,4 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
     );
   }
 
-  Widget _filterChip(String label, bool selected, VoidCallback onTap) {
-    return FilterChip(
-      label: Text(label, style: TextStyle(fontSize: 12, color: selected ? Colors.white : AppTheme.textPrimary)),
-      selected: selected,
-      onSelected: (_) => onTap(),
-      selectedColor: AppTheme.primary,
-      backgroundColor: Colors.white,
-      showCheckmark: false,
-      side: const BorderSide(color: AppTheme.divider),
-    );
-  }
 }

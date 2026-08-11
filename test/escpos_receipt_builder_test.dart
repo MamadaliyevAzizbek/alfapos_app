@@ -190,19 +190,33 @@ void main() {
     }
 
     expect(feedBeforeCut(restaurantBytes), feedBeforeCut(shopBytes));
-    expect(feedBeforeCut(restaurantBytes), 4);
-    // GS ! — navbat va umumiy summa kattalashtirish.
+    expect(feedBeforeCut(restaurantBytes), 2);
+    // GS ! — faqat navbat raqami kattalashtiriladi.
     expect(restaurantBytes.contains(29), isTrue);
-    expect(shopBytes.contains(29), isTrue);
   });
 
-  test('standard receipt leaves extra bottom feed before cut', () async {
+  test('standard receipt uses minimal feed before cut', () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
     );
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 4);
+    expect(bytes[feedIndex + 1], 2);
+  });
+
+  test('XP-80C uses 3-line feed and compact spacing, not g.cut waste', () async {
+    final bytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
+      printerName: 'Xprinter XP-80C',
+    );
+    final feedIndex = bytes.lastIndexOf(0x64);
+    expect(feedIndex, greaterThan(0));
+    expect(bytes[feedIndex - 1], 0x1B);
+    expect(bytes[feedIndex + 1], 3);
+    expect(bytes[feedIndex + 2], 0x1D); // GS
+    expect(bytes[feedIndex + 3], 0x56); // V
+    expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed
+    expect(bytes, containsAllInOrder([27, 51, 24]));
   });
 }

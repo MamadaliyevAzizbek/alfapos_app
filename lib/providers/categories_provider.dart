@@ -176,9 +176,17 @@ class CategoriesProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> warmFromCache() async {
+    await resetForCompanyChange();
+  }
+
+  Future<void> refreshFromServer({bool force = false}) async {
+    await loadFromApiIfStale(force: force);
+  }
+
   /// Diskdan tez, API ixtiyoriy.
   Future<void> loadFromStorage({bool refreshInBackground = true}) async {
-    await resetForCompanyChange();
+    await warmFromCache();
     if (refreshInBackground) {
       unawaited(loadFromApiIfStale());
     }

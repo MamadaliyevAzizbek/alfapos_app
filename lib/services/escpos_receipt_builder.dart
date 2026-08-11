@@ -8,8 +8,10 @@ import '../utils/escpos_text_codec.dart';
 import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
+import '../utils/thermal_receipt_total_text.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
+import '../utils/thermal_receipt_logo_fit.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
 import 'printer_paper_profile.dart';
 
@@ -17,11 +19,8 @@ import 'printer_paper_profile.dart';
 class EscPosReceiptBuilder {
   EscPosReceiptBuilder._();
 
-  static const int _standardBottomFeedLines = 4;
-  static const int _compactBottomFeedLines = 3;
-
   static CapabilityProfile? _cachedProfile;
-  static String? _cachedLogoPath;
+  static String? _cachedLogoKey;
   static img.Image? _cachedLogoImage;
 
   static Future<CapabilityProfile> _profile() async {
@@ -59,10 +58,7 @@ class EscPosReceiptBuilder {
     String? printerName,
   }) async {
     final profile = await _profile();
-    // Faqat ba'zi printer modellari uchun ixcham layout — restoran alohida emas.
-    final compactLayout = PrinterPaperProfile.needsCompactLayout(printerName);
-    final rowGap = compactLayout ? 0 : 6;
-    final g = Generator(paperSize, profile, spaceBetweenRows: rowGap);
+    final g = Generator(paperSize, profile, spaceBetweenRows: 0);
     final bytes = <int>[];
 
     final maxWidth = paperSize == PaperSize.mm58
@@ -75,9 +71,9 @@ class EscPosReceiptBuilder {
 
     bytes.addAll(g.reset());
     bytes.addAll(g.setGlobalCodeTable(codeTable));
-    if (compactLayout) {
-      bytes.addAll(PrinterPaperProfile.fullWidthMarginBytes());
-    }
+    bytes.addAll(PrinterPaperProfile.fullWidthMarginBytes());
+    final xp80 = PrinterPaperProfile.isXprinter80(printerName);
+    final cutFeed = PrinterPaperProfile.feedBeforeCut(printerName);
 
     if (openCashDrawer) {
       bytes.addAll(g.drawer(pin: cashDrawerPin));
@@ -86,21 +82,21 @@ class EscPosReceiptBuilder {
     if (cfg.showLogo &&
         cfg.logoFilePath != null &&
         cfg.logoFilePath!.isNotEmpty) {
-      final logoMaxW = paperSize == PaperSize.mm58 ? 320 : paperSize.width;
-      final logoImage = await _loadLogoImage(cfg.logoFilePath!, maxW: logoMaxW);
+      final mm58 = paperSize == PaperSize.mm58;
+      final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
       if (logoImage != null) {
-        bytes.addAll(g.image(logoImage, align: PosAlign.center));
-        if (!compactLayout) {
-          bytes.addAll(g.feed(1));
+        // XP-80C: GS v 0 — qator oralig‘ini buzmaydi. Boshqa: ESC * + keyin ESC 3 24.
+        if (xp80) {
+          bytes.addAll(g.imageRaster(logoImage, align: PosAlign.center));
+        } else {
+          bytes.addAll(g.image(logoImage, align: PosAlign.center));
         }
+        bytes.addAll(PrinterPaperProfile.restoreCompactSpacingBytes());
       }
     }
 
     for (final line in wrapped) {
       if (line.isEmpty) {
-        if (!compactLayout) {
-          bytes.addAll(g.feed(1));
-        }
         continue;
       }
       if (ThermalReceiptProductTitleText.isGapLine(line)) {
@@ -160,6 +156,19 @@ class EscPosReceiptBuilder {
         continue;
       }
 
+      if (ThermalReceiptTotalText.isTotalLine(line)) {
+        bytes.addAll(
+          _printTotalBlock(
+            g,
+            ThermalReceiptTotalText.parse(line),
+            codeTable: codeTable,
+            codePage: codePage,
+            maxWidth: maxWidth,
+          ),
+        );
+        continue;
+      }
+
       if (ThermalReceiptLargeText.isLargeLine(line)) {
         final text = ThermalReceiptLargeText.unwrap(line);
         final compactPaper = paperSize == PaperSize.mm58;
@@ -200,18 +209,25 @@ class EscPosReceiptBuilder {
           ),
         );
       } else {
-        final isTotal = _isTotalAmountLine(text);
-        if (ReceiptStrikethroughText.containsMarker(text)) {
+        final plainTotal = ThermalReceiptTotalText.tryParsePlain(text);
+        if (plainTotal != null) {
+          bytes.addAll(
+            _printTotalBlock(
+              g,
+              plainTotal,
+              codeTable: codeTable,
+              codePage: codePage,
+              maxWidth: maxWidth,
+            ),
+          );
+        } else if (ReceiptStrikethroughText.containsMarker(text)) {
           bytes.addAll(
             _printMarkedLine(
               g,
               text,
               codeTable: codeTable,
               codePage: codePage,
-              maxWidth: isTotal ? (maxWidth ~/ 2).clamp(12, maxWidth) : maxWidth,
-              bold: isTotal,
-              height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
-              width: isTotal ? PosTextSize.size2 : PosTextSize.size1,
+              maxWidth: maxWidth,
             ),
           );
         } else {
@@ -221,45 +237,43 @@ class EscPosReceiptBuilder {
               styles: PosStyles(
                 codeTable: codeTable,
                 fontType: PosFontType.fontA,
-                bold: isTotal,
-                // Do‘kon va restoran: umumiy summa 2×2 (keng va baland).
-                height: isTotal ? PosTextSize.size2 : PosTextSize.size1,
-                width: isTotal ? PosTextSize.size2 : PosTextSize.size1,
               ),
-              maxCharsPerLine:
-                  isTotal ? (maxWidth ~/ 2).clamp(12, maxWidth) : maxWidth,
+              maxCharsPerLine: maxWidth,
             ),
           );
         }
       }
     }
 
-    if (compactLayout) {
-      bytes.addAll(
-        PrinterPaperProfile.minimalCutBytes(
-          feedLines: _compactBottomFeedLines,
-        ),
-      );
-    } else {
-      // Totals/footer sometimes reached the cutter too early on some XPrinter models.
-      bytes.addAll(g.feed(_standardBottomFeedLines));
-      bytes.addAll(g.cut());
-    }
+    bytes.addAll(
+      PrinterPaperProfile.minimalCutBytes(feedLines: cutFeed),
+    );
     return bytes;
   }
 
-  /// Umumiy summa qatori (do‘kon / restoran) — kattalashtirish uchun.
-  static bool _isTotalAmountLine(String text) {
-    final lower = text.toLowerCase().trim();
-    if (lower.contains('umumiy summa')) return true;
-    if (lower.contains('итого')) return true;
-    // «Jami - …» / «Jami: …», lekin «Jami og'irlik» emas.
-    if (lower.startsWith('jami') &&
-        !lower.contains('og') &&
-        !lower.contains('оғ')) {
-      return true;
-    }
-    return false;
+  /// Termal Font A, 1×1, boldsiz — to‘lov qatorlari bilan bir xil shrift.
+  static List<int> _printTotalBlock(
+    Generator g,
+    ({String label, String value}) total, {
+    required String codeTable,
+    required String codePage,
+    required int maxWidth,
+  }) {
+    final label = total.label.trim();
+    final value = total.value.trim();
+    final text = [
+      if (label.isNotEmpty) label,
+      if (value.isNotEmpty) value,
+    ].join(' - ');
+    if (text.isEmpty) return const [];
+    return g.textEncoded(
+      EscPosTextCodec.encodeSync(text, codePage: codePage),
+      styles: PosStyles(
+        codeTable: codeTable,
+        fontType: PosFontType.fontA,
+      ),
+      maxCharsPerLine: maxWidth,
+    );
   }
 
   static List<int> _printMarkedLine(
@@ -323,25 +337,26 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
-  static Future<img.Image?> _loadLogoImage(String path, {required int maxW}) async {
-    if (_cachedLogoPath == path && _cachedLogoImage != null) {
-      final decoded = _cachedLogoImage!;
-      return decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
+  static Future<img.Image?> _loadLogoImage(String path, {required bool mm58}) async {
+    final key = '$path|${mm58 ? 58 : 80}';
+    if (_cachedLogoKey == key && _cachedLogoImage != null) {
+      return _cachedLogoImage;
     }
     try {
       final f = File(path);
       if (!await f.exists()) return null;
       final decoded = img.decodeImage(await f.readAsBytes());
       if (decoded == null) return null;
-      _cachedLogoPath = path;
-      _cachedLogoImage = decoded;
-      return decoded.width > maxW ? img.copyResize(decoded, width: maxW) : decoded;
+      final fitted = ThermalReceiptLogoFit.fit(decoded, mm58: mm58);
+      _cachedLogoKey = key;
+      _cachedLogoImage = fitted;
+      return fitted;
     } catch (_) {}
     return null;
   }
 
   static void invalidateLogoCache() {
-    _cachedLogoPath = null;
+    _cachedLogoKey = null;
     _cachedLogoImage = null;
   }
 }

@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/desktop_runtime.dart';
@@ -49,6 +52,55 @@ class ProductImageUpload {
     return RegExp(r'^\.(jpe?g|png|webp|gif)$').hasMatch(ext) ? ext : fallback;
   }
 
+  static const int uploadMaxSide = 1280;
+  static const int uploadJpegQuality = 80;
+  static const String normalizedSuffix = '_n.jpg';
+
+  /// EXIF oriyentatsiyani pikselga yozadi va uzun tomonni [maxSide] gacha qisqartiradi.
+  static img.Image bakeAndResizeForUpload(img.Image src, {int maxSide = uploadMaxSide}) {
+    var out = img.bakeOrientation(src);
+    final side = out.width > out.height ? out.width : out.height;
+    if (side > maxSide) {
+      out = img.copyResize(
+        out,
+        width: out.width >= out.height ? maxSide : null,
+        height: out.height > out.width ? maxSide : null,
+        interpolation: img.Interpolation.linear,
+      );
+    }
+    return out;
+  }
+
+  /// Isolate/testda: JPEG/PNG baytlarni tik turgan, ixcham JPEG qiladi.
+  static Uint8List? normalizeJpegBytesSync(Uint8List bytes) {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
+    final baked = bakeAndResizeForUpload(decoded);
+    return Uint8List.fromList(img.encodeJpg(baked, quality: uploadJpegQuality));
+  }
+
+  static Future<Uint8List?> normalizeJpegBytes(Uint8List bytes) {
+    return compute(normalizeJpegBytesSync, bytes);
+  }
+
+  static bool _isNormalizedPath(String path) {
+    return path.replaceAll('\\', '/').toLowerCase().endsWith(normalizedSuffix);
+  }
+
+  static Future<String?> _writeNormalizedJpeg(Uint8List jpeg) async {
+    final imagesDir = await _imagesDirectory();
+    final dest = File('${imagesDir.path}/img_${DateTime.now().millisecondsSinceEpoch}$normalizedSuffix');
+    await dest.writeAsBytes(jpeg, flush: true);
+    return dest.path;
+  }
+
+  /// Kameradan kelgan yonboshi JPEG ni tiklab, yuklash uchun kichraytiradi.
+  static Future<String?> persistNormalizedBytes(Uint8List bytes) async {
+    final jpeg = await normalizeJpegBytes(bytes);
+    if (jpeg == null) return null;
+    return _writeNormalizedJpeg(jpeg);
+  }
+
   /// Windows/macOS: tizim fayl tanlovchi (image_picker dan ishonchliroq).
   static Future<String?> pickDesktopImageFile() async {
     if (!isDesktopNative) return null;
@@ -64,8 +116,15 @@ class ProductImageUpload {
     return persistLocalFile(path);
   }
 
-  /// Galereya/kamera (XFile) — mobil uchun eng ishonchli (`saveTo`).
+  /// Galereya/kamera (XFile) — EXIF tiklanadi, JPEG qisqartiriladi.
   static Future<String?> persistFromXFile(XFile xFile) async {
+    try {
+      final bytes = await xFile.readAsBytes();
+      if (bytes.isNotEmpty) {
+        final normalized = await persistNormalizedBytes(bytes);
+        if (normalized != null) return normalized;
+      }
+    } catch (_) {}
     final imagesDir = await _imagesDirectory();
     final ext = _extensionFromPath(xFile.path);
     final dest = File('${imagesDir.path}/img_${DateTime.now().millisecondsSinceEpoch}$ext');
@@ -82,8 +141,17 @@ class ProductImageUpload {
     if (resolved == null) return null;
     final src = File(resolved);
     if (!await src.exists()) return null;
-    if (_isUnderAppImageDir(resolved)) return resolved;
+    if (_isNormalizedPath(resolved) && _isUnderAppImageDir(resolved)) return resolved;
 
+    try {
+      final bytes = await src.readAsBytes();
+      if (bytes.isNotEmpty) {
+        final normalized = await persistNormalizedBytes(bytes);
+        if (normalized != null) return normalized;
+      }
+    } catch (_) {}
+
+    if (_isUnderAppImageDir(resolved)) return resolved;
     final imagesDir = await _imagesDirectory();
     final safeExt = _extensionFromPath(resolved);
     final dest = File('${imagesDir.path}/img_${DateTime.now().millisecondsSinceEpoch}$safeExt');
@@ -91,13 +159,13 @@ class ProductImageUpload {
     return dest.path;
   }
 
-  /// Serverga yuborishdan oldin: mavjud yo'l yoki nusxa.
+  /// Serverga yuborishdan oldin: tik JPEG, kichik hajm.
   static Future<String?> prepareUploadPath(String? imageUrl) async {
     final local = resolveLocalPath(imageUrl);
     if (local == null) return null;
     final file = File(local);
     if (!await file.exists()) return null;
-    if (_isUnderAppImageDir(local)) return local;
+    if (_isNormalizedPath(local) && _isUnderAppImageDir(local)) return local;
     return persistLocalFile(local);
   }
 }

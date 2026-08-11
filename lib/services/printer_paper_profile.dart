@@ -9,11 +9,30 @@ abstract class PrinterPaperProfile {
     'u80',
   ];
 
+  /// Xprinter XP-80 / XP-80C / XP-80C USB.
+  static bool isXprinter80(String? printerName) {
+    final n = printerName?.trim().toLowerCase() ?? '';
+    if (n.isEmpty) return false;
+    return n.contains('xprinter') ||
+        n.contains('xp-80') ||
+        n.contains('xp 80') ||
+        n.contains('xp80') ||
+        n.contains('xp-80c') ||
+        n.contains('80c');
+  }
+
   /// SNBC / BTP kabi printerlarda chek atrofida katta bo‘sh joy qolmasin.
   static bool needsCompactLayout(String? printerName) {
     final n = printerName?.trim().toLowerCase() ?? '';
     if (n.isEmpty) return false;
+    if (isXprinter80(n)) return true;
     return _compactPatterns.any(n.contains);
+  }
+
+  /// XP-80C pichoq ~15 mm pastda: 3 qator yetadi, 5+ qator isrof.
+  static int feedBeforeCut(String? printerName) {
+    if (isXprinter80(printerName)) return 3;
+    return 2;
   }
 
   /// Chop etish maydoni: chap margin 0, to‘liq 80mm kenglik (576 nuqta).
@@ -22,6 +41,9 @@ abstract class PrinterPaperProfile {
         29, 87, 0x40, 2, // GS W 576 — print kengligi
         27, 51, 24, // ESC 3 24 — ixcham qator oralig‘i
       ];
+
+  /// Logo `image()` dan keyin ESC 2 qator oralig‘ini kengaytiradi — qayta ixcham.
+  static List<int> restoreCompactSpacingBytes() => const [27, 51, 24];
 
   /// Kesishdan oldin minimal feed (cut() ichidagi 5 qator emas).
   static List<int> minimalCutBytes({

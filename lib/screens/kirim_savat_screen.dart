@@ -16,12 +16,12 @@ class KirimSavatScreen extends StatefulWidget {
   State<KirimSavatScreen> createState() => _KirimSavatScreenState();
 }
 
-class _EditCartValues {
+class ReceiveCartEditValues {
   final num quantity;
   final int purchasePriceUzs;
   final int sellPriceUzs;
 
-  const _EditCartValues({
+  const ReceiveCartEditValues({
     required this.quantity,
     required this.purchasePriceUzs,
     required this.sellPriceUzs,
@@ -152,13 +152,13 @@ class _KirimSavatScreenState extends State<KirimSavatScreen> {
   Future<void> _editItem(ReceiveCartItem item) async {
     final productId = item.product.id;
     _session.pauseNotify();
-    _EditCartValues? values;
+    ReceiveCartEditValues? values;
     try {
-      values = await IosStyleModals.showSheet<_EditCartValues?>(
+      values = await IosStyleModals.showSheet<ReceiveCartEditValues?>(
         context: context,
         isScrollControlled: true,
         showGrabber: true,
-        child: _ReceiveCartItemEditSheet(item: item),
+        child: ReceiveCartItemEditSheet(item: item),
       );
     } catch (e) {
       _session.resumeNotify();
@@ -188,16 +188,16 @@ class _KirimSavatScreenState extends State<KirimSavatScreen> {
   }
 }
 
-class _ReceiveCartItemEditSheet extends StatefulWidget {
-  const _ReceiveCartItemEditSheet({required this.item});
+class ReceiveCartItemEditSheet extends StatefulWidget {
+  const ReceiveCartItemEditSheet({super.key, required this.item});
 
   final ReceiveCartItem item;
 
   @override
-  State<_ReceiveCartItemEditSheet> createState() => _ReceiveCartItemEditSheetState();
+  State<ReceiveCartItemEditSheet> createState() => _ReceiveCartItemEditSheetState();
 }
 
-class _ReceiveCartItemEditSheetState extends State<_ReceiveCartItemEditSheet> {
+class _ReceiveCartItemEditSheetState extends State<ReceiveCartItemEditSheet> {
   late final TextEditingController _qtyCtrl;
   late final TextEditingController _purchaseCtrl;
   late final TextEditingController _sellCtrl;
@@ -255,7 +255,7 @@ class _ReceiveCartItemEditSheetState extends State<_ReceiveCartItemEditSheet> {
     }
     Navigator.pop(
       context,
-      _EditCartValues(
+      ReceiveCartEditValues(
         quantity: qty,
         purchasePriceUzs: purchase,
         sellPriceUzs: sell,

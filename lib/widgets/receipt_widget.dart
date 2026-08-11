@@ -10,6 +10,7 @@ import '../utils/thermal_receipt_product_title_text.dart';
 import '../utils/product_weight.dart';
 import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
+import '../utils/thermal_receipt_logo_fit.dart';
 import 'receipt_logo_image.dart';
 
 /// Bir qator chek qatori: mahsulot, miqdor, narx, summa
@@ -195,11 +196,12 @@ class ReceiptWidget extends StatelessWidget {
             Center(
               child: ReceiptLogoImage(
                 path: design.logoFilePath!,
-                height: 56,
+                width: ThermalReceiptLogoFit.previewWidth,
+                height: ThermalReceiptLogoFit.previewHeight,
                 fit: BoxFit.contain,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
           ],
           Center(
             child: Text(
@@ -478,7 +480,7 @@ class ReceiptWidget extends StatelessWidget {
       ],
       ..._buildSummaryLines(
         [totalRow],
-        headerStyle.copyWith(fontSize: 26, fontWeight: FontWeight.w900, height: 1.2),
+        headerStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w500, height: 1.2),
         labelWidth: cols.labelWidth,
         valueWidth: cols.valueWidth,
         bold: true,

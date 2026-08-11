@@ -4,6 +4,7 @@ import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
+import 'thermal_receipt_total_text.dart';
 import 'thermal_receipt_product_title_text.dart';
 import 'product_weight.dart';
 
@@ -424,28 +425,15 @@ class ThermalReceiptFormatter {
         lines.add(sep);
       }
 
-      lines.addAll(
-        ThermalReceiptLineWrap.formatEqualsRows(
-          totalRows,
-          separator: summarySep,
-          labelWidth: cols.labelWidth,
-          valueWidth: cols.valueWidth,
-          boldIndices: const {0},
-        ),
-      );
+      for (final row in totalRows) {
+        lines.add(ThermalReceiptTotalText.line(row.label, row.value));
+      }
     } else {
-      final totalRows = <({String label, String value})>[
-        (label: config.totalLabel, value: amountLabel(d.totalAmount)),
-      ];
       if (config.showItemSeparator) {
         lines.add(sep);
       }
-      lines.addAll(
-        ThermalReceiptLineWrap.formatEqualsRows(
-          totalRows,
-          separator: summarySep,
-          boldIndices: const {0},
-        ),
+      lines.add(
+        ThermalReceiptTotalText.line(config.totalLabel, amountLabel(d.totalAmount)),
       );
     }
 
@@ -467,9 +455,6 @@ class ThermalReceiptFormatter {
       lines.add('');
       _appendLeftLine(lines, "To'lov hali amalga oshirilmagan");
     }
-
-    // Bottom buffer so the last total/footer line is fully advanced before cut.
-    lines.add('');
   }
 
   static bool _isTableHeaderBlock(List<String> raw, int i) {

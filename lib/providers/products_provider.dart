@@ -36,8 +36,6 @@ class ProductsProvider extends ChangeNotifier {
   /// Birinchi marta aniqlangan default filial (har safar API chaqirmaslik uchun)
   bool _defaultBranchResolved = false;
   int? _cachedDefaultBranchId;
-  /// Serverga ketma-ket yuborish (navbat).
-  bool _syncDrainActive = false;
   /// Parallel loadFromApi bo‘lmasin (429 oldini olish).
   Future<void>? _loadFromApiInFlight;
   /// Bir vaqtda faqat bitta yangi mahsulot POST (UI race / qayta bosishdan himoya).
@@ -61,11 +59,13 @@ class ProductsProvider extends ChangeNotifier {
     _cachedDefaultBranchId = null;
     _controller.add(items);
     notifyListeners();
-    unawaited(ProductCatalogStorage.clearSyncMeta());
+    unawaited(ProductCatalogStorage.clearAll());
   }
 
-  /// Avval diskdan (tez), keyin ixtiyoriy API dan yangilash (fon).
-  Future<void> loadFromStorage({bool refreshInBackground = true}) async {
+  Future<void> clearSyncFingerprint() => ProductCatalogStorage.clearSyncMeta();
+
+  /// Diskdan tez — tarmoq yo‘q.
+  Future<void> warmFromCache() async {
     final cached = await ProductCatalogStorage.loadCatalog();
     if (cached.isNotEmpty) {
       _items = cached;
@@ -73,10 +73,14 @@ class ProductsProvider extends ChangeNotifier {
       _controller.add(items);
       notifyListeners();
     }
+  }
+
+  /// Avval diskdan (tez), keyin ixtiyoriy API dan yangilash (fon).
+  Future<void> loadFromStorage({bool refreshInBackground = true}) async {
+    await warmFromCache();
     if (refreshInBackground) {
       unawaited(_refreshCatalogFromApi());
     }
-    unawaited(_drainSyncQueue());
   }
 
   /// Barcha mahsulotlar yuklanganiga ishonch hosil qilish (sahifalab).
@@ -93,13 +97,11 @@ class ProductsProvider extends ChangeNotifier {
     await _refreshCatalogFromApi();
   }
 
-  /// Navbatdagi mahsulotlarni serverga yuboradi, keyin serverdan to‘liq katalog.
+  /// Serverdan katalog (force=true — fingerprint va throttle o‘tkaziladi).
   Future<void> refreshFromServer({bool force = false}) async {
     if (force) {
       ApiSyncThrottle.invalidate('products_full_catalog');
-    }
-    await flushPendingSyncToServer();
-    if (force) {
+      await ProductCatalogStorage.clearSyncMeta();
       await loadFromApi(force: true);
       return;
     }
@@ -129,54 +131,6 @@ class ProductsProvider extends ChangeNotifier {
 
   static bool _isLocalOnlyProductId(String id) =>
       id.startsWith('local_') || int.tryParse(id) == null;
-
-  Future<void> _enqueueSync(Product product, {required bool isCreate, bool deleteImage = false}) async {
-    final queue = await ProductCatalogStorage.loadSyncQueue();
-    final idx = queue.indexWhere((j) => j.productId == product.id);
-    if (idx >= 0) {
-      final prev = queue[idx];
-      final stillLocal = _isLocalOnlyProductId(product.id);
-      queue[idx] = ProductSyncJob(
-        jobId: prev.jobId,
-        productId: product.id,
-        isCreate: prev.isCreate || isCreate || stillLocal,
-        deleteImage: deleteImage || prev.deleteImage,
-      );
-    } else {
-      queue.add(ProductSyncJob(
-        jobId: '${DateTime.now().millisecondsSinceEpoch}',
-        productId: product.id,
-        isCreate: isCreate || _isLocalOnlyProductId(product.id),
-        deleteImage: deleteImage,
-      ));
-    }
-    await ProductCatalogStorage.saveSyncQueue(queue);
-  }
-
-  /// Darhol lokal katalogga yozadi; serverga fon rejimida yuboradi.
-  Future<void> saveProductLocalFirst(
-    Product product, {
-    required bool isCreate,
-    bool deleteImage = false,
-  }) async {
-    if (!_loaded || _items.isEmpty) {
-      final cached = await ProductCatalogStorage.loadCatalog();
-      if (cached.isNotEmpty) {
-        _items = cached;
-        _loaded = true;
-      }
-    }
-    _assertBarcodesUnique(product);
-    var toSave = product;
-    final persistedImage = await ProductImageUpload.prepareUploadPath(product.imageUrl);
-    if (persistedImage != null) {
-      toSave = _withImageUrl(product, persistedImage);
-    }
-    _upsertCachedProduct(toSave);
-    await _persistCatalog();
-    await _enqueueSync(toSave, isCreate: isCreate, deleteImage: deleteImage);
-    unawaited(_drainSyncQueue());
-  }
 
   /// UI: avval serverga saqlash; muvaffaqiyatdan keyin lokal katalog yangilanadi.
   Future<Product> saveProductToServer(
@@ -209,7 +163,6 @@ class ProductsProvider extends ChangeNotifier {
         toSave = _withImageUrl(product, persistedImage);
       }
 
-      final oldId = toSave.id;
       final Product result;
       if (creating) {
         result = await _syncCreateToServer(toSave);
@@ -225,68 +178,11 @@ class ProductsProvider extends ChangeNotifier {
         result = getProductById(toSave.id) ?? toSave;
       }
 
-      await _removeSyncJobsForProduct(oldId);
-      await _removeSyncJobsForProduct(result.id);
       await _persistCatalog();
       unawaited(ProductCatalogSalesBridge.afterProductSaved(result));
       return result;
     } finally {
       if (creating) _serverCreateInFlight = false;
-    }
-  }
-
-  Future<void> _removeSyncJobsForProduct(String productId) async {
-    final queue = await ProductCatalogStorage.loadSyncQueue();
-    final next = queue.where((j) => j.productId != productId).toList();
-    if (next.length != queue.length) {
-      await ProductCatalogStorage.saveSyncQueue(next);
-    }
-  }
-
-  Future<void> _drainSyncQueue() async {
-    if (_syncDrainActive) return;
-    _syncDrainActive = true;
-    try {
-      await _ensureUnitsLoaded();
-      while (true) {
-        final queue = await ProductCatalogStorage.loadSyncQueue();
-        if (queue.isEmpty) break;
-        final job = queue.first;
-        final product = getProductById(job.productId);
-        if (product == null) {
-          queue.removeAt(0);
-          await ProductCatalogStorage.saveSyncQueue(queue);
-          continue;
-        }
-        try {
-          // Navbatdagi mahsulot ham dublikat bo‘lsa serverga yuborilmaydi.
-          _assertBarcodesUnique(product);
-          if (job.isCreate || _isLocalOnlyProductId(product.id)) {
-            await _syncCreateToServer(product);
-          } else {
-            await _syncUpdateToServer(product, deleteImage: job.deleteImage);
-          }
-          queue.removeAt(0);
-          await ProductCatalogStorage.saveSyncQueue(queue);
-          await _persistCatalog();
-        } on ApiException catch (e) {
-          if (e.statusCode == 422) {
-            queue.removeAt(0);
-            await ProductCatalogStorage.saveSyncQueue(queue);
-            assert(() {
-              // ignore: avoid_print
-              print('Sync navbat: dublikat shtrix kod — serverga yuborilmadi (${product.id})');
-              return true;
-            }());
-            continue;
-          }
-          break;
-        } catch (_) {
-          break;
-        }
-      }
-    } finally {
-      _syncDrainActive = false;
     }
   }
 
@@ -359,9 +255,6 @@ class ProductsProvider extends ChangeNotifier {
     _controller.add(items);
     notifyListeners();
   }
-
-  /// Sinxronlash tugmasi: navbatdagi create/edit serverga.
-  Future<void> flushPendingSyncToServer() => _drainSyncQueue();
 
   Product? _productFromSalesBarcodeResponse(Map<String, dynamic> res, String query) {
     final productsRaw = res['products'] as List<dynamic>? ?? [];
@@ -827,11 +720,11 @@ class ProductsProvider extends ChangeNotifier {
       final remoteMeta = ProductCatalogSyncMeta.fromApiPage(firstRes, firstRows);
       final localMeta = await ProductCatalogStorage.loadSyncMeta();
 
-      if (_items.isNotEmpty &&
+      if (!force &&
+          _items.isNotEmpty &&
           localMeta != null &&
           localMeta.matches(remoteMeta)) {
-        // Serverda count/qty/namuna o‘zgarmagan — to‘liq yuklash shart emas
-        // (hatto «Sinxronlash» force bo‘lsa ham).
+        // force=false: serverda count/qty/namuna o‘zgarmagan — to‘liq paging yo‘q.
         _loaded = true;
         await ProductCatalogStorage.saveSyncMeta(
           ProductCatalogSyncMeta(
@@ -910,7 +803,7 @@ class ProductsProvider extends ChangeNotifier {
   }
 
   Future<void> addProduct(Product product) async {
-    await saveProductLocalFirst(product, isCreate: true);
+    await saveProductToServer(product, isCreate: true);
   }
 
   Future<Product> _syncCreateToServer(Product product) async {
@@ -1021,9 +914,6 @@ class ProductsProvider extends ChangeNotifier {
         } catch (_) {}
       }
       _upsertCachedProduct(result);
-      if (result.id != oldId) {
-        await _repointSyncJobs(oldId, result.id);
-      }
       await _persistCatalog();
       return result;
     } catch (_) {
@@ -1031,26 +921,8 @@ class ProductsProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _repointSyncJobs(String oldId, String newId) async {
-    final queue = await ProductCatalogStorage.loadSyncQueue();
-    var changed = false;
-    for (var i = 0; i < queue.length; i++) {
-      final j = queue[i];
-      if (j.productId == oldId) {
-        queue[i] = ProductSyncJob(
-          jobId: j.jobId,
-          productId: newId,
-          isCreate: j.isCreate,
-          deleteImage: j.deleteImage,
-        );
-        changed = true;
-      }
-    }
-    if (changed) await ProductCatalogStorage.saveSyncQueue(queue);
-  }
-
   Future<void> updateProduct(Product product, {bool deleteImage = false}) async {
-    await saveProductLocalFirst(product, isCreate: false, deleteImage: deleteImage);
+    await saveProductToServer(product, isCreate: false, deleteImage: deleteImage);
   }
 
   Future<void> _syncUpdateToServer(Product product, {bool deleteImage = false}) async {
@@ -1132,6 +1004,22 @@ class ProductsProvider extends ChangeNotifier {
   List<Product> withCatalogStockAll(Iterable<Product> products) =>
       products.map(withCatalogStock).toList();
 
+  /// Sotuv API sahifasini yagona katalogga qo‘shadi (yo‘q mahsulotlar).
+  void mergeSalesOverlay(Iterable<Product> salesProducts) {
+    var changed = false;
+    for (final sales in salesProducts) {
+      if (sales.id.isEmpty) continue;
+      if (getProductById(sales.id) != null) continue;
+      _items.add(sales);
+      changed = true;
+    }
+    if (!changed) return;
+    _loaded = true;
+    _controller.add(items);
+    notifyListeners();
+    unawaited(_persistCatalog(invalidateSyncMeta: false));
+  }
+
   /// Katalogdan ochishdan oldin ulgurji narxni fon rejimida to'ldirish (ixtiyoriy).
   void prefetchProductForDetail(Product product) {
     if (product.hasWholesalePrice) return;
@@ -1207,10 +1095,7 @@ class ProductsProvider extends ChangeNotifier {
       return;
     }
 
-    final removedIds = _purgeCatalogEntriesForRemovedProduct(product);
-    for (final id in removedIds) {
-      await _removeSyncJobsForProduct(id);
-    }
+    _purgeCatalogEntriesForRemovedProduct(product);
     await _persistCatalog();
     ApiSyncThrottle.invalidate('products_full_catalog');
     unawaited(ProductCatalogSalesBridge.afterProductRemoved(product));

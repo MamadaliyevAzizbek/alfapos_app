@@ -1,6 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Faqat sessiya (token, companyId) — biznes ma'lumoti emas. Barcha tranzaksiya/mijoz/mahsulot ma'lumotlari API da.
+/// Faqat sessiya (token, companyId). Biznes kesh — kompaniya kalitlari bilan CompanyCacheStore da.
 const String _keyToken = 'alfapos_api_token';
 const String _keyCompanyId = 'alfapos_api_company_id';
 const String _keyLoggedIn = 'alfapos_logged_in';

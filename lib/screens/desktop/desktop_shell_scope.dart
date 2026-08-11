@@ -29,6 +29,7 @@ class DesktopShellSync {
 
   /// Eski API — endi to‘liq sinxronlash [AppDataSync.syncAll] orqali.
   static Future<void> run(int tabIndex, {bool force = true}) async {
+    if (force && AppDataSync.isForceSyncBlocked) return;
     await AppDataSync.syncAll(force: force);
   }
 }

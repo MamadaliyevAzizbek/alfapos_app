@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../services/api_service.dart';
+import '../services/reports_repository.dart';
 import '../widgets/app_dropdown.dart';
 import 'api_chek_detail_screen.dart';
 import '../widgets/ios_style_modals.dart';
@@ -88,7 +89,7 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
   Future<void> _loadFilters() async {
     setState(() => _loadingFilters = true);
     try {
-      final res = await ReportsApi.getSalesFilter();
+      final res = await ReportsRepository.instance.getSalesFilter();
       _lastFilterResponse = res;
       final data = res['data'] is Map ? Map<String, dynamic>.from(res['data'] as Map) : res;
       final employeeRaw = data['employee'] ?? data['employees'] ?? data['user'] ?? data['users'];
@@ -118,7 +119,7 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
   }
 
   Map<String, dynamic> _salesRequestBody({required String from, required String to}) {
-    final body = ReportsApi.salesListBody(
+    final body = ReportsRepository.salesListBody(
       from: from,
       to: to,
       rowLimit: 200,
@@ -160,7 +161,7 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
     Map<String, dynamic>? summaryRes;
     try {
       final salesBody = _salesRequestBody(from: from, to: to);
-      final summaryBody = ReportsApi.salesSummaryBody(
+      final summaryBody = ReportsRepository.salesSummaryBody(
         from: from,
         to: to,
         rowLimit: 200,
@@ -180,8 +181,8 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
       summaryBody['filtersData'] = summaryFilters;
       _lastSalesRequestBody = Map<String, dynamic>.from(salesBody);
       _lastSummaryRequestBody = Map<String, dynamic>.from(summaryBody);
-      res = await ReportsApi.getSales(body: salesBody);
-      summaryRes = await ReportsApi.getSalesSummary(
+      res = await ReportsRepository.instance.getSales(body: salesBody);
+      summaryRes = await ReportsRepository.instance.getSalesSummary(
         body: summaryBody,
       );
       _lastSalesResponse = res;
@@ -327,7 +328,7 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
     Map<String, dynamic> detail = {};
     String? loadError;
     try {
-      detail = await ReportsApi.getInvoiceDetails(orderId);
+      detail = await ReportsRepository.instance.getInvoiceDetails(orderId);
     } catch (e) {
       loadError = e.toString().replaceFirst('Exception: ', '');
       try {
@@ -335,8 +336,8 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> with DesktopShellSy
         final to = now.toIso8601String().substring(0, 10);
         final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
         final invoice = (sale['invoice_id'] ?? sale['order_id'] ?? sale['id'] ?? '').toString();
-        detail = await ReportsApi.getSalesAllDetails(
-          body: ReportsApi.salesAllDetailsBody(
+        detail = await ReportsRepository.instance.getSalesAllDetails(
+          body: ReportsRepository.salesAllDetailsBody(
             from: from,
             to: to,
             rowLimit: 200,

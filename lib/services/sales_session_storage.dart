@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/auth_storage.dart';
 import '../models/product.dart';
 
-/// Sotuv sessiyasi: mahsulotlar, to‘lov turlari, filial — offline ishlash uchun.
+/// Sotuv sessiyasi: faqat POS meta (filial, to‘lov, kategoriya). Mahsulotlar ProductsProvider da.
 class SalesSessionStorage {
   SalesSessionStorage._();
 

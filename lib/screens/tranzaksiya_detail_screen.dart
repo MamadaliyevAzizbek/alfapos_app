@@ -15,13 +15,13 @@ import '../core/input_formatters.dart';
 import '../core/seller_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
-import '../providers/products_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/clients_provider.dart';
 import '../providers/sales_session_provider.dart';
 import '../utils/platform_layout.dart';
 import '../utils/sale_store_due_amount.dart';
 import '../services/api_service.dart';
+import '../services/app_data_sync.dart';
 import '../core/api_client.dart';
 import '../core/api_sync_throttle.dart';
 import '../utils/receipt_row_builder.dart';
@@ -1977,11 +1977,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   /// Sotuvdan keyin: katalog yangilash. Balans va qarz /sales/store + payments orqali serverda.
   Future<void> _postSaleSideEffects() async {
     ApiSyncThrottle.invalidate('transactions_sales_list');
-    ApiSyncThrottle.invalidate('products_full_catalog');
     final saleClient = _client;
     try {
-      await SalesSessionProvider.instance.loadProducts(reset: true, searchValue: '');
-      await ProductsProvider.instance.loadFromApi();
+      await AppDataSync.afterStockChangingWrite();
       if (saleClient != null) {
         try {
           final resolved = await ClientsProvider.instance.resolveClientForSales(saleClient);

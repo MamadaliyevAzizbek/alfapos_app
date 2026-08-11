@@ -221,7 +221,8 @@ class HoldOrderCart {
   static Future<void> _ensureCatalog() async {
     if (!ProductsProvider.instance.isLoaded) {
       try {
-        await ProductsProvider.instance.loadFromApi();
+        await ProductsProvider.instance.warmFromCache();
+        await ProductsProvider.instance.refreshFromServer(force: false);
       } catch (_) {}
     }
   }

@@ -108,6 +108,7 @@ class ReceiptDesignStorage {
   static Future<ReceiptDesignConfig> removeLogo(ReceiptDesignConfig current) async {
     await _deleteLogoFileIfNeeded(current.logoFilePath);
     ReceiptLogoImage.evictCache();
+    EscPosReceiptBuilder.invalidateLogoCache();
     return current.copyWith(showLogo: false, clearLogoPath: true);
   }
 
