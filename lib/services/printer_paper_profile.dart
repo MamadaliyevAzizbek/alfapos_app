@@ -31,12 +31,12 @@ abstract class PrinterPaperProfile {
 
   /// XP-80C pichoq ~15–18 mm: 6 qator — oxirgi qatorlar kesilmasin.
   static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 7;
+    if (isXprinter80(printerName)) return 8;
     return 2;
   }
 
-  /// ESC 3 n — 24 yopishib ketadi; 32 qatorlar orasini ozgina ochadi.
-  static const int lineSpacingDots = 32;
+  /// ESC 3 n — 32 ham zich; 44 qatorlarni aniq ajratadi.
+  static const int lineSpacingDots = 44;
 
   /// Chop etish maydoni: chap margin 0, to‘liq 80mm kenglik (576 nuqta).
   static List<int> fullWidthMarginBytes() => const [

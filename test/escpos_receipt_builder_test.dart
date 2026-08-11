@@ -224,7 +224,7 @@ void main() {
       printerName: 'XP-80C',
     );
     expect(bytes, isNotEmpty);
-    expect(bytes, containsAllInOrder([27, 42]));
+    expect(bytes, containsAllInOrder([29, 118, 48, 0]));
   });
 
   test('standard receipt uses minimal feed before cut', () async {
@@ -237,7 +237,7 @@ void main() {
     expect(bytes[feedIndex + 1], 2);
   });
 
-  test('XP-80C uses 7-line feed and compact spacing, not g.cut waste', () async {
+  test('XP-80C uses 8-line feed and compact spacing, not g.cut waste', () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
       printerName: 'Xprinter XP-80C',
@@ -245,10 +245,10 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 7);
+    expect(bytes[feedIndex + 1], 8);
     expect(bytes[feedIndex + 2], 0x1D); // GS
     expect(bytes[feedIndex + 3], 0x56); // V
     expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed
-    expect(bytes, containsAllInOrder([27, 51, 32]));
+    expect(bytes, containsAllInOrder([27, 51, 44]));
   });
 }

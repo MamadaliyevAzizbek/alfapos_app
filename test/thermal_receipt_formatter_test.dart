@@ -31,7 +31,7 @@ void main() {
       '8,000',
     ];
     final lines = ThermalReceiptFormatter.fromApiRawLines(raw);
-    expect(lines.any((l) => l.contains('^Alfa market') || l == '^Alfa market'), isTrue);
+    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
     expect(lines.any((l) => l.startsWith('1) sprite')), isTrue);
     expect(lines.any((l) => l.contains('sprite')), isTrue);
     expect(lines.any((l) => l.contains('x') && l.contains("so'm")), isTrue);
@@ -268,6 +268,31 @@ void main() {
     expect(lines.any((l) => l.contains('1 dona x 10,000=10,000')), isTrue);
     expect(lines.any((l) => l.contains("so'm")), isFalse);
     expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isFalse);
+  });
+
+  test('receipt omits store title and keeps date', () {
+    final lines = ThermalReceiptFormatter.toPrintLines(
+      ThermalReceiptPrintData(
+        storeName: 'GULISTON YEMLARI - Asosiy filial',
+        dateTime: DateTime(2026, 8, 11, 18, 43, 51),
+        receiptNumber: 'POS10009',
+        sellerName: 'Kassir',
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Non',
+            quantity: '1 dona',
+            unitPrice: '4,000',
+            lineTotal: '4,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '4,000'),
+        ],
+        totalAmount: '4,000',
+      ),
+    );
+    expect(lines.any((l) => l.contains('GULISTON')), isFalse);
+    expect(lines.any((l) => l.contains('2026-08-11') && l.contains('18:43')), isTrue);
   });
 
   test('client lines appear only when a client is selected', () {

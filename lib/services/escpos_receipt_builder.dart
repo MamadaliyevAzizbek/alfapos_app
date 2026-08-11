@@ -85,7 +85,7 @@ class EscPosReceiptBuilder {
       final mm58 = paperSize == PaperSize.mm58;
       final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
       if (logoImage != null) {
-        bytes.addAll(_encodeLogo(g, logoImage));
+        bytes.addAll(_encodeLogo(logoImage));
       } else {
         debugPrint('[ChekLogo] rasm o‘qilmadi: ${cfg.logoFilePath}');
       }
@@ -97,6 +97,7 @@ class EscPosReceiptBuilder {
 
     for (final line in wrapped) {
       if (line.isEmpty) {
+        bytes.addAll(List<int>.from(g.feed(1)));
         continue;
       }
       if (ThermalReceiptProductTitleText.isGapLine(line)) {
@@ -204,6 +205,7 @@ class EscPosReceiptBuilder {
               codeTable: codeTable,
               fontType: PosFontType.fontA,
               align: PosAlign.center,
+              bold: _isDateTimeLine(text),
             ),
             maxCharsPerLine: maxWidth,
           ),
@@ -345,20 +347,18 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
-  /// XP-80C ESC * (g.image) ni chiqaradi; yiqilsa GS v 0.
-  static List<int> _encodeLogo(Generator g, img.Image logo) {
-    final out = <int>[];
-    out.addAll(List<int>.from(g.feed(1)));
-    try {
-      out.addAll(List<int>.from(g.image(logo, align: PosAlign.center)));
-      debugPrint('[ChekLogo] ESC* ${logo.width}x${logo.height} bytes=${out.length}');
-    } catch (e) {
-      debugPrint('[ChekLogo] ESC* xato, GS v 0: $e');
-      out.addAll(ThermalReceiptLogoFit.rasterGsV0(logo));
-    }
-    out.addAll(PrinterPaperProfile.restoreCompactSpacingBytes());
+  /// GS v 0 — ESC * qora logoni oq bo‘sh joyga aylantirardi.
+  static List<int> _encodeLogo(img.Image logo) {
+    final out = <int>[
+      ...ThermalReceiptLogoFit.rasterGsV0(logo),
+      ...PrinterPaperProfile.restoreCompactSpacingBytes(),
+    ];
+    debugPrint('[ChekLogo] GS v 0 ${logo.width}x${logo.height} bytes=${out.length}');
     return out;
   }
+
+  static bool _isDateTimeLine(String text) =>
+      RegExp(r'^\d{4}-\d{2}-\d{2}\s*\|').hasMatch(text.trim());
 
   static Future<img.Image?> _loadLogoImage(String path, {required bool mm58}) async {
     final key = '$path|${mm58 ? 58 : 80}';

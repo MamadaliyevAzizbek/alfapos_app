@@ -1,6 +1,5 @@
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
-import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
@@ -325,11 +324,6 @@ class ThermalReceiptFormatter {
   }) {
     void center(String s) => lines.add('^${s.trim()}');
 
-    final title = ReceiptStoreTitle.resolve(
-      design: config,
-      branchName: d.storeName,
-    );
-    center(title);
     if (config.showDateTime) {
       center(_fmtDateTime(d.dateTime));
     }

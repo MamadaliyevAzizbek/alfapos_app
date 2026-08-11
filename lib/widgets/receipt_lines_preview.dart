@@ -175,18 +175,19 @@ class ThermalReceiptPreview extends StatelessWidget {
       );
     }
 
+    final isDate = RegExp(r'^\d{4}-\d{2}-\d{2}\s*\|').hasMatch(text.trim());
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: ReceiptStrikethroughText.richLine(
         text,
         style: _previewText.copyWith(
           fontSize: 12,
-          fontWeight: FontWeight.w500,
+          fontWeight: isDate ? FontWeight.w800 : FontWeight.w500,
           fontFamily: 'monospace',
-          height: 1.35,
+          height: 1.55,
         ),
         textAlign: centered ? TextAlign.center : TextAlign.start,
-        bold: false,
+        bold: isDate,
       ),
     );
   }

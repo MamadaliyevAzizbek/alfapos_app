@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
-import '../utils/receipt_store_title.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
 import '../utils/product_weight.dart';
@@ -104,9 +103,6 @@ class ReceiptWidget extends StatelessWidget {
 
   static String _fmt(int n) => formatThousandsComma(n);
 
-  String get _displayTitle =>
-      ReceiptStoreTitle.resolve(design: design, branchName: branchName);
-
   List<String> toThermalPrintLines({int? lineWidth}) {
     final width = lineWidth ?? thermalLineWidth;
     final totalWeight = _totalWeightKg();
@@ -204,17 +200,6 @@ class ReceiptWidget extends StatelessWidget {
             ),
             const SizedBox(height: 4),
           ],
-          Center(
-            child: Text(
-              _displayTitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey.shade900,
-              ),
-            ),
-          ),
           if (isPrecheck) ...[
             const SizedBox(height: 8),
             Center(
@@ -241,7 +226,7 @@ class ReceiptWidget extends StatelessWidget {
             Center(
               child: Text(
                 '${_dateStr(dateTime)} | ${_timeStr(dateTime)}',
-                style: textStyle,
+                style: textStyle.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
           ],
