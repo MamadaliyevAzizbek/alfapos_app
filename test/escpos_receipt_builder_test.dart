@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:alfapos_app/models/receipt_design_config.dart';
 import 'package:alfapos_app/services/escpos_receipt_builder.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
@@ -206,6 +208,23 @@ void main() {
     expect(bytes, containsAllInOrder([0x1B, 0x45, 1]));
     // GS ! — width 1×, height 2×
     expect(bytes, containsAllInOrder([0x1D, 0x21, 0x01]));
+  });
+
+  test('receipt with default logo builds without fixed-list error', () async {
+    final src = File('Untitled-1-08.png');
+    expect(src.existsSync(), isTrue);
+    final dest = File('${Directory.systemTemp.path}/escpos_logo_test.png');
+    await dest.writeAsBytes(await src.readAsBytes());
+    final bytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: const ['^Filial', 'Umumiy summa - 1'],
+      design: ReceiptDesignConfig.defaults.copyWith(
+        showLogo: true,
+        logoFilePath: dest.path,
+      ),
+      printerName: 'XP-80C',
+    );
+    expect(bytes, isNotEmpty);
+    expect(bytes, containsAllInOrder([27, 42]));
   });
 
   test('standard receipt uses minimal feed before cut', () async {

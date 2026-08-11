@@ -407,7 +407,7 @@ class ThermalReceiptPrinter {
     ReceiptDesignConfig? design,
   }) async {
     final settings = await Future.wait([
-      design != null ? Future.value(design) : ReceiptDesignStorage.load(),
+      ReceiptDesignStorage.prepareForPrint(design),
       openCashDrawer != null
           ? Future<bool>.value(openCashDrawer)
           : PrinterSettings.isCashDrawerOpenOnPrintEnabled(),

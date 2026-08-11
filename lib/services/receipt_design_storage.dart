@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -188,25 +189,56 @@ class ReceiptDesignStorage {
     if (await f.exists()) await f.delete();
   }
 
-  static Future<String?> copyBundledDefaultLogoIfNeeded() async {
+  /// Chop etishdan oldin: default logo fayli bor va yoqilgan bo‘lsin.
+  static Future<ReceiptDesignConfig> prepareForPrint(
+    ReceiptDesignConfig? incoming,
+  ) async {
+    if (await _isLogoUserDisabled()) {
+      debugPrint('[ChekLogo] o‘chirilgan (user)');
+      final cfg = incoming ?? await load();
+      return cfg.copyWith(showLogo: false);
+    }
+    var cfg = incoming ?? await load();
+    if (_isUserPickedLogo(cfg.logoFilePath) &&
+        await logoFileExists(cfg.logoFilePath)) {
+      final on = cfg.copyWith(showLogo: true);
+      debugPrint('[ChekLogo] custom ${on.logoFilePath}');
+      return on;
+    }
+    final missing = !await logoFileExists(cfg.logoFilePath);
+    final path = await copyBundledDefaultLogoIfNeeded(force: missing);
+    if (path == null) {
+      debugPrint('[ChekLogo] bundled logo yozilmadi');
+      return cfg.copyWith(showLogo: true);
+    }
+    final updated = cfg.copyWith(showLogo: true, logoFilePath: path);
+    await save(updated);
+    debugPrint('[ChekLogo] tayyor path=$path exists=true');
+    return updated;
+  }
+
+  static Future<String?> copyBundledDefaultLogoIfNeeded({bool force = false}) async {
     final dest = await defaultLogoPath();
     final f = File(dest);
     final prefs = await SharedPreferences.getInstance();
     final version = prefs.getInt(_defaultLogoVersionKey) ?? 0;
-    if (await f.exists() && version >= _defaultLogoVersion) return dest;
+    if (!force && await f.exists() && version >= _defaultLogoVersion) return dest;
     try {
       final bytes = await rootBundle.load(bundledDefaultLogoAsset);
       await f.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
       await prefs.setInt(_defaultLogoVersionKey, _defaultLogoVersion);
       ReceiptLogoImage.evictCache();
       EscPosReceiptBuilder.invalidateLogoCache();
+      debugPrint('[ChekLogo] bundled yozildi $dest (${bytes.lengthInBytes} b)');
       return dest;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[ChekLogo] Untitled-1-08 yuklanmadi: $e');
       try {
         final bytes = await rootBundle.load('assets/branding/alfapos_logo.png');
         await f.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
         return dest;
-      } catch (_) {
+      } catch (e2) {
+        debugPrint('[ChekLogo] fallback ham yo‘q: $e2');
         return await f.exists() ? dest : null;
       }
     }

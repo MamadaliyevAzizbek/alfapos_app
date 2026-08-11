@@ -24,28 +24,74 @@ abstract class ThermalReceiptLogoFit {
   /// Rasmni [maxW]×[maxH] ichiga to‘liq sig‘diradi (contain), kichik bo‘lsa ham.
   static img.Image fitToBox(img.Image src, int maxW, int maxH) {
     if (src.width <= 0 || src.height <= 0 || maxW <= 0 || maxH <= 0) return src;
-    final prepared = _flattenOnWhite(src);
-    final scaleW = maxW / prepared.width;
-    final scaleH = maxH / prepared.height;
+    final scaleW = maxW / src.width;
+    final scaleH = maxH / src.height;
     final scale = scaleW < scaleH ? scaleW : scaleH;
-    final w = (prepared.width * scale).round().clamp(1, maxW);
-    final h = (prepared.height * scale).round().clamp(1, maxH);
-    if (w == prepared.width && h == prepared.height) return prepared;
-    return img.copyResize(
-      prepared,
-      width: w,
-      height: h,
-      interpolation: scale < 1 ? img.Interpolation.average : img.Interpolation.cubic,
-    );
+    final w = (src.width * scale).round().clamp(1, maxW);
+    final h = (src.height * scale).round().clamp(1, maxH);
+    var work = src;
+    if (w != src.width || h != src.height) {
+      work = img.copyResize(
+        src,
+        width: w,
+        height: h,
+        interpolation: scale < 1 ? img.Interpolation.average : img.Interpolation.cubic,
+      );
+    }
+    return _padWidthMultipleOf8(_flattenOnWhite(work));
+  }
+
+  /// GS v 0 kenglikni 8 ga bo‘lishi shart — aks holda printer kutubxonasi yiqiladi.
+  static img.Image _padWidthMultipleOf8(img.Image src) {
+    final w = ((src.width + 7) ~/ 8) * 8;
+    if (w == src.width) return src;
+    final out = img.Image(width: w, height: src.height);
+    img.fill(out, color: img.ColorRgb8(255, 255, 255));
+    img.compositeImage(out, src, dstX: (w - src.width) ~/ 2);
+    return out;
   }
 
   /// PNG shaffofligi termalda qora dog‘ bo‘lmasin.
   static img.Image _flattenOnWhite(img.Image src) {
     if (!src.hasAlpha) return src;
-    final out = img.Image(width: src.width, height: src.height);
+    final out = img.Image(width: src.width, height: src.height, numChannels: 3);
     img.fill(out, color: img.ColorRgb8(255, 255, 255));
     img.compositeImage(out, src);
     return out;
+  }
+
+  /// ESC/POS GS v 0 — growable ro‘yxat, kutubxona `List.filled` xatosiz.
+  static List<int> rasterGsV0(img.Image src) {
+    final width = src.width;
+    final height = src.height;
+    if (width <= 0 || height <= 0) return const [];
+    final widthBytes = (width + 7) ~/ 8;
+    final packed = <int>[];
+    for (var y = 0; y < height; y++) {
+      for (var xb = 0; xb < widthBytes; xb++) {
+        var byte = 0;
+        for (var bit = 0; bit < 8; bit++) {
+          final x = xb * 8 + bit;
+          if (x >= width) continue;
+          final p = src.getPixel(x, y);
+          final lum = (p.r * 299 + p.g * 587 + p.b * 114) / 1000;
+          if (lum < 160) {
+            byte |= 0x80 >> bit;
+          }
+        }
+        packed.add(byte);
+      }
+    }
+    return <int>[
+      27, 97, 1, // ESC a 1 — markaz
+      29, 118, 48, 0, // GS v 0 m=0
+      widthBytes & 0xFF,
+      (widthBytes >> 8) & 0xFF,
+      height & 0xFF,
+      (height >> 8) & 0xFF,
+      ...packed,
+      27, 97, 0, // chapga qaytarish
+    ];
   }
 
   static img.Image fit(img.Image src, {required bool mm58}) {

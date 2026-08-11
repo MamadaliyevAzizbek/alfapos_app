@@ -30,6 +30,14 @@ void main() {
     expect(out.height, 38);
   });
 
+  test('fitted logo width is multiple of 8 for GS v 0', () {
+    final out = ThermalReceiptLogoFit.fitToBox(solid(70, 50), 384, 256);
+    expect(out.width % 8, 0);
+    final esc = ThermalReceiptLogoFit.rasterGsV0(out);
+    expect(esc, isNotEmpty);
+    expect(esc, containsAllInOrder([29, 118, 48, 0]));
+  });
+
   test('58mm box is smaller than 80mm', () {
     final src = solid(800, 800);
     final a = ThermalReceiptLogoFit.fit(src, mm58: true);

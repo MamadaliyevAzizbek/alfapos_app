@@ -104,6 +104,16 @@ void main() {
     expect(File(loaded.logoFilePath!).existsSync(), isTrue);
   });
 
+  test('prepareForPrint turns logo on and writes bundled file', () async {
+    SharedPreferences.setMockInitialValues({
+      'receipt_design_config_v1': '{"showLogo":false}',
+    });
+    final prepared = await ReceiptDesignStorage.prepareForPrint(null);
+    expect(prepared.showLogo, isTrue);
+    expect(prepared.logoFilePath, isNotNull);
+    expect(File(prepared.logoFilePath!).existsSync(), isTrue);
+  });
+
   test('load seeds bundled Untitled-1-08 as default logo', () async {
     final loaded = await ReceiptDesignStorage.load();
     expect(loaded.showLogo, isTrue);

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/receipt_design_config.dart';
@@ -69,10 +70,9 @@ class EscPosReceiptBuilder {
     final codeTable = _codeTableId(cfg.printerCodePage);
     final codePage = cfg.printerCodePage;
 
-    bytes.addAll(g.reset());
-    bytes.addAll(g.setGlobalCodeTable(codeTable));
+    bytes.addAll(List<int>.from(g.reset()));
+    bytes.addAll(List<int>.from(g.setGlobalCodeTable(codeTable)));
     bytes.addAll(PrinterPaperProfile.fullWidthMarginBytes());
-    final xp80 = PrinterPaperProfile.isXprinter80(printerName);
     final cutFeed = PrinterPaperProfile.feedBeforeCut(printerName);
 
     if (openCashDrawer) {
@@ -85,15 +85,14 @@ class EscPosReceiptBuilder {
       final mm58 = paperSize == PaperSize.mm58;
       final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
       if (logoImage != null) {
-        bytes.addAll(g.feed(1));
-        // XP-80C: GS v 0 — qator oralig‘ini buzmaydi. Boshqa: ESC * + keyin ESC 3 24.
-        if (xp80) {
-          bytes.addAll(g.imageRaster(logoImage, align: PosAlign.center));
-        } else {
-          bytes.addAll(g.image(logoImage, align: PosAlign.center));
-        }
-        bytes.addAll(PrinterPaperProfile.restoreCompactSpacingBytes());
+        bytes.addAll(_encodeLogo(g, logoImage));
+      } else {
+        debugPrint('[ChekLogo] rasm o‘qilmadi: ${cfg.logoFilePath}');
       }
+    } else {
+      debugPrint(
+        '[ChekLogo] o‘tkazib yuborildi show=${cfg.showLogo} path=${cfg.logoFilePath}',
+      );
     }
 
     for (final line in wrapped) {
@@ -346,6 +345,21 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
+  /// XP-80C ESC * (g.image) ni chiqaradi; yiqilsa GS v 0.
+  static List<int> _encodeLogo(Generator g, img.Image logo) {
+    final out = <int>[];
+    out.addAll(List<int>.from(g.feed(1)));
+    try {
+      out.addAll(List<int>.from(g.image(logo, align: PosAlign.center)));
+      debugPrint('[ChekLogo] ESC* ${logo.width}x${logo.height} bytes=${out.length}');
+    } catch (e) {
+      debugPrint('[ChekLogo] ESC* xato, GS v 0: $e');
+      out.addAll(ThermalReceiptLogoFit.rasterGsV0(logo));
+    }
+    out.addAll(PrinterPaperProfile.restoreCompactSpacingBytes());
+    return out;
+  }
+
   static Future<img.Image?> _loadLogoImage(String path, {required bool mm58}) async {
     final key = '$path|${mm58 ? 58 : 80}';
     if (_cachedLogoKey == key && _cachedLogoImage != null) {
@@ -353,14 +367,25 @@ class EscPosReceiptBuilder {
     }
     try {
       final f = File(path);
-      if (!await f.exists()) return null;
+      if (!await f.exists()) {
+        debugPrint('[ChekLogo] fayl yo‘q: $path');
+        return null;
+      }
       final decoded = img.decodeImage(await f.readAsBytes());
-      if (decoded == null) return null;
+      if (decoded == null) {
+        debugPrint('[ChekLogo] decode bo‘lmadi: $path');
+        return null;
+      }
       final fitted = ThermalReceiptLogoFit.fit(decoded, mm58: mm58);
+      debugPrint(
+        '[ChekLogo] decode ${decoded.width}x${decoded.height} → ${fitted.width}x${fitted.height}',
+      );
       _cachedLogoKey = key;
       _cachedLogoImage = fitted;
       return fitted;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ChekLogo] load xato: $e');
+    }
     return null;
   }
 
