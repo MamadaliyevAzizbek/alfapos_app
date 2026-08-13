@@ -116,6 +116,7 @@ class ReceiptWidget extends StatelessWidget {
         clientName: clientName,
         clientPhone: clientPhone,
         clientAddress: clientAddress,
+        description: description,
         isPrecheck: isPrecheck,
         products: productRows
             .map(
@@ -292,7 +293,7 @@ class ReceiptWidget extends StatelessWidget {
           ],
           if ((description ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Tavsif: ${description!.trim()}', style: textStyle),
+            Text('Izoh: ${description!.trim()}', style: textStyle),
           ],
           const SizedBox(height: 6),
           for (var i = 0; i < productRows.length; i++) ...[

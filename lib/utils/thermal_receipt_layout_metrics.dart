@@ -9,7 +9,7 @@ abstract class ThermalReceiptLayoutMetrics {
 
   static const double receiptLogicalWidth = 302;
   static const double containerPadding = 6;
-  static const double logoBlockHeight = ThermalReceiptLogoFit.previewHeight + 4;
+  static const double logoBlockHeight = ThermalReceiptLogoFit.previewHeight + 8;
 
   /// Qatorlar soniga qarab taxminiy balandlik (ekran chegarasidan qat’i nazar).
   static double estimateHeight({

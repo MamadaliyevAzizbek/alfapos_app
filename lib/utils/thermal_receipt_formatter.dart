@@ -51,6 +51,7 @@ class ThermalReceiptPrintData {
   final String? clientName;
   final String? clientPhone;
   final String? clientAddress;
+  final String? description;
   final List<ThermalReceiptProductLine> products;
   final List<ThermalReceiptPaymentLine> payments;
   final String discountAmount;
@@ -71,6 +72,7 @@ class ThermalReceiptPrintData {
     this.clientName,
     this.clientPhone,
     this.clientAddress,
+    this.description,
     this.products = const [],
     this.payments = const [],
     this.discountAmount = '0',
@@ -108,6 +110,7 @@ class ThermalReceiptFormatter {
     var sellerName = '';
     String? sellerPhone;
     String? clientName;
+    String? description;
     final products = <ThermalReceiptProductLine>[];
     final payments = <ThermalReceiptPaymentLine>[];
     var discount = '0';
@@ -188,6 +191,12 @@ class ThermalReceiptFormatter {
         i++;
         continue;
       }
+      if (lower.startsWith('izoh') || lower.startsWith('tavsif')) {
+        final v = _afterColon(line);
+        if (v.isNotEmpty) description = v;
+        i++;
+        continue;
+      }
 
       if (_isSkippableMeta(line)) {
         i++;
@@ -233,6 +242,7 @@ class ThermalReceiptFormatter {
       sellerName: sellerName,
       sellerPhone: sellerPhone,
       clientName: clientName,
+      description: description,
       products: products,
       payments: payments,
       discountAmount: discount,
@@ -369,6 +379,10 @@ class ThermalReceiptFormatter {
         d.clientAddress != null &&
         d.clientAddress!.trim().isNotEmpty) {
       _appendLeftLine(lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
+    }
+    final note = d.description?.trim() ?? '';
+    if (note.isNotEmpty) {
+      _appendLeftLine(lines, 'Izoh: $note');
     }
     lines.add('');
   }

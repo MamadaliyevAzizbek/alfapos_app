@@ -59,6 +59,7 @@ class SalesStoreBody {
     List<Map<String, dynamic>>? payments,
     int dueAmount = 0,
     int? profit,
+    String? note,
   }) {
     final discountUzs = subTotal - grandTotal;
     final isHold = status == 'hold';
@@ -106,6 +107,11 @@ class SalesStoreBody {
       body['invoice_id'] = invoiceId;
     }
     if (!isHold && payments != null) body['payments'] = payments;
+    final noteText = note?.trim() ?? '';
+    if (noteText.isNotEmpty) {
+      body['description'] = noteText;
+      body['note'] = noteText;
+    }
     return body;
   }
 }

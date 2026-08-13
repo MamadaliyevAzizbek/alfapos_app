@@ -2149,6 +2149,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       'payments': paymentsApi,
       'customer': saleCustomer != null ? _customerPayloadForStore(saleCustomer) : null,
     };
+    final note = _description.trim();
+    if (note.isNotEmpty) {
+      body['description'] = note;
+      body['note'] = note;
+    }
     final sess = SalesSessionProvider.instance;
     sess.syncFromShift();
     if (sess.cashRegisterId != null) {

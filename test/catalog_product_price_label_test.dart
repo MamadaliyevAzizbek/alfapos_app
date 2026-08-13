@@ -30,6 +30,36 @@ void main() {
     expect(label, contains('22 000'));
   });
 
+  test('savat: dollar faqat ko\'rinish, so\'m qiymati o\'zgarmaydi', () {
+    expect(
+      CatalogProductPriceLabel.somWithOptionalUsd(2087250, usdRate: 12600),
+      '2 087 250',
+    );
+    expect(
+      CatalogProductPriceLabel.somWithOptionalUsd(
+        2087250,
+        usdRate: 12600,
+        showUsdEquivalent: true,
+      ),
+      '2 087 250 (\$165.65)',
+    );
+    expect(
+      CatalogProductPriceLabel.somWithOptionalUsd(
+        1260000,
+        usdRate: 12600,
+        showUsdEquivalent: true,
+      ),
+      '1 260 000 (\$100)',
+    );
+  });
+
+  test('splitSomUsd ajratadi dollar qismini', () {
+    final parts = CatalogProductPriceLabel.splitSomUsd('2 299 000 (\$190)');
+    expect(parts.som, '2 299 000');
+    expect(parts.usd, '(\$190)');
+    expect(CatalogProductPriceLabel.splitSomUsd('22 000 so\'m').usd, isNull);
+  });
+
   test('pachkali mahsulotda dona sotish narxi (pachka emas)', () {
     const packProduct = Product(
       id: '2',

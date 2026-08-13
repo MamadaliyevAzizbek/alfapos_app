@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/product_image_utils.dart';
 import '../core/theme.dart';
 import '../models/product.dart';
+import '../utils/catalog_product_price_label.dart';
 import '../utils/product_image_upload.dart';
 import 'auth_network_image.dart';
 
@@ -164,7 +165,7 @@ class ProductTile extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
+                    CatalogProductPriceLabel.text(
                       primaryPriceLabel ?? product.priceFormatted,
                       style: const TextStyle(
                         fontSize: 13,

@@ -224,7 +224,8 @@ void main() {
       printerName: 'XP-80C',
     );
     expect(bytes, isNotEmpty);
-    expect(bytes, containsAllInOrder([27, 42]));
+    expect(bytes, containsAllInOrder([29, 118, 48, 0]));
+    expect(bytes, isNot(containsAllInOrder([27, 42])));
   });
 
   test('standard receipt uses minimal feed before cut', () async {

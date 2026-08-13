@@ -347,19 +347,21 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
-  /// ESC * + oldindan invert: kutubxona yana invert qiladi — qora logo oq bo‘lmasin.
-  static List<int> _encodeLogo(Generator g, img.Image logo) {
+  /// GS v 0 raster: qora-oq logo, invert/ESC* xirasiz. Kutubxona `imageRaster` emas.
+  static List<int> _encodeLogo(Generator _, img.Image logo) {
     try {
-      final prepared = img.Image.from(logo);
-      img.invert(prepared);
+      final raster = ThermalReceiptLogoFit.rasterGsV0(logo);
+      if (raster.isEmpty) return const [];
       final out = <int>[
-        ...List<int>.from(g.image(prepared, align: PosAlign.center)),
+        ...raster,
         ...PrinterPaperProfile.restoreCompactSpacingBytes(),
       ];
-      debugPrint('[ChekLogo] ESC* ${logo.width}x${logo.height} bytes=${out.length}');
+      debugPrint(
+        '[ChekLogo] GSv0 ${logo.width}x${logo.height} bytes=${out.length}',
+      );
       return out;
     } catch (e) {
-      debugPrint('[ChekLogo] ESC* o‘tkazib yuborildi: $e');
+      debugPrint('[ChekLogo] GSv0 o‘tkazib yuborildi: $e');
       return const [];
     }
   }

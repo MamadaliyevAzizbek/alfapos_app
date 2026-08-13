@@ -720,6 +720,8 @@ class SavatchaDesktopLayout extends StatelessWidget {
             expanded: identical(expandedCartItem, line),
             qtyFocusNonce: cartQtyFocusNonce,
             isQtyFocusTarget: identical(cartQtyFocusItem, line),
+            showUsdEquivalent: showUsdEquivalentOnCards,
+            usdRate: usdExchangeRate,
             onToggleExpand: () => onToggleCartExpand(line),
             onCollapse: onCollapseCartExpand,
             onIncrement: () => onIncrement(line),
@@ -826,17 +828,31 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     if (cartCatalogTotal > 0 && cartCatalogTotal != cartGrandTotal)
-                      Text(
-                        formatThousands(cartCatalogTotal),
+                      CatalogProductPriceLabel.text(
+                        CatalogProductPriceLabel.somWithOptionalUsd(
+                          cartCatalogTotal,
+                          usdRate: usdExchangeRate,
+                          showUsdEquivalent: showUsdEquivalentOnCards,
+                        ),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.55),
                           fontSize: 14,
                           decoration: TextDecoration.lineThrough,
                         ),
                       ),
-                    Text(
-                      formatThousands(cartGrandTotal),
-                      style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: CatalogProductPriceLabel.text(
+                        CatalogProductPriceLabel.somWithOptionalUsd(
+                          cartGrandTotal,
+                          usdRate: usdExchangeRate,
+                          showUsdEquivalent: showUsdEquivalentOnCards,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.visible,
+                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700),
+                      ),
                     ),
                     if (showCartProfit && !isReturnMode) ...[
                       const SizedBox(height: 2),
@@ -1143,7 +1159,7 @@ class _DesktopProductCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            CatalogProductPriceLabel.text(
                               primary,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1192,6 +1208,8 @@ class _DesktopCartLine extends StatefulWidget {
   final bool expanded;
   final int qtyFocusNonce;
   final bool isQtyFocusTarget;
+  final bool showUsdEquivalent;
+  final double usdRate;
   final VoidCallback onToggleExpand;
   final VoidCallback onCollapse;
   final VoidCallback onIncrement;
@@ -1207,6 +1225,8 @@ class _DesktopCartLine extends StatefulWidget {
     required this.expanded,
     this.qtyFocusNonce = 0,
     this.isQtyFocusTarget = false,
+    this.showUsdEquivalent = false,
+    this.usdRate = 12600,
     required this.onToggleExpand,
     required this.onCollapse,
     required this.onIncrement,
@@ -1467,13 +1487,20 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     return null;
   }
 
+  String _displaySom(num som) => CatalogProductPriceLabel.somWithOptionalUsd(
+        som,
+        usdRate: widget.usdRate,
+        showUsdEquivalent: widget.showUsdEquivalent,
+      );
+
   Widget _oneLineAmount(String text, {double fontSize = 14}) {
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerRight,
-      child: Text(
+      child: CatalogProductPriceLabel.text(
         text,
         maxLines: 1,
+        overflow: TextOverflow.visible,
         softWrap: false,
         textAlign: TextAlign.right,
         style: TextStyle(
@@ -1494,7 +1521,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       children: [
         _buildInlinePriceControl(tight: tight),
         SizedBox(width: tight ? 6 : 8),
-        _oneLineAmount(formatThousands(widget.item.total), fontSize: fontSize),
+        _oneLineAmount(_displaySom(widget.item.total), fontSize: fontSize),
       ],
     );
   }
@@ -1540,8 +1567,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: tight ? 2 : 4, vertical: 4),
-        child: _oneLineAmount(
-          formatThousands(widget.item.unitPriceDisplay),
+        child:         _oneLineAmount(
+          _displaySom(widget.item.unitPriceDisplay),
           fontSize: tight ? 13 : 14,
         ),
       ),
@@ -1640,8 +1667,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 ),
               ),
               const SizedBox(width: 6),
-              Text(
-                formatThousands(price.round()),
+              CatalogProductPriceLabel.text(
+                _displaySom(price),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,

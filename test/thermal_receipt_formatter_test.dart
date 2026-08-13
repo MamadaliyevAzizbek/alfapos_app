@@ -346,4 +346,34 @@ void main() {
     expect(hidden.any((l) => l.contains('+99890')), isFalse);
     expect(hidden.any((l) => l.contains('Toshkent')), isFalse);
   });
+
+  test('izoh chiqadi faqat yozilganda', () {
+    ThermalReceiptPrintData base({String? note}) {
+      return ThermalReceiptPrintData(
+        storeName: 'Filial',
+        dateTime: DateTime(2026, 8, 13, 15, 0),
+        receiptNumber: 'POS1',
+        sellerName: 'Kassir',
+        description: note,
+        products: const [
+          ThermalReceiptProductLine(
+            name: 'Non',
+            quantity: '1 dona',
+            unitPrice: '4,000',
+            lineTotal: '4,000',
+          ),
+        ],
+        payments: const [
+          ThermalReceiptPaymentLine(method: 'Naqd pul', amount: '4,000'),
+        ],
+        totalAmount: '4,000',
+      );
+    }
+
+    expect(ThermalReceiptFormatter.toPrintLines(base()).any((l) => l.toLowerCase().contains('izoh')), isFalse);
+    expect(
+      ThermalReceiptFormatter.toPrintLines(base(note: 'Tez yetkazib berish')),
+      contains('Izoh: Tez yetkazib berish'),
+    );
+  });
 }

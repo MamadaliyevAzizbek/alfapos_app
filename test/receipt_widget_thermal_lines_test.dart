@@ -20,6 +20,7 @@ void main() {
       ],
       discount: 0,
       totalSum: 30000,
+      description: 'Izoh matni',
     );
     final lines = w.toThermalPrintLines();
     expect(lines.any((l) => l.contains('Alfa market')), isTrue);
@@ -28,6 +29,7 @@ void main() {
     expect(lines.any((l) => l.contains('1) Non')), isTrue);
     expect(lines.any((l) => l.contains('2 dona') && l.contains("so'm")), isTrue);
     expect(lines.any((l) => l.contains('Naqd')), isTrue);
+    expect(lines, contains('Izoh: Izoh matni'));
     expect(lines, isNot(contains('Mahsulot')));
     expect(lines.join('\n').length, lessThan(800));
   });

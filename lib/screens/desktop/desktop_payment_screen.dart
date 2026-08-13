@@ -256,6 +256,11 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                 'Mijoz: ${widget.client?.name ?? 'Mijoz'}',
                 style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
               ),
+              if (widget.description.trim().isNotEmpty)
+                Text(
+                  'Izoh: ${widget.description.trim()}',
+                  style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                ),
               if (widget.clientBalanceUzs > 0) ...[
                 const SizedBox(height: 4),
                 Text(

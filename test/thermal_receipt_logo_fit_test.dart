@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:alfapos_app/utils/thermal_receipt_logo_fit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -13,7 +15,11 @@ void main() {
     final out = ThermalReceiptLogoFit.fit(solid(2000, 1500), mm58: false);
     expect(out.width, lessThanOrEqualTo(ThermalReceiptLogoFit.width80));
     expect(out.height, lessThanOrEqualTo(ThermalReceiptLogoFit.height80));
-    expect(out.width == ThermalReceiptLogoFit.width80 || out.height == ThermalReceiptLogoFit.height80, isTrue);
+    expect(
+      out.width == ThermalReceiptLogoFit.width80 ||
+          out.height == ThermalReceiptLogoFit.height80,
+      isTrue,
+    );
   });
 
   test('tiny logo is enlarged to standard size', () {
@@ -44,5 +50,72 @@ void main() {
     final b = ThermalReceiptLogoFit.fit(src, mm58: false);
     expect(a.width, lessThan(b.width));
     expect(a.height, lessThanOrEqualTo(ThermalReceiptLogoFit.height58));
+  });
+
+  test('transparent padding is trimmed so artwork fills the box', () {
+    final canvas = img.Image(width: 400, height: 400, numChannels: 4);
+    img.fill(canvas, color: img.ColorRgba8(0, 0, 0, 0));
+    img.fillRect(
+      canvas,
+      x1: 160,
+      y1: 160,
+      x2: 239,
+      y2: 239,
+      color: img.ColorRgba8(0, 0, 0, 255),
+    );
+    final out = ThermalReceiptLogoFit.fit(canvas, mm58: false);
+    expect(out.width, greaterThanOrEqualTo(192));
+    expect(out.height, greaterThanOrEqualTo(192));
+    var black = 0;
+    for (var y = 0; y < out.height; y++) {
+      for (var x = 0; x < out.width; x++) {
+        final p = out.getPixel(x, y);
+        if (p.r < 40 && p.g < 40 && p.b < 40) black++;
+      }
+    }
+    expect(black / (out.width * out.height), greaterThan(0.35));
+  });
+
+  test('fitted pixels are high-contrast black or white', () {
+    final src = img.Image(width: 40, height: 40);
+    img.fill(src, color: img.ColorRgb8(255, 255, 255));
+    img.fillRect(
+      src,
+      x1: 8,
+      y1: 8,
+      x2: 31,
+      y2: 31,
+      color: img.ColorRgb8(90, 90, 90),
+    );
+    final out = ThermalReceiptLogoFit.fit(src, mm58: false);
+    for (var y = 0; y < out.height; y++) {
+      for (var x = 0; x < out.width; x++) {
+        final v = out.getPixel(x, y).r.toInt();
+        expect(v == 0 || v == 255, isTrue);
+      }
+    }
+  });
+
+  test('Untitled-1-08 prints at readable 80mm size with black ink', () {
+    final file = File('Untitled-1-08.png');
+    expect(file.existsSync(), isTrue);
+    final decoded = img.decodeImage(file.readAsBytesSync());
+    expect(decoded, isNotNull);
+    final out = ThermalReceiptLogoFit.fit(decoded!, mm58: false);
+    expect(out.width, greaterThanOrEqualTo(300));
+    expect(out.height, greaterThanOrEqualTo(160));
+    expect(out.width % 8, 0);
+    var black = 0;
+    for (var y = 0; y < out.height; y++) {
+      for (var x = 0; x < out.width; x++) {
+        final p = out.getPixel(x, y);
+        if (p.r < 40) black++;
+      }
+    }
+    expect(black, greaterThan(2000));
+    final esc = ThermalReceiptLogoFit.rasterGsV0(out);
+    expect(esc, containsAllInOrder([29, 118, 48, 0]));
+    final ink = esc.skip(12).where((b) => b != 0).length;
+    expect(ink, greaterThan(80));
   });
 }

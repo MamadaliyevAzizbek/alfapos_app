@@ -34,4 +34,23 @@ void main() {
     final cart = body['cart'] as List;
     expect(cart.first['cartItemNote'], '');
   });
+
+  test('done body includes sale note when izoh yozilgan', () {
+    final items = [
+      CartItem(
+        product: Product(id: '5', name: 'Fanta', priceUzs: 21000, variantId: 1),
+        quantity: 1,
+      ),
+    ];
+    final body = SalesStoreBody.build(
+      items: items,
+      subTotal: 21000,
+      grandTotal: 21000,
+      status: 'done',
+      payments: const [],
+      note: 'Tez yetkaz',
+    );
+    expect(body['description'], 'Tez yetkaz');
+    expect(body['note'], 'Tez yetkaz');
+  });
 }

@@ -1,9 +1,74 @@
+import 'package:flutter/material.dart';
+
 import '../core/input_formatters.dart';
 import '../models/product.dart';
 
 /// Katalog kartochkasi narxi (sotuv filtri: kelish / ulgurji / oddiy).
 class CatalogProductPriceLabel {
   CatalogProductPriceLabel._();
+
+  static const Color usdColor = Color(0xFFDC2626);
+
+  /// `2 299 000 ($190)` → som + qizil dollar.
+  static ({String som, String? usd}) splitSomUsd(String label) {
+    final match = RegExp(r'^(.*) (\(\$[^)]+\))$').firstMatch(label.trim());
+    if (match == null) return (som: label, usd: null);
+    return (som: match.group(1)!, usd: match.group(2));
+  }
+
+  static Widget text(
+    String label, {
+    required TextStyle style,
+    int maxLines = 1,
+    TextOverflow overflow = TextOverflow.ellipsis,
+    TextAlign textAlign = TextAlign.start,
+    bool softWrap = true,
+  }) {
+    final parts = splitSomUsd(label);
+    if (parts.usd == null) {
+      return Text(
+        parts.som,
+        maxLines: maxLines,
+        overflow: overflow,
+        textAlign: textAlign,
+        softWrap: softWrap,
+        style: style,
+      );
+    }
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: parts.som, style: style),
+          TextSpan(
+            text: ' ${parts.usd}',
+            style: style.copyWith(color: usdColor, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+      maxLines: maxLines,
+      overflow: overflow,
+      textAlign: textAlign,
+      softWrap: softWrap,
+    );
+  }
+
+  /// Faqat ko‘rinish: so‘m asosida dollar qavsda. Hisob o‘zgarmaydi.
+  static String somWithOptionalUsd(
+    num som, {
+    double usdRate = 12600,
+    bool showUsdEquivalent = false,
+  }) {
+    final somText = formatThousands(som.round());
+    if (!showUsdEquivalent || usdRate <= 0) return somText;
+    return '$somText (\$${_formatUsd(som / usdRate)})';
+  }
+
+  /// Butun summa: `$135`. Kasr bo‘lsa: `$86.43`.
+  static String _formatUsd(num usd) {
+    final rounded = (usd * 100).round() / 100;
+    if (rounded == rounded.roundToDouble()) return '${rounded.round()}';
+    return rounded.toStringAsFixed(2);
+  }
 
   static String primary(
     Product p, {
@@ -15,11 +80,16 @@ class CatalogProductPriceLabel {
       case 'purchase':
         final cost = p.costPriceUzs;
         if (cost != null && cost > 0) {
-          return '${formatThousands(cost)} so\'m';
+          return showUsdEquivalent
+              ? somWithOptionalUsd(cost, usdRate: usdRate, showUsdEquivalent: true)
+              : '${formatThousands(cost)} so\'m';
         }
         break;
       case 'wholesale':
-        return '${formatThousands(p.wholesalePiecePriceNum.round())} so\'m';
+        final w = p.wholesalePiecePriceNum.round();
+        return showUsdEquivalent
+            ? somWithOptionalUsd(w, usdRate: usdRate, showUsdEquivalent: true)
+            : '${formatThousands(w)} so\'m';
     }
 
     if (p.sellingPriceCurrency.toLowerCase() == 'usd') {
@@ -36,8 +106,7 @@ class CatalogProductPriceLabel {
     // Sotuv qidiruvi / katalog kartasi: har doim 1 dona sotish narxi (pachka emas).
     final sell = p.pieceSellPriceNum.round();
     if (showUsdEquivalent && usdRate > 0) {
-      final usd = p.pieceSellPriceNum / usdRate;
-      return '${formatThousands(sell)} (\$${usd.toStringAsFixed(2)})';
+      return somWithOptionalUsd(sell, usdRate: usdRate, showUsdEquivalent: true);
     }
     return '${formatThousands(sell)} so\'m';
   }

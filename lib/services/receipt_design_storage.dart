@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/receipt_design_config.dart';
+import '../utils/thermal_receipt_logo_fit.dart';
 import '../widgets/receipt_logo_image.dart';
 import 'escpos_receipt_builder.dart';
 
@@ -19,7 +20,7 @@ class ReceiptDesignStorage {
   static const _logoFileName = 'receipt_logo.png';
   static const bundledDefaultLogoAsset = 'Untitled-1-08.png';
   static const _defaultLogoVersionKey = 'receipt_default_logo_version';
-  static const _defaultLogoVersion = 3;
+  static const _defaultLogoVersion = 4;
   static const _userDisabledLogoKey = 'receipt_logo_user_disabled_v1';
 
   static ReceiptDesignConfig? _cache;
@@ -139,9 +140,12 @@ class ReceiptDesignStorage {
 
     final previousPath = current.logoFilePath;
     final ext = extension.startsWith('.') ? extension : '.$extension';
+    final prepared = ThermalReceiptLogoFit.preparePngBytes(bytes);
+    final outBytes = prepared ?? bytes;
+    final destExt = prepared != null ? '.png' : ext;
     final dest =
-        '${await logoDirectory()}/receipt_logo_${DateTime.now().millisecondsSinceEpoch}$ext';
-    await File(dest).writeAsBytes(bytes, flush: true);
+        '${await logoDirectory()}/receipt_logo_${DateTime.now().millisecondsSinceEpoch}$destExt';
+    await File(dest).writeAsBytes(outBytes, flush: true);
     await _deleteLogoFileIfNeeded(previousPath);
 
     ReceiptLogoImage.evictCache();
@@ -225,17 +229,21 @@ class ReceiptDesignStorage {
     if (!force && await f.exists() && version >= _defaultLogoVersion) return dest;
     try {
       final bytes = await rootBundle.load(bundledDefaultLogoAsset);
-      await f.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+      final raw = bytes.buffer.asUint8List();
+      final prepared = ThermalReceiptLogoFit.preparePngBytes(raw) ?? raw;
+      await f.writeAsBytes(prepared, flush: true);
       await prefs.setInt(_defaultLogoVersionKey, _defaultLogoVersion);
       ReceiptLogoImage.evictCache();
       EscPosReceiptBuilder.invalidateLogoCache();
-      debugPrint('[ChekLogo] bundled yozildi $dest (${bytes.lengthInBytes} b)');
+      debugPrint('[ChekLogo] bundled yozildi $dest (${prepared.length} b)');
       return dest;
     } catch (e) {
       debugPrint('[ChekLogo] Untitled-1-08 yuklanmadi: $e');
       try {
         final bytes = await rootBundle.load('assets/branding/alfapos_logo.png');
-        await f.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+        final raw = bytes.buffer.asUint8List();
+        final prepared = ThermalReceiptLogoFit.preparePngBytes(raw) ?? raw;
+        await f.writeAsBytes(prepared, flush: true);
         return dest;
       } catch (e2) {
         debugPrint('[ChekLogo] fallback ham yo‘q: $e2');

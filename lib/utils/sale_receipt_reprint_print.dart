@@ -60,6 +60,7 @@ class SaleReceiptReprintPrint {
       sellerPhone: sellerPhone,
       branchName: SalesSessionProvider.instance.branchName.trim(),
       clientName: data.clientName.isEmpty ? null : data.clientName,
+      description: data.description,
       productRows: ReceiptRowBuilder.fromInvoiceRows(data.invoiceProductRows),
       paymentRows: data.paymentRows,
       discount: data.discountUzs,
@@ -133,11 +134,29 @@ class SaleReceiptReprintPrint {
       dateTime: dt,
       sellerName: sellerName,
       clientName: clientName.trim(),
+      description: _saleNote(sale, inv),
       invoiceProductRows: parsed.productRows,
       paymentRows: _paymentReceiptRows(payments),
       discountUzs: discountUzs,
       totalUzs: totalUzs,
     );
+  }
+
+  static String? _saleNote(Map<String, dynamic> sale, Map<String, dynamic> inv) {
+    for (final src in [sale, inv]) {
+      for (final key in ['description', 'note', 'comment', 'izoh', 'remarks']) {
+        final s = (src[key] ?? '').toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+      final data = src['data'];
+      if (data is Map) {
+        for (final key in ['description', 'note', 'comment', 'izoh']) {
+          final s = (data[key] ?? '').toString().trim();
+          if (s.isNotEmpty) return s;
+        }
+      }
+    }
+    return null;
   }
 
   static List<ReceiptPaymentRow> _paymentReceiptRows(List<Map<String, dynamic>> payments) {
@@ -205,6 +224,7 @@ class _ReprintData {
   final DateTime dateTime;
   final String sellerName;
   final String clientName;
+  final String? description;
   final List<Map<String, dynamic>> invoiceProductRows;
   final List<ReceiptPaymentRow> paymentRows;
   final int discountUzs;
@@ -215,6 +235,7 @@ class _ReprintData {
     required this.dateTime,
     required this.sellerName,
     required this.clientName,
+    this.description,
     required this.invoiceProductRows,
     required this.paymentRows,
     required this.discountUzs,
