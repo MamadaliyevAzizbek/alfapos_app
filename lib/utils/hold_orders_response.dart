@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/input_formatters.dart';
 import 'cash_register_utils.dart';
+import 'kitchen_status.dart';
 
 /// GET /sales/hold-orders javobini xavfsiz parse qilish.
 /// Noto'g'ri `orders` / umumiy `data` dan boshqa ro'yxatlarni aralashtirmaydi.
@@ -282,6 +283,96 @@ class HoldOrdersResponse {
   static String? resolveInvoiceId(Map<String, dynamic> h) {
     final inv = (h['invoice_id'] ?? h['invoiceId'] ?? '').toString().trim();
     return inv.isEmpty ? null : inv;
+  }
+
+  static int? resolveQueueNumber(Map<String, dynamic> h) {
+    for (final key in ['queueNumber', 'queue_number', 'checkNumber', 'check_number']) {
+      final n = cashRegisterParseId(h[key]);
+      if (n != null && n > 0) return n;
+    }
+    for (final nestKey in ['data', 'order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final n = resolveQueueNumber(Map<String, dynamic>.from(nested));
+        if (n != null) return n;
+      }
+    }
+    return null;
+  }
+
+  static KitchenStatus? resolveKitchenStatus(Map<String, dynamic> h) {
+    final direct = KitchenStatus.tryParse(h['kitchenStatus'] ?? h['kitchen_status']);
+    if (direct != null) return direct;
+    for (final nestKey in ['order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final status = resolveKitchenStatus(Map<String, dynamic>.from(nested));
+        if (status != null) return status;
+      }
+    }
+    return null;
+  }
+
+  static int? resolveTableId(Map<String, dynamic> h) {
+    for (final key in ['tableId', 'table_id', 'tableID']) {
+      final n = cashRegisterParseId(h[key]);
+      if (n != null && n > 0) return n;
+    }
+    final table = h['table'];
+    if (table is Map) {
+      final n = cashRegisterParseId(table['id'] ?? table['tableId'] ?? table['table_id']);
+      if (n != null && n > 0) return n;
+    }
+    for (final nestKey in ['order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final id = resolveTableId(Map<String, dynamic>.from(nested));
+        if (id != null) return id;
+      }
+    }
+    return null;
+  }
+
+  /// Stol / kabina yorlig‘i — API `tableName` yoki `stol {id}`.
+  static String? resolveTableLabel(Map<String, dynamic> h) {
+    for (final key in ['tableName', 'table_name', 'table_title', 'tableTitle']) {
+      final s = (h[key] ?? '').toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    final table = h['table'];
+    if (table is Map) {
+      final s = (table['name'] ?? table['title'] ?? table['tableName'] ?? '').toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    for (final nestKey in ['order', 'sale', 'sales']) {
+      final nested = h[nestKey];
+      if (nested is Map) {
+        final label = resolveTableLabel(Map<String, dynamic>.from(nested));
+        if (label != null) return label;
+      }
+    }
+    final id = resolveTableId(h);
+    if (id != null) return 'stol $id';
+    return null;
+  }
+
+  static Map<String, dynamic> applyKitchenStatusUpdate(
+    Map<String, dynamic> hold,
+    Map<String, dynamic> res,
+  ) {
+    final next = Map<String, dynamic>.from(hold);
+    final status = res['kitchenStatus'] ?? res['kitchen_status'];
+    if (status != null) {
+      next['kitchenStatus'] = status;
+      next['kitchen_status'] = status;
+    }
+    final queue = res['queueNumber'] ?? res['queue_number'];
+    if (queue != null) {
+      next['queueNumber'] = queue;
+      next['queue_number'] = queue;
+      next['checkNumber'] = queue;
+    }
+    return next;
   }
 
   static int displayTotal(Map<String, dynamic> h) {

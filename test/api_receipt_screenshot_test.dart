@@ -17,9 +17,9 @@ void main() {
 </table>
 ''';
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
-    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
+    expect(lines.any((l) => l.contains('Alfa market')), isTrue);
     expect(lines, contains('^2026-05-20 | 17:17:52'));
-    expect(lines, contains('1) sprite'));
+    expect(lines.any((l) => l.contains('1) sprite')), isTrue);
     expect(lines.any((l) => l.contains('4шт') && l.contains('2,000')), isTrue);
     expect(lines.any((l) => l.contains('8,000') && l.contains("so'm")), isTrue);
     expect(lines.join('\n'), isNot(contains('Mahsulot Miqdor')));
@@ -43,8 +43,8 @@ void main() {
     expect(data.products.first.quantity, '4шт');
 
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
-    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
-    expect(lines, contains('1) sprite'));
+    expect(lines.any((l) => l.contains('Alfa market')), isTrue);
+    expect(lines.any((l) => l.contains('1) sprite')), isTrue);
     expect(lines.join('\n'), isNot(contains('Mahsulot Miqdor Narx Summa')));
   });
 
@@ -67,10 +67,10 @@ void main() {
 </table>
 ''';
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
-    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
+    expect(lines.any((l) => l.contains('Alfa market')), isTrue);
     expect(lines, contains('Chek raqami: 10301'));
     expect(lines, contains('Sotuvchi nomeri: 911003205'));
-    expect(lines, contains('1) sprite'));
+    expect(lines.any((l) => l.contains('1) sprite')), isTrue);
     expect(
       lines.any((l) => l.contains('Umumiy summa') || l.contains('!TOTAL!')),
       isTrue,

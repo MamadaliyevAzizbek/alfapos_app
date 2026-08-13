@@ -16,6 +16,7 @@ import '../../widgets/app_dropdown.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
+import 'restaurant_tv_screen.dart';
 
 enum _SettingsTab { printer, sales, product, receipt }
 
@@ -574,7 +575,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
           'Savdo sozlamalari',
           'Desktop sotuv ekranida mahsulotlar qanday ko‘rinishini tanlang. '
           'Restoran rejimida kategoriyalar qidiruv ostida gorizontal tugmalar, '
-          'pastda mahsulotlar chiqadi.',
+          'pastda mahsulotlar chiqadi. To‘lovdan keyin navbat raqami va '
+          'Tayyorlanmoqda avtomatik chiqadi; Sotish ro‘yxatida Tayyor / Yakunlandi.',
         ),
         const SizedBox(height: 20),
         _card(
@@ -601,16 +603,24 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 },
               ),
               const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _saveSalesLayoutMode,
-                  icon: const Icon(Icons.save_rounded),
-                  label: const Text('Saqlash'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              Row(
+                children: [
+                  if (_salesLayoutMode == DesktopSalesLayoutMode.restaurant)
+                    OutlinedButton.icon(
+                      onPressed: () => RestaurantTvScreen.show(context),
+                      icon: const Icon(Icons.tv_rounded),
+                      label: const Text('TV / oshxona ekrani'),
+                    ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: _saveSalesLayoutMode,
+                    icon: const Icon(Icons.save_rounded),
+                    label: const Text('Saqlash'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
@@ -832,7 +842,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       children: [
         _sectionHeader(
           'Chek sozlamalari',
-          'Matnlar standart. Faqat logo o‘zgartiriladi.',
+          'Chek dizayni va printerga chiqadigan matn ko‘rinishi.',
         ),
         const SizedBox(height: 20),
         _card(child: ReceiptDesignEditorPanel(onSaved: _loadLocalReceiptPreview)),

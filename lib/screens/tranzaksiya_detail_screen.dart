@@ -38,10 +38,10 @@ import '../utils/thermal_receipt_capture.dart';
 import '../utils/thermal_receipt_layout_metrics.dart';
 import '../services/printer_settings.dart';
 import '../services/desktop_sales_layout_settings.dart';
-import '../services/restaurant_queue_number.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/tolovsiz_payment.dart';
 import '../utils/hold_cart_action.dart';
+import '../utils/hold_orders_response.dart';
 import '../utils/sale_store_response.dart';
 import '../utils/sale_store_validation.dart';
 import '../utils/customer_group_discount.dart';
@@ -56,6 +56,7 @@ class TranzaksiyaDetailScreen extends StatefulWidget {
   /// Pauzadan davom ettirilganda mavjud buyurtma.
   final int? initialOrderId;
   final String? initialInvoiceId;
+  final int? initialQueueNumber;
   /// Chek tahrirlash — yangi chek yaratiladi, eskisi bekor qilinadi.
   final int? editOrderId;
   final String? editReason;
@@ -71,6 +72,7 @@ class TranzaksiyaDetailScreen extends StatefulWidget {
     this.initialClient,
     this.initialOrderId,
     this.initialInvoiceId,
+    this.initialQueueNumber,
     this.editOrderId,
     this.editReason,
     this.useDesktopFullscreenLayout = false,
@@ -1935,6 +1937,26 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return client.balance != null || client.dueAmount != null || client.debtLimit != null;
   }
 
+  Future<int?> _resolveRestaurantQueueNumber({
+    Map<String, dynamic>? storeRes,
+    int? orderId,
+    String? invoiceId,
+  }) async {
+    if (_completedQueueNumber != null && _completedQueueNumber! > 0) {
+      return _completedQueueNumber;
+    }
+    if (storeRes != null) {
+      final fromStore = HoldOrdersResponse.resolveQueueNumber(storeRes);
+      if (fromStore != null && fromStore > 0) return fromStore;
+    }
+    final fromHold = widget.initialQueueNumber;
+    if (fromHold != null && fromHold > 0) return fromHold;
+    return SalesSessionProvider.instance.fetchKitchenQueueNumber(
+      orderId: orderId ?? _completedOrderId,
+      invoiceId: invoiceId ?? _completedReceiptId,
+    );
+  }
+
   Future<void> _afterPaymentBackground({
     required String sellerName,
     String? clientName,
@@ -1942,7 +1964,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }) async {
     int? queueNumber;
     if (await DesktopSalesLayoutSettings.getMode() == DesktopSalesLayoutMode.restaurant) {
-      queueNumber = await RestaurantQueueNumberService.nextForToday();
+      queueNumber = await _resolveRestaurantQueueNumber(
+        storeRes: null,
+        orderId: _completedOrderId,
+        invoiceId: _completedReceiptId,
+      );
       if (mounted) {
         setState(() {
           _completedQueueNumber = queueNumber;
@@ -2202,12 +2228,23 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     final sellerName =
         _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi';
     final clientName = _client?.name;
+    final isRestaurant =
+        await DesktopSalesLayoutSettings.getMode() == DesktopSalesLayoutMode.restaurant;
+    final queueNumber = isRestaurant
+        ? await _resolveRestaurantQueueNumber(
+            storeRes: storeRes,
+            orderId: orderId,
+            invoiceId: rid,
+          )
+        : null;
     if (!mounted) return;
     setState(() {
       _completedReceiptId = rid;
       _completedOrderId = orderId;
       _completedSellerName = sellerName;
       _completedClientName = clientName;
+      _completedQueueNumber = queueNumber;
+      _isRestaurantLayout = isRestaurant;
       if (widget.useDesktopFullscreenLayout) {
         _desktopPaymentComplete = true;
         _submittingPay = false;

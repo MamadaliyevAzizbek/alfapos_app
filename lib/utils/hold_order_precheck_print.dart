@@ -66,6 +66,7 @@ class HoldOrderPrecheckPrint {
       totalSum: total,
       isPrecheck: true,
       isRestaurantLayout: isRestaurantLayout,
+      queueNumber: HoldOrdersResponse.resolveQueueNumber(hold) ?? resume.queueNumber,
       design: design,
     );
 

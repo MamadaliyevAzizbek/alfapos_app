@@ -5,17 +5,17 @@ import 'package:image/image.dart' as img;
 abstract class ThermalReceiptLogoFit {
   ThermalReceiptLogoFit._();
 
-  /// 80mm: kvadrat logo ~32 mm — 72 px tushunarsiz kichik edi.
-  static const int width80 = 384;
-  static const int height80 = 256;
+  /// 80mm: ~20 mm — 256 px tepada katta bo‘sh joy qoldirardi.
+  static const int width80 = 192;
+  static const int height80 = 128;
 
   /// 58mm: biroz ixchamroq.
-  static const int width58 = 256;
-  static const int height58 = 160;
+  static const int width58 = 144;
+  static const int height58 = 96;
 
   /// Sozlamalar / ekran preview (logical px).
-  static const double previewWidth = 192;
-  static const double previewHeight = 128;
+  static const double previewWidth = 160;
+  static const double previewHeight = 96;
 
   static ({int width, int height}) boxFor({required bool mm58}) => mm58
       ? (width: width58, height: height58)

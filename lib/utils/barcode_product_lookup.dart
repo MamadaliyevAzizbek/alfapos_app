@@ -185,9 +185,8 @@ class BarcodeProductLookup {
       // is_scale_barcode=false → oddiy barcode zanjiriga o‘tish.
       return null;
     } on ApiException catch (e) {
-      // success:false yoki 404 — message odatda "PLU kodli mahsulot topilmadi…"
-      if (_looksLikeScalePluError(e.message) ||
-          (e.statusCode == 404 && looksLikePossibleScaleBarcode(q))) {
+      // Faqat haqiqiy PLU xabari — 404 HTML/proksi ni taroz xatosi deb ko‘rsatmaymiz.
+      if (_looksLikeScalePluError(e.message) && !e.isNonJsonOrProxyNoise) {
         return BarcodeLookupResult(
           scalePluNotFound: true,
           isScaleItem: true,

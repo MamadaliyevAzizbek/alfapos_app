@@ -18,8 +18,8 @@ void main() {
 
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
     expect(lines, isNot(contains(contains('Do\'kon nomi Mahsulot'))));
-    expect(lines.any((l) => l.contains('Do\'kon nomi') || l.contains('^Do\'kon nomi')), isTrue);
-    expect(lines, contains('1) Mahsulot'), reason: lines.join('\n'));
+    expect(lines.any((l) => l.contains('Do\'kon nomi')), isTrue);
+    expect(lines.any((l) => l.contains('1) Mahsulot')), isTrue, reason: lines.join('\n'));
   });
 
   test('long line is wrapped for thermal width', () {

@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
 import '../core/api_sync_throttle.dart';
+import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/seller_preferences.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
+import '../providers/sales_session_provider.dart';
+import '../services/api_service.dart';
+import '../services/desktop_sales_layout_settings.dart';
 import '../services/reports_repository.dart';
 import '../utils/current_employee_sales_filter.dart';
+import '../utils/hold_orders_response.dart';
 import '../utils/invoice_edit_flow.dart';
 import '../utils/invoice_edit_utils.dart';
+import '../utils/kitchen_status.dart';
 import '../utils/platform_layout.dart';
+import '../utils/tv_orders_response.dart';
 import 'api_chek_detail_screen.dart';
 import 'desktop/desktop_shell_scope.dart';
+import 'desktop/restaurant_tv_screen.dart';
 import '../widgets/ios_style_modals.dart';
+import '../widgets/kitchen_status_buttons.dart';
 import '../widgets/throttled_refresh_indicator.dart';
 
 class TranzaksiyalarScreen extends StatefulWidget {
@@ -39,11 +48,15 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   String? _apiError;
   int? _employeeFilterUserId;
   String _employeeFilterName = '';
+  bool _isRestaurantDesktop = false;
+  int? _statusBusyOrderId;
 
   bool get _filterByEmployee =>
       widget.filterByCurrentEmployee || isDesktopPosLayout;
 
   bool get _desktop => isDesktopPosLayout;
+
+  bool get _showKitchenQueue => _desktop && _isRestaurantDesktop;
 
   @override
   void initState() {
@@ -61,7 +74,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   void didUpdateWidget(covariant TranzaksiyalarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentIndex != widget.tabIndex && widget.currentIndex == widget.tabIndex) {
-      _load(force: true);
+      _load(force: false);
     }
   }
 
@@ -83,19 +96,28 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     return _apiSales.where((m) => _chekMatchesSearch(m, _searchQuery)).toList();
   }
 
+  Future<void>? _loadInFlight;
+
   Future<void> _load({bool force = false}) async {
+    if (_loadInFlight != null) return _loadInFlight;
     if (!force &&
         !ApiSyncThrottle.shouldRun('transactions_sales_list', const Duration(minutes: 2))) {
       return;
     }
     if (!force) ApiSyncThrottle.markRan('transactions_sales_list');
-    await _loadApiSales();
+    final future = _loadApiSales();
+    _loadInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_loadInFlight, future)) _loadInFlight = null;
+    }
     if (!mounted) return;
     setState(() {});
   }
 
   @override
-  Future<void> onDesktopShellSync() => _load(force: true);
+  Future<void> onDesktopShellSync() => _load(force: false);
 
   /// POST /api/v1/reports/sales — so'nggi 30 kun yoki searchValue bo'lsa qidiruv
   Future<void> _loadApiSales({String? searchValue}) async {
@@ -152,21 +174,77 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
         final s = id.toString().trim().toLowerCase();
         return s.isNotEmpty && !s.contains('umumiy');
       }).toList();
-      if (_filterByEmployee) {
+      // employeeId allaqachon reports/sales so‘rovida — qatorlarda user_id
+      // bo‘lmasa ikkinchi filtr hammasini yashirib «Sotuvlar yo'q» qiladi.
+      if (_filterByEmployee && employeeId == null) {
         mapped = mapped
             .where((m) => CurrentEmployeeSalesFilter.saleBelongsToUser(
                   m,
-                  userId: employeeId ?? _employeeFilterUserId,
+                  userId: _employeeFilterUserId,
                   sellerName: sellerName.isNotEmpty ? sellerName : _employeeFilterName,
                 ))
             .toList();
       }
       _apiSales = mapped;
       _apiError = null;
+    }
+    // 429 / tarmoq: avvalgi ro‘yxatni o‘chirmaymiz.
+    if (_desktop) {
+      final mode = await DesktopSalesLayoutSettings.getMode();
+      _isRestaurantDesktop = mode == DesktopSalesLayoutMode.restaurant;
+      if (_isRestaurantDesktop) {
+        await _overlayKitchenFieldsFromKitchenOrders();
+      }
     } else {
-      _apiSales = [];
+      _isRestaurantDesktop = false;
     }
     if (mounted) setState(() => _apiLoading = false);
+  }
+
+  Future<void> _overlayKitchenFieldsFromKitchenOrders() async {
+    final branchId = SalesSessionProvider.instance.branchId;
+    if (branchId == null || branchId <= 0) return;
+    try {
+      final res = await SalesApi.getKitchenOrders(branchId: branchId);
+      final snap = TvOrdersResponse.parse(res);
+      if (snap.orders.isEmpty) return;
+      final byId = {for (final o in snap.orders) o.orderId: o};
+      _apiSales = _apiSales.map((sale) {
+        final id = HoldOrdersResponse.resolveOrderId(sale) ?? getOrderIdFromSale(sale);
+        final kitchen = id == null ? null : byId[id];
+        if (kitchen == null) return sale;
+        return {
+          ...sale,
+          if (kitchen.queueNumber != null) 'queueNumber': kitchen.queueNumber,
+          if (kitchen.kitchenStatus != null) 'kitchenStatus': kitchen.kitchenStatus!.apiValue,
+          if (kitchen.tableName != null) 'tableName': kitchen.tableName,
+        };
+      }).toList();
+    } catch (_) {}
+  }
+
+  Future<void> _setKitchenStatus(Map<String, dynamic> sale, KitchenStatus status) async {
+    if (_statusBusyOrderId != null) return;
+    final orderId = HoldOrdersResponse.resolveOrderId(sale) ?? getOrderIdFromSale(sale);
+    setState(() => _statusBusyOrderId = orderId);
+    try {
+      final res = await SalesSessionProvider.instance.updateKitchenStatus(
+        hold: sale,
+        kitchenStatus: status.apiValue,
+      );
+      if (!mounted) return;
+      setState(() {
+        _apiSales = _apiSales.map((row) {
+          final id = HoldOrdersResponse.resolveOrderId(row) ?? getOrderIdFromSale(row);
+          if (id != orderId) return row;
+          return HoldOrdersResponse.applyKitchenStatusUpdate(row, res);
+        }).toList();
+      });
+    } catch (e) {
+      if (mounted) AppNotify.error(context, '$e');
+    } finally {
+      if (mounted) setState(() => _statusBusyOrderId = null);
+    }
   }
 
   int get _displayCount => _filteredSales.length;
@@ -227,6 +305,15 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                   ),
                 ),
                 const SizedBox(width: 12),
+                if (_showKitchenQueue)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: OutlinedButton.icon(
+                      onPressed: () => RestaurantTvScreen.show(context),
+                      icon: const Icon(Icons.tv_rounded, size: 18),
+                      label: const Text('TV ekran'),
+                    ),
+                  ),
                 if (count > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -320,16 +407,18 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
               Container(
                 color: const Color(0xFFF8FAFC),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                child: const Row(
+                child: Row(
                   children: [
-                    Expanded(flex: 2, child: Text('SANA', style: _thStyle)),
-                    Expanded(flex: 3, child: Text('CHEK', style: _thStyle)),
-                    Expanded(flex: 3, child: Text('MIJOZ', style: _thStyle)),
-                    Expanded(
+                    const Expanded(flex: 2, child: Text('SANA', style: _thStyle)),
+                    const Expanded(flex: 3, child: Text('CHEK', style: _thStyle)),
+                    const Expanded(flex: 3, child: Text('MIJOZ', style: _thStyle)),
+                    if (_showKitchenQueue)
+                      const Expanded(flex: 5, child: Text('STATUS', style: _thStyle)),
+                    const Expanded(
                       flex: 2,
                       child: Text('SUMMA', style: _thStyle, textAlign: TextAlign.end),
                     ),
-                    SizedBox(
+                    const SizedBox(
                       width: 72,
                       child: Text('AMAL', style: _thStyle, textAlign: TextAlign.center),
                     ),
@@ -346,9 +435,17 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                       return _DesktopSaleRow(
                         sale: sale,
                         index: index,
+                        showKitchenQueue: _showKitchenQueue,
+                        kitchenBusy: _statusBusyOrderId != null &&
+                            (_statusBusyOrderId ==
+                                (HoldOrdersResponse.resolveOrderId(sale) ??
+                                    getOrderIdFromSale(sale))),
                         showEditButton: canShowInvoiceEditButton(sale),
                         showDateEditButton: canShowInvoiceDateEditButton(sale),
                         onTap: () => _showApiSaleDetail(context, sale),
+                        onKitchenStatus: _showKitchenQueue
+                            ? (status) => _setKitchenStatus(sale, status)
+                            : null,
                         onEdit: canShowInvoiceEditButton(sale)
                             ? () => _startEditSale(context, sale)
                             : null,
@@ -672,6 +769,9 @@ class _DesktopSaleRow extends StatelessWidget {
   final Map<String, dynamic> sale;
   final int index;
   final VoidCallback onTap;
+  final bool showKitchenQueue;
+  final bool kitchenBusy;
+  final ValueChanged<KitchenStatus>? onKitchenStatus;
   final bool showEditButton;
   final bool showDateEditButton;
   final VoidCallback? onEdit;
@@ -681,6 +781,9 @@ class _DesktopSaleRow extends StatelessWidget {
     required this.sale,
     required this.index,
     required this.onTap,
+    this.showKitchenQueue = false,
+    this.kitchenBusy = false,
+    this.onKitchenStatus,
     this.showEditButton = false,
     this.showDateEditButton = false,
     this.onEdit,
@@ -704,6 +807,9 @@ class _DesktopSaleRow extends StatelessWidget {
     final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
     final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '—';
     final bg = index.isEven ? Colors.white : const Color(0xFFFAFBFC);
+    final queue = showKitchenQueue ? HoldOrdersResponse.resolveQueueNumber(sale) : null;
+    final table = showKitchenQueue ? HoldOrdersResponse.resolveTableLabel(sale) : null;
+    final kitchen = showKitchenQueue ? HoldOrdersResponse.resolveKitchenStatus(sale) : null;
 
     return Material(
       color: bg,
@@ -722,17 +828,65 @@ class _DesktopSaleRow extends StatelessWidget {
               ),
               Expanded(
                 flex: 3,
-                child: Text(chek, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                child: Row(
+                  children: [
+                    if (queue != null) ...[
+                      Text(
+                        '$queue. ',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                    Flexible(
+                      child: Text(chek, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
               ),
               Expanded(
                 flex: 3,
-                child: Text(
-                  customer,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        customer,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15),
+                      ),
+                    ),
+                    if (table != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8EAF6),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          table,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF5C6BC0),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+              if (showKitchenQueue)
+                Expanded(
+                  flex: 5,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: KitchenStatusButtons(
+                      current: kitchen,
+                      busy: kitchenBusy,
+                      onSelected: onKitchenStatus ?? (_) {},
+                    ),
+                  ),
+                ),
               Expanded(
                 flex: 2,
                 child: Text(

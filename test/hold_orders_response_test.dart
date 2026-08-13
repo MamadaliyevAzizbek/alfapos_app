@@ -157,6 +157,44 @@ void main() {
     );
   });
 
+  test('resolves restaurant queue, kitchen status and table', () {
+    final hold = {
+      'orderID': 10,
+      'status': 'hold',
+      'queueNumber': 7,
+      'kitchenStatus': 'preparing',
+      'tableName': 'stol 1',
+    };
+    expect(HoldOrdersResponse.resolveQueueNumber(hold), 7);
+    expect(HoldOrdersResponse.resolveKitchenStatus(hold)?.apiValue, 'preparing');
+    expect(HoldOrdersResponse.resolveTableLabel(hold), 'stol 1');
+
+    final updated = HoldOrdersResponse.applyKitchenStatusUpdate(hold, {
+      'kitchen_status': 'ready',
+      'queueNumber': 7,
+    });
+    expect(HoldOrdersResponse.resolveKitchenStatus(updated)?.apiValue, 'ready');
+    expect(HoldOrdersResponse.resolveQueueNumber(updated), 7);
+    expect(HoldOrdersResponse.resolveTableLabel({'tableId': 3}), 'stol 3');
+  });
+
+  test('resolves queue number from /sales/store data wrapper', () {
+    expect(
+      HoldOrdersResponse.resolveQueueNumber({
+        'success': true,
+        'data': {'order_id': 88, 'queue_number': 12, 'invoice_id': 'POS88'},
+      }),
+      12,
+    );
+    expect(
+      HoldOrdersResponse.resolveQueueNumber({
+        'success': true,
+        'order': {'checkNumber': 4},
+      }),
+      4,
+    );
+  });
+
   test('falls back to datarows when hold_orders key missing', () {
     final list = HoldOrdersResponse.parseList({
       'datarows': [

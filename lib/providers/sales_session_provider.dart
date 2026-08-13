@@ -25,6 +25,7 @@ import '../utils/product_catalog_filter.dart';
 import '../utils/sales_products.dart';
 import '../utils/sales_products_request_body.dart';
 import '../utils/hold_orders_response.dart';
+import '../utils/tv_orders_response.dart';
 import '../utils/sale_store_validation.dart';
 import '../utils/sales_payment_types.dart';
 import '../services/sales_stock_limit_settings.dart';
@@ -1058,7 +1059,7 @@ class SalesSessionProvider extends ChangeNotifier {
     try {
       syncFromShift();
       await _ensureHoldRegisterTagsLoaded();
-      final res = await SalesApi.getHoldOrders();
+      final res = await SalesApi.getHoldOrders(cashRegisterId: cashRegisterId);
       final list = HoldOrdersResponse.parseList(res);
       for (final h in list) {
         _backfillHoldRegisterTagFromRow(h);
@@ -1128,6 +1129,57 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<void> sendDailySummary() async {
     await SalesApi.sendTelegramDailySummary();
+  }
+
+  /// Restoran navbati — `/sales/kitchen-orders` (bazadan).
+  Future<int?> fetchKitchenQueueNumber({
+    int? orderId,
+    String? invoiceId,
+  }) async {
+    final bid = branchId;
+    if (bid == null || bid <= 0) return null;
+    final inv = (invoiceId ?? '').trim();
+    if ((orderId == null || orderId <= 0) && inv.isEmpty) return null;
+    try {
+      final res = await SalesApi.getKitchenOrders(branchId: bid);
+      final snap = TvOrdersResponse.parse(res);
+      for (final o in snap.orders) {
+        if (orderId != null && orderId > 0 && o.orderId == orderId) {
+          if (o.queueNumber != null && o.queueNumber! > 0) return o.queueNumber;
+        }
+        if (inv.isNotEmpty) {
+          final oid = (o.invoiceId ?? '').trim();
+          if (oid.isNotEmpty &&
+              (oid == inv || oid == 'POS$inv' || 'POS$oid' == inv) &&
+              o.queueNumber != null &&
+              o.queueNumber! > 0) {
+            return o.queueNumber;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Map<String, dynamic>> updateKitchenStatus({
+    required Map<String, dynamic> hold,
+    required String kitchenStatus,
+  }) async {
+    final orderId = HoldOrdersResponse.resolveOrderId(hold);
+    var invoiceId = HoldOrdersResponse.resolveInvoiceId(hold);
+    if ((invoiceId == null || invoiceId.isEmpty) && orderId != null) {
+      invoiceId = 'POS$orderId';
+    }
+    if (orderId == null && (invoiceId == null || invoiceId.isEmpty)) {
+      throw ApiException('Buyurtma ID topilmadi');
+    }
+    final res = await SalesApi.updateKitchenStatus(
+      orderId: orderId,
+      invoiceId: invoiceId,
+      kitchenStatus: kitchenStatus,
+    );
+    _invalidateHoldOrdersCache();
+    return res;
   }
 
   Future<void> cancelHoldOrder(Map<String, dynamic> hold) async {

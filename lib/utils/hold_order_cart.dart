@@ -18,6 +18,7 @@ class HoldOrderResume {
     this.invoiceId,
     this.discountPercent,
     this.grandTotal,
+    this.queueNumber,
   });
 
   final List<CartItem> items;
@@ -26,6 +27,7 @@ class HoldOrderResume {
   final String? invoiceId;
   final int? discountPercent;
   final int? grandTotal;
+  final int? queueNumber;
 }
 
 class HoldOrderCart {
@@ -215,6 +217,8 @@ class HoldOrderCart {
       invoiceId: invoiceId,
       discountPercent: discount,
       grandTotal: grand,
+      queueNumber: HoldOrdersResponse.resolveQueueNumber(hold) ??
+          (extra != null ? HoldOrdersResponse.resolveQueueNumber(extra) : null),
     );
   }
 

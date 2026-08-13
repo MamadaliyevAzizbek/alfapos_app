@@ -9,6 +9,7 @@ class SalesWindowSnapshot {
   final bool isReturnMode;
   final int? holdOrderId;
   final String? holdInvoiceId;
+  final int? holdQueueNumber;
   final int? invoiceEditOrderId;
   final String? invoiceEditReason;
   final String? invoiceEditSourceInvoiceId;
@@ -20,6 +21,7 @@ class SalesWindowSnapshot {
     this.isReturnMode = false,
     this.holdOrderId,
     this.holdInvoiceId,
+    this.holdQueueNumber,
     this.invoiceEditOrderId,
     this.invoiceEditReason,
     this.invoiceEditSourceInvoiceId,
@@ -35,6 +37,7 @@ class SalesWindowSnapshot {
     bool? isReturnMode,
     int? holdOrderId,
     String? holdInvoiceId,
+    int? holdQueueNumber,
     int? invoiceEditOrderId,
     String? invoiceEditReason,
     String? invoiceEditSourceInvoiceId,
@@ -48,6 +51,7 @@ class SalesWindowSnapshot {
       isReturnMode: isReturnMode ?? this.isReturnMode,
       holdOrderId: clearHold ? null : (holdOrderId ?? this.holdOrderId),
       holdInvoiceId: clearHold ? null : (holdInvoiceId ?? this.holdInvoiceId),
+      holdQueueNumber: clearHold ? null : (holdQueueNumber ?? this.holdQueueNumber),
       invoiceEditOrderId: clearInvoiceEdit ? null : (invoiceEditOrderId ?? this.invoiceEditOrderId),
       invoiceEditReason: clearInvoiceEdit ? null : (invoiceEditReason ?? this.invoiceEditReason),
       invoiceEditSourceInvoiceId:

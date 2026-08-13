@@ -1,6 +1,6 @@
 import '../models/receipt_design_config.dart';
 
-/// Chek sarlavhasi: API filial nomi (qo‘lda do‘kon nomi yo‘q).
+/// Chek sarlavhasi: sozlamalardagi do'kon nomi yoki API filial.
 class ReceiptStoreTitle {
   ReceiptStoreTitle._();
 
@@ -8,8 +8,13 @@ class ReceiptStoreTitle {
     required ReceiptDesignConfig design,
     String branchName = '',
   }) {
+    if (!design.useBranchNameAsTitle) {
+      final custom = design.storeTitle.trim();
+      return custom.isEmpty ? 'Alfa market' : custom;
+    }
     final branch = branchName.trim();
     if (branch.isNotEmpty) return branch;
-    return 'Alfa market';
+    final fallback = design.storeTitle.trim();
+    return fallback.isEmpty ? 'Alfa market' : fallback;
   }
 }

@@ -209,58 +209,43 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
               ),
               if (!isDesktopPosLayout) ...[
                 const SizedBox(width: 8),
-                Material(
-                  color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
-                    onTap: () => _showScanner(context),
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.all(11),
-                      child: Icon(
-                        Icons.qr_code_scanner_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
+                _squareActionButton(
+                  icon: Icons.qr_code_scanner_rounded,
+                  onTap: () => _showScanner(context),
+                ),
+                const SizedBox(width: 8),
+                _squareActionButton(
+                  icon: Icons.add_rounded,
+                  onTap: _openNewProduct,
                 ),
               ],
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-          child: SizedBox(
-            width: double.infinity,
-            height: 36,
-            child: FilledButton.icon(
-              onPressed: () async {
-                final saved = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(builder: (_) => const YangiTovarScreen()),
-                );
-                if (!mounted) return;
-                setState(() {});
-                if (saved == true) {
-                  AppNotify.success(null, "Tovar muvaffaqiyatli qo'shildi!");
-                }
-              },
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text(
-                "Yangi mahsulot qo'shish",
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+        if (isDesktopPosLayout)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: FilledButton.icon(
+                onPressed: _openNewProduct,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text(
+                  "Yangi mahsulot qo'shish",
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
         Expanded(
           child: ThrottledRefreshIndicator(
             onRefresh: _pullRefreshCatalog,
@@ -685,6 +670,35 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
         ),
       ),
     );
+  }
+
+  Widget _squareActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: AppTheme.primary,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openNewProduct() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const YangiTovarScreen()),
+    );
+    if (!mounted) return;
+    setState(() {});
+    if (saved == true) {
+      AppNotify.success(null, "Tovar muvaffaqiyatli qo'shildi!");
+    }
   }
 
   void _showScanner(BuildContext context) {

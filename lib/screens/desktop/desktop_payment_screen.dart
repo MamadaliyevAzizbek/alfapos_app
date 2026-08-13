@@ -14,6 +14,7 @@ class DesktopPaymentScreen extends StatelessWidget {
   final Client? initialClient;
   final int? initialOrderId;
   final String? initialInvoiceId;
+  final int? initialQueueNumber;
   final int? editOrderId;
   final String? editReason;
   final bool isReturnCheckout;
@@ -25,6 +26,7 @@ class DesktopPaymentScreen extends StatelessWidget {
     this.initialClient,
     this.initialOrderId,
     this.initialInvoiceId,
+    this.initialQueueNumber,
     this.editOrderId,
     this.editReason,
     this.isReturnCheckout = false,
@@ -37,6 +39,7 @@ class DesktopPaymentScreen extends StatelessWidget {
     Client? initialClient,
     int? initialOrderId,
     String? initialInvoiceId,
+    int? initialQueueNumber,
     int? editOrderId,
     String? editReason,
     bool isReturnCheckout = false,
@@ -51,6 +54,7 @@ class DesktopPaymentScreen extends StatelessWidget {
           initialClient: initialClient,
           initialOrderId: initialOrderId,
           initialInvoiceId: initialInvoiceId,
+          initialQueueNumber: initialQueueNumber,
           editOrderId: editOrderId,
           editReason: editReason,
           isReturnCheckout: isReturnCheckout,
@@ -70,6 +74,7 @@ class DesktopPaymentScreen extends StatelessWidget {
       initialClient: initialClient,
       initialOrderId: initialOrderId,
       initialInvoiceId: initialInvoiceId,
+      initialQueueNumber: initialQueueNumber,
       editOrderId: editOrderId,
       editReason: editReason,
       useDesktopFullscreenLayout: true,

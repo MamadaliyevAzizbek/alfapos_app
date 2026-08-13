@@ -60,6 +60,7 @@ import '../utils/product_catalog_sort.dart';
 import '../utils/hold_cart_action.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/pos_navigation.dart';
+import 'tranzaksiyalar_screen.dart';
 import '../widgets/pos_editable_focus_scope.dart';
 import '../widgets/sales_customer_search.dart';
 import '../models/chergirma_result.dart';
@@ -110,6 +111,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   String _sellerName = '';
   int? _activeHoldOrderId;
   String? _activeHoldInvoiceId;
+  int? _activeHoldQueueNumber;
   int? _invoiceEditOrderId;
   String? _invoiceEditReason;
   String? _invoiceEditSourceInvoiceId;
@@ -118,6 +120,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   CartItem? _cartQtyFocusItem;
   int _cartQtyFocusNonce = 0;
   bool _isReturnMode = false;
+  bool _showDesktopSalesList = false;
+  bool _desktopSalesListMounted = false;
   DesktopSalesLayoutMode _desktopSalesLayoutMode = DesktopSalesLayoutMode.standard;
   String? _restaurantCategoryId;
   List<String> _categoryOrderIds = [];
@@ -443,6 +447,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       isReturnMode: _isReturnMode,
       holdOrderId: _activeHoldOrderId,
       holdInvoiceId: _activeHoldInvoiceId,
+      holdQueueNumber: _activeHoldQueueNumber,
       invoiceEditOrderId: _invoiceEditOrderId,
       invoiceEditReason: _invoiceEditReason,
       invoiceEditSourceInvoiceId: _invoiceEditSourceInvoiceId,
@@ -457,6 +462,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _selectedClient = window.client;
       _activeHoldOrderId = window.holdOrderId;
       _activeHoldInvoiceId = window.holdInvoiceId;
+      _activeHoldQueueNumber = window.holdQueueNumber;
       _invoiceEditOrderId = window.invoiceEditOrderId;
       _invoiceEditReason = window.invoiceEditReason;
       _invoiceEditSourceInvoiceId = window.invoiceEditSourceInvoiceId;
@@ -1177,6 +1183,21 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     );
   }
 
+  String _barcodeNotFoundMessage(String? message) {
+    final m = (message ?? '').trim();
+    if (m.isEmpty) return "Bu shtrix kod bo'yicha mahsulot topilmadi";
+    final lower = m.toLowerCase();
+    if (lower.contains('https scanning') ||
+        lower.contains('proksi') ||
+        lower.contains('json o‘rniga') ||
+        lower.contains("json o'rniga") ||
+        lower.contains('<html') ||
+        lower == 'topilmadi') {
+      return "Bu shtrix kod bo'yicha mahsulot topilmadi";
+    }
+    return m;
+  }
+
   Future<void> _searchAndAdd(String query) async {
     final q = query.trim();
     if (q.isEmpty || _barcodeSearchInFlight) return;
@@ -1194,10 +1215,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       }
       if (result.scalePluNotFound) {
         if (mounted) {
-          AppNotify.info(
-            context,
-            result.message ?? 'PLU kodli mahsulot topilmadi',
-          );
+          AppNotify.info(context, _barcodeNotFoundMessage(result.message));
         }
         _clearSearchField();
         return;
@@ -1216,6 +1234,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
       if (!mounted) return;
       AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi. Ro'yxatni yangilab ko'ring.");
+    } catch (_) {
+      if (mounted) {
+        AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
+      }
     } finally {
       _barcodeSearchInFlight = false;
     }
@@ -1330,7 +1352,14 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   void _openSalesListForCurrentRegister() {
-    PosNavigation.openTransactionsSection?.call();
+    if (!isDesktopPosLayout) {
+      PosNavigation.openTransactionsSection?.call();
+      return;
+    }
+    setState(() {
+      _showDesktopSalesList = true;
+      _desktopSalesListMounted = true;
+    });
   }
 
   void _openScanner(BuildContext context) {
@@ -1501,6 +1530,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
             : null,
         onClearCart: _clearCart,
         onSalesList: _openSalesListForCurrentRegister,
+        showSalesList: _showDesktopSalesList,
+        keepSalesListAlive: _desktopSalesListMounted,
+        salesListPanel: TranzaksiyalarScreen(
+          filterByCurrentEmployee: true,
+          tabIndex: 1,
+          currentIndex: _showDesktopSalesList ? 1 : 0,
+        ),
         onProductTap: (p) => _addProductToCart(p),
         cartQtyFocusNonce: _cartQtyFocusNonce,
         cartQtyFocusItem: _cartQtyFocusItem,
@@ -1594,12 +1630,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _expandedCartLine = null;
     _activeHoldOrderId = null;
     _activeHoldInvoiceId = null;
+    _activeHoldQueueNumber = null;
     _selectedClient = null;
     _setCartDiscountPercent(0);
     _captureActiveSalesWindow();
   }
 
   void _setReturnMode(bool returnMode) {
+    if (_showDesktopSalesList) {
+      setState(() => _showDesktopSalesList = false);
+    }
     if (_isReturnMode == returnMode) return;
     if (_cart.items.isNotEmpty) _clearCart();
     setState(() => _isReturnMode = returnMode);
@@ -1700,6 +1740,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     }
     _activeHoldOrderId = resume.orderId;
     _activeHoldInvoiceId = resume.invoiceId;
+    _activeHoldQueueNumber = resume.queueNumber;
     _selectedClient = resume.customer;
     if (_activeHoldOrderId != null) {
       try {
@@ -1755,6 +1796,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _cart.clear();
     _activeHoldOrderId = null;
     _activeHoldInvoiceId = null;
+    _activeHoldQueueNumber = null;
     _isReturnMode = false;
     for (final item in hold.items) {
       _cart.add(CartItem(
@@ -1819,10 +1861,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       }
       if (result.scalePluNotFound) {
         if (mounted) {
-          AppNotify.info(
-            context,
-            result.message ?? 'PLU kodli mahsulot topilmadi',
-          );
+          AppNotify.info(context, _barcodeNotFoundMessage(result.message));
         }
         _clearSearchField();
         return;
@@ -1839,6 +1878,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         return;
       }
 
+      if (mounted) {
+        AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
+      }
+    } catch (_) {
       if (mounted) {
         AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
       }
@@ -1872,6 +1915,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (!ok || !mounted) return;
     _activeHoldOrderId = null;
     _activeHoldInvoiceId = null;
+    _activeHoldQueueNumber = null;
     _selectedClient = null;
     _setCartDiscountPercent(0);
     await _refreshSavedOrdersCount();
@@ -2266,6 +2310,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (items.isEmpty) return;
     final orderId = _isInvoiceEditMode ? null : _activeHoldOrderId;
     final invoiceId = _isInvoiceEditMode ? null : _activeHoldInvoiceId;
+    final queueNumber = _isInvoiceEditMode ? null : _activeHoldQueueNumber;
     final editOrderId = _invoiceEditOrderId;
     final editReason = _invoiceEditReason;
     final client = _selectedClient;
@@ -2276,6 +2321,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       _expandedCartLine = null;
       _activeHoldOrderId = null;
       _activeHoldInvoiceId = null;
+      _activeHoldQueueNumber = null;
       _clearInvoiceEditState();
       _selectedClient = null;
       _setCartDiscountPercent(0);
@@ -2302,6 +2348,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         initialClient: client,
         initialOrderId: orderId,
         initialInvoiceId: invoiceId,
+        initialQueueNumber: queueNumber,
         editOrderId: editOrderId,
         editReason: editReason,
         isReturnCheckout: _isReturnMode,
@@ -2331,6 +2378,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           initialClient: client,
           initialOrderId: orderId,
           initialInvoiceId: invoiceId,
+          initialQueueNumber: queueNumber,
           editOrderId: editOrderId,
           editReason: editReason,
           onCustomerChanged: _onCustomerSelected,

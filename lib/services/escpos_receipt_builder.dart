@@ -85,7 +85,7 @@ class EscPosReceiptBuilder {
       final mm58 = paperSize == PaperSize.mm58;
       final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
       if (logoImage != null) {
-        bytes.addAll(_encodeLogo(logoImage));
+        bytes.addAll(_encodeLogo(g, logoImage));
       } else {
         debugPrint('[ChekLogo] rasm o‘qilmadi: ${cfg.logoFilePath}');
       }
@@ -95,15 +95,15 @@ class EscPosReceiptBuilder {
       );
     }
 
+    var contentStarted = false;
     for (final line in wrapped) {
-      if (line.isEmpty) {
+      final isBlank = line.isEmpty || ThermalReceiptProductTitleText.isGapLine(line);
+      if (isBlank) {
+        if (!contentStarted) continue;
         bytes.addAll(List<int>.from(g.feed(1)));
         continue;
       }
-      if (ThermalReceiptProductTitleText.isGapLine(line)) {
-        bytes.addAll(g.feed(1));
-        continue;
-      }
+      contentStarted = true;
 
       if (ThermalReceiptProductTitleText.isTitleLine(line)) {
         final text = ThermalReceiptProductTitleText.unwrap(line);
@@ -347,14 +347,21 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
-  /// GS v 0 — ESC * qora logoni oq bo‘sh joyga aylantirardi.
-  static List<int> _encodeLogo(img.Image logo) {
-    final out = <int>[
-      ...ThermalReceiptLogoFit.rasterGsV0(logo),
-      ...PrinterPaperProfile.restoreCompactSpacingBytes(),
-    ];
-    debugPrint('[ChekLogo] GS v 0 ${logo.width}x${logo.height} bytes=${out.length}');
-    return out;
+  /// ESC * + oldindan invert: kutubxona yana invert qiladi — qora logo oq bo‘lmasin.
+  static List<int> _encodeLogo(Generator g, img.Image logo) {
+    try {
+      final prepared = img.Image.from(logo);
+      img.invert(prepared);
+      final out = <int>[
+        ...List<int>.from(g.image(prepared, align: PosAlign.center)),
+        ...PrinterPaperProfile.restoreCompactSpacingBytes(),
+      ];
+      debugPrint('[ChekLogo] ESC* ${logo.width}x${logo.height} bytes=${out.length}');
+      return out;
+    } catch (e) {
+      debugPrint('[ChekLogo] ESC* o‘tkazib yuborildi: $e');
+      return const [];
+    }
   }
 
   static bool _isDateTimeLine(String text) =>

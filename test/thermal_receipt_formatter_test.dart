@@ -3,6 +3,7 @@ import 'package:alfapos_app/utils/api_receipt_html_parser.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
 import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_product_title_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_total_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,8 +32,8 @@ void main() {
       '8,000',
     ];
     final lines = ThermalReceiptFormatter.fromApiRawLines(raw);
-    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
-    expect(lines.any((l) => l.startsWith('1) sprite')), isTrue);
+    expect(lines.any((l) => l.contains('Alfa market')), isTrue);
+    expect(lines.any((l) => ThermalReceiptProductTitleText.unwrap(l).startsWith('1) sprite')), isTrue);
     expect(lines.any((l) => l.contains('sprite')), isTrue);
     expect(lines.any((l) => l.contains('x') && l.contains("so'm")), isTrue);
     expect(lines, isNot(contains('Mahsulot')));
@@ -77,7 +78,7 @@ void main() {
     expect(data.products.first.name, 'aaaaaa');
     expect(data.payments.first.method, 'Naqd pul');
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
-    expect(lines.any((l) => l.startsWith('1) aaaaaa')), isTrue);
+    expect(lines.any((l) => ThermalReceiptProductTitleText.unwrap(l).startsWith('1) aaaaaa')), isTrue);
     expect(lines.any((l) => l.contains('38,000') && l.contains('so')), isTrue);
   });
 
@@ -137,6 +138,9 @@ void main() {
     }
 
     for (final lines in [build(restaurant: false), build(restaurant: true)]) {
+      expect(lines.any((l) => l.contains("Do'kon") || l.contains('Restoran')), isTrue);
+      expect(lines.any((l) => l.contains('2026-06-10')), isTrue);
+      expect(lines.any(ThermalReceiptProductTitleText.isTitleLine), isTrue);
       expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
       expect(
         lines.any(
@@ -214,7 +218,7 @@ void main() {
 
   test('restaurant layout matches shop receipt with queue number only', () {
     final config = ReceiptDesignConfig.defaults.copyWith(
-      showRestaurantQueueNumber: true,
+      showRestaurantQueueNumber: false,
       restaurantQueueLabel: 'Navbat raqami',
     );
     final lines = ThermalReceiptFormatter.toPrintLines(
@@ -270,7 +274,7 @@ void main() {
     expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isFalse);
   });
 
-  test('receipt omits store title and keeps date', () {
+  test('receipt prints store title and date', () {
     final lines = ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
         storeName: 'GULISTON YEMLARI - Asosiy filial',
@@ -291,7 +295,7 @@ void main() {
         totalAmount: '4,000',
       ),
     );
-    expect(lines.any((l) => l.contains('GULISTON')), isFalse);
+    expect(lines.any((l) => l.contains('GULISTON')), isTrue);
     expect(lines.any((l) => l.contains('2026-08-11') && l.contains('18:43')), isTrue);
   });
 
@@ -329,5 +333,17 @@ void main() {
     expect(withClient.any((l) => l.contains('Mijoz: Ali')), isTrue);
     expect(withClient.any((l) => l.contains('+99890')), isTrue);
     expect(withClient.any((l) => l.contains('Toshkent')), isTrue);
+
+    final hidden = ThermalReceiptFormatter.toPrintLines(
+      base(name: 'Ali', phone: '+99890', address: 'Toshkent'),
+      config: ReceiptDesignConfig.defaults.copyWith(
+        showClientLine: false,
+        showClientPhone: false,
+        showClientAddress: false,
+      ),
+    );
+    expect(hidden.any((l) => l.contains('Ali')), isFalse);
+    expect(hidden.any((l) => l.contains('+99890')), isFalse);
+    expect(hidden.any((l) => l.contains('Toshkent')), isFalse);
   });
 }

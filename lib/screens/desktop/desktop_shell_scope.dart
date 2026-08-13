@@ -37,12 +37,19 @@ class DesktopShellSync {
 /// StatefulWidget ekranlari — shell sinxronlashidan keyin qayta yuklash.
 mixin DesktopShellSyncMixin<T extends StatefulWidget> on State<T> {
   int _desktopSyncGen = 0;
+  bool _desktopSyncReady = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final scope = DesktopShellScope.maybeOf(context);
-    if (scope == null || scope.syncGeneration == _desktopSyncGen) return;
+    if (scope == null) return;
+    if (!_desktopSyncReady) {
+      _desktopSyncReady = true;
+      _desktopSyncGen = scope.syncGeneration;
+      return;
+    }
+    if (scope.syncGeneration == _desktopSyncGen) return;
     _desktopSyncGen = scope.syncGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) onDesktopShellSync();

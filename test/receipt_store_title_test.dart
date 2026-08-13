@@ -3,7 +3,21 @@ import 'package:alfapos_app/utils/receipt_store_title.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('receipt title uses API branch name, not custom store field', () {
+  test('API branch name is used when toggle is on', () {
+    final design = ReceiptDesignConfig.defaults.copyWith(
+      storeTitle: 'ssssss',
+      useBranchNameAsTitle: true,
+    );
+    expect(
+      ReceiptStoreTitle.resolve(
+        design: design,
+        branchName: 'GULISTON YEMLARI - Asosiy filial',
+      ),
+      'GULISTON YEMLARI - Asosiy filial',
+    );
+  });
+
+  test('custom store title is used when toggle is off', () {
     final design = ReceiptDesignConfig.defaults.copyWith(
       storeTitle: 'ssssss',
       useBranchNameAsTitle: false,
@@ -13,7 +27,7 @@ void main() {
         design: design,
         branchName: 'GULISTON YEMLARI - Asosiy filial',
       ),
-      'GULISTON YEMLARI - Asosiy filial',
+      'ssssss',
     );
   });
 

@@ -1,5 +1,6 @@
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
+import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
@@ -272,24 +273,17 @@ class ThermalReceiptFormatter {
     var n = 0;
     for (final p in d.products) {
       n++;
+      for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
+        p.name,
+        numbered: config.numberedProducts,
+        index: n,
+      )) {
+        lines.add(ThermalReceiptProductTitleText.line(nameLine));
+      }
+      lines.add(ThermalReceiptProductTitleText.gapLine());
       if (d.isRestaurantLayout) {
-        for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
-          p.name,
-          numbered: config.numberedProducts,
-          index: n,
-        )) {
-          lines.add(ThermalReceiptProductTitleText.line(nameLine));
-        }
-        lines.add(ThermalReceiptProductTitleText.gapLine());
         _appendLeftLine(lines, _restaurantProductLine(p));
       } else {
-        for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
-          p.name,
-          numbered: config.numberedProducts,
-          index: n,
-        )) {
-          _appendLeftLine(lines, nameLine);
-        }
         final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
         final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
         lines.addAll(
@@ -324,16 +318,21 @@ class ThermalReceiptFormatter {
   }) {
     void center(String s) => lines.add('^${s.trim()}');
 
+    final title = ReceiptStoreTitle.resolve(
+      design: config,
+      branchName: d.storeName,
+    );
+    if (title.isNotEmpty) {
+      center(title);
+    }
     if (config.showDateTime) {
       center(_fmtDateTime(d.dateTime));
     }
-    lines.add('');
 
     if (!d.isPrecheck &&
         d.isRestaurantLayout &&
         d.queueNumber != null &&
-        d.queueNumber! > 0 &&
-        config.showRestaurantQueueNumber) {
+        d.queueNumber! > 0) {
       center(config.restaurantQueueLabel);
       lines.add(ThermalReceiptLargeText.line('${d.queueNumber}'));
       final hint = config.restaurantQueueHint.trim();
@@ -356,17 +355,20 @@ class ThermalReceiptFormatter {
         d.sellerPhone!.trim().isNotEmpty) {
       _appendLeftLine(lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
     }
-    final clientName = d.clientName?.trim() ?? '';
-    if (clientName.isNotEmpty) {
-      _appendLeftLine(lines, '${config.clientLabel}: $clientName');
-      final phone = d.clientPhone?.trim() ?? '';
-      if (phone.isNotEmpty) {
-        _appendLeftLine(lines, '${config.clientPhoneLabel}: $phone');
-      }
-      final address = d.clientAddress?.trim() ?? '';
-      if (address.isNotEmpty) {
-        _appendLeftLine(lines, '${config.clientAddressLabel}: $address');
-      }
+    if (config.showClientLine &&
+        d.clientName != null &&
+        d.clientName!.trim().isNotEmpty) {
+      _appendLeftLine(lines, '${config.clientLabel}: ${d.clientName!.trim()}');
+    }
+    if (config.showClientPhone &&
+        d.clientPhone != null &&
+        d.clientPhone!.trim().isNotEmpty) {
+      _appendLeftLine(lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
+    }
+    if (config.showClientAddress &&
+        d.clientAddress != null &&
+        d.clientAddress!.trim().isNotEmpty) {
+      _appendLeftLine(lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
     }
     lines.add('');
   }

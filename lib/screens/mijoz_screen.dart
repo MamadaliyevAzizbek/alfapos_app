@@ -8,6 +8,7 @@ import '../providers/clients_provider.dart';
 import '../providers/sales_session_provider.dart';
 import '../widgets/customer_debt_balance_badge.dart';
 import '../widgets/ios_style_modals.dart';
+import 'scanner_screen.dart' show showCompactScanner;
 import 'yangi_mijoz_screen.dart';
 
 class MijozScreen extends StatefulWidget {
@@ -108,51 +109,50 @@ class _MijozScreenState extends State<MijozScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: TextField(
-              controller: _searchController,
-              autofocus: _useApiSearch,
-              onChanged: _onSearchChanged,
-              decoration: InputDecoration(
-                hintText: 'Mijoz ismi yoki telefon raqami',
-                prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                suffixIcon: _apiLoading
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                        ),
-                      )
-                    : _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 20),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showAddClient(context),
-                icon: const Icon(Icons.add_rounded, size: 22),
-                label: const Text('Yangi mijoz yaratish'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    autofocus: _useApiSearch,
+                    onChanged: _onSearchChanged,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      hintText: 'Mijoz ismi yoki telefon raqami',
+                      prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                      suffixIcon: _apiLoading
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                              ),
+                            )
+                          : _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close_rounded, size: 20),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _onSearchChanged('');
+                                  },
+                                )
+                              : null,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                _squareActionButton(
+                  icon: Icons.qr_code_scanner_rounded,
+                  onTap: _showScanner,
+                ),
+                const SizedBox(width: 8),
+                _squareActionButton(
+                  icon: Icons.add_rounded,
+                  onTap: () => _showAddClient(context),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -301,6 +301,34 @@ class _MijozScreenState extends State<MijozScreen> {
               },
             ),
     );
+  }
+
+  Widget _squareActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: AppTheme.primary,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ),
+    );
+  }
+
+  void _showScanner() {
+    showCompactScanner(context, onResult: (barcode) {
+      if (barcode == null || barcode.isEmpty || !mounted) return;
+      final q = barcode.trim();
+      _searchController.text = q;
+      _searchController.selection = TextSelection.collapsed(offset: q.length);
+      _onSearchChanged(q);
+    });
   }
 
   Future<void> _showAddClient(BuildContext context) async {

@@ -679,12 +679,55 @@ class SalesApi {
   }
 
   /// Barcha pauza (hold) buyurtmalar — filtrlash klientda (API kassa id qaytarmasligi mumkin).
-  static Future<Map<String, dynamic>> getHoldOrders() async {
-    return ApiClient.get('/sales/hold-orders');
+  static Future<Map<String, dynamic>> getHoldOrders({int? cashRegisterId}) async {
+    final q = <String, String>{};
+    if (cashRegisterId != null && cashRegisterId > 0) {
+      q['cash_register_id'] = '$cashRegisterId';
+    }
+    return ApiClient.get('/sales/hold-orders', queryParams: q.isEmpty ? null : q);
   }
 
   static Future<Map<String, dynamic>> updateHoldStatus(Map<String, dynamic> body) async {
     return ApiClient.post('/sales/hold-orders/update-status', body: body);
+  }
+
+  /// Restoran oshxona holati — faqat `done` chek: `preparing` / `ready` / `completed`.
+  static Future<Map<String, dynamic>> updateKitchenStatus({
+    int? orderId,
+    String? invoiceId,
+    required String kitchenStatus,
+  }) async {
+    final inv = (invoiceId ?? '').trim();
+    if ((orderId == null || orderId <= 0) && inv.isEmpty) {
+      throw ApiException('Buyurtma ID topilmadi');
+    }
+    final body = <String, dynamic>{
+      'kitchen_status': kitchenStatus,
+      'kitchenStatus': kitchenStatus,
+    };
+    if (orderId != null && orderId > 0) body['orderID'] = orderId;
+    if (inv.isNotEmpty) body['invoice_id'] = inv;
+    return ApiClient.post('/sales/orders/kitchen-status', body: body);
+  }
+
+  /// Bugungi to‘langan (`done`) oshxona buyurtmalari — POS status tugmalari.
+  static Future<Map<String, dynamic>> getKitchenOrders({
+    required int branchId,
+  }) async {
+    return ApiClient.get('/sales/kitchen-orders', queryParams: {
+      'branch_id': '$branchId',
+    });
+  }
+
+  /// TV / oshxona ekrani — faqat `preparing` va `ready`.
+  static Future<Map<String, dynamic>> getTvOrders({
+    required int branchId,
+    int? cacheBust,
+  }) async {
+    return ApiClient.get('/sales/tv-orders', queryParams: {
+      'branch_id': '$branchId',
+      if (cacheBust != null) '_t': '$cacheBust',
+    });
   }
 
   static bool _doneStoreSaleInFlight = false;

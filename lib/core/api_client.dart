@@ -14,6 +14,19 @@ class ApiException implements Exception {
   ApiException(this.message, [this.statusCode]);
   @override
   String toString() => message;
+
+  bool get isNotFound => statusCode == 404;
+
+  /// HTML/proksi shovqin — foydalanuvchiga VPN matnini ko‘rsatmaslik kerak.
+  bool get isNonJsonOrProxyNoise {
+    final m = message.toLowerCase();
+    return m.contains('<!doctype') ||
+        m.contains('<html') ||
+        m.contains('https scanning') ||
+        m.contains('proksi') ||
+        m.contains('json o‘rniga') ||
+        m.contains("json o'rniga");
+  }
 }
 
 class ApiClient {
@@ -162,6 +175,9 @@ class ApiClient {
             body.contains('<html') ||
             body.contains('access denied') ||
             body.contains('proxy')) {
+          if (response.statusCode == 404) {
+            throw ApiException('Topilmadi', 404);
+          }
           throw ApiException(
             'Tarmoq/proksi JSON o‘rniga boshqa javob qaytardi (kod ${response.statusCode}). '
             'Antivirus «HTTPS scanning», VPN yoki Windows proksini o‘chirib qayta urinib ko‘ring.\n'

@@ -82,6 +82,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final VoidCallback onHoldCart;
   final bool holdCartInFlight;
   final VoidCallback? onSalesList;
+  final bool showSalesList;
+  final bool keepSalesListAlive;
+  final Widget? salesListPanel;
   final VoidCallback? onOpenShiftDashboard;
   final VoidCallback? onLogout;
   final String cashRegisterLabel;
@@ -164,6 +167,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
     required this.onHoldCart,
     this.holdCartInFlight = false,
     this.onSalesList,
+    this.showSalesList = false,
+    this.keepSalesListAlive = false,
+    this.salesListPanel,
     this.onOpenShiftDashboard,
     this.onLogout,
     required this.cashRegisterLabel,
@@ -217,18 +223,32 @@ class SavatchaDesktopLayout extends StatelessWidget {
           children: [
             _buildTopBar(context),
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 6, child: _buildCatalogPanel(context)),
-                  Container(width: 1, color: AppTheme.divider),
-                  Expanded(flex: 4, child: _buildCartPanel(context)),
-                ],
-              ),
+              child: _buildMainBody(context),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMainBody(BuildContext context) {
+    final catalogAndCart = Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 6, child: _buildCatalogPanel(context)),
+        Container(width: 1, color: AppTheme.divider),
+        Expanded(flex: 4, child: _buildCartPanel(context)),
+      ],
+    );
+    if (salesListPanel == null || !keepSalesListAlive) {
+      return showSalesList && salesListPanel != null ? salesListPanel! : catalogAndCart;
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(offstage: showSalesList, child: catalogAndCart),
+        Offstage(offstage: !showSalesList, child: salesListPanel),
+      ],
     );
   }
 
@@ -339,30 +359,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
         if (onReturnModeChanged != null) _buildPosModeNavCards(compact: compact),
         if (onSalesList != null) ...[
           SizedBox(width: gap),
-          SizedBox(
-            height: _navBtnHeight,
-            child: OutlinedButton.icon(
-              onPressed: onSalesList,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _navInactive,
-                backgroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(
-                  horizontal: SalesUiScaleSettings.scaled(compact ? 12 : 14),
-                ),
-                minimumSize: Size(0, _navBtnHeight),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                side: const BorderSide(color: _chromeBorder),
-                shape: const RoundedRectangleBorder(borderRadius: _navCorners),
-              ),
-              icon: Icon(Icons.list_alt_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navInactive),
-              label: Text(
-                "Sotish ro'yxati",
-                style: TextStyle(
-                  fontSize: SalesUiScaleSettings.scaled(compact ? 14 : 15),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+          _navModeCard(
+            label: "Sotish ro'yxati",
+            icon: Icons.list_alt_rounded,
+            selected: showSalesList,
+            onTap: onSalesList!,
+            compact: compact,
           ),
         ],
         if (onOpenShiftDashboard != null) ...[
@@ -468,7 +470,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
         _navModeCard(
           label: "Sotuv bo'limi",
           icon: Icons.shopping_cart_outlined,
-          selected: !isReturnMode,
+          selected: !isReturnMode && !showSalesList,
           onTap: () => onReturnModeChanged?.call(false),
           compact: compact,
         ),
@@ -476,7 +478,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
         _navModeCard(
           label: 'Qaytarishlar',
           icon: Icons.replay_rounded,
-          selected: isReturnMode,
+          selected: isReturnMode && !showSalesList,
           onTap: () => onReturnModeChanged?.call(true),
           compact: compact,
         ),

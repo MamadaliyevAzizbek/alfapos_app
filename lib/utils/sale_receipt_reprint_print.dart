@@ -4,11 +4,13 @@ import '../core/input_formatters.dart';
 import '../core/seller_preferences.dart';
 import '../models/receipt_design_config.dart';
 import '../providers/sales_session_provider.dart';
+import '../services/desktop_sales_layout_settings.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../utils/receipt_row_builder.dart';
 import '../widgets/receipt_widget.dart';
+import 'hold_orders_response.dart';
 
 /// Tranzaksiyalar / hisobotlardan eski sotuv chekini qayta chop etish.
 class SaleReceiptReprintPrint {
@@ -37,9 +39,19 @@ class SaleReceiptReprintPrint {
     final results = await Future.wait([
       ReceiptDesignStorage.load(),
       getSellerPhone(),
+      DesktopSalesLayoutSettings.getMode(),
     ]);
     final design = results[0] as ReceiptDesignConfig;
     final sellerPhone = results[1] as String?;
+    final isRestaurant = results[2] == DesktopSalesLayoutMode.restaurant;
+    var queueNumber = HoldOrdersResponse.resolveQueueNumber(sale) ??
+        HoldOrdersResponse.resolveQueueNumber(invoiceDetail);
+    if (isRestaurant && (queueNumber == null || queueNumber <= 0)) {
+      queueNumber = await SalesSessionProvider.instance.fetchKitchenQueueNumber(
+        orderId: getOrderIdFromSale(sale),
+        invoiceId: data.posTitle,
+      );
+    }
 
     final widget = ReceiptWidget(
       dateTime: data.dateTime,
@@ -53,6 +65,8 @@ class SaleReceiptReprintPrint {
       discount: data.discountUzs,
       totalSum: data.totalUzs,
       barcodeData: data.posTitle,
+      queueNumber: queueNumber,
+      isRestaurantLayout: isRestaurant,
       design: design,
     );
 

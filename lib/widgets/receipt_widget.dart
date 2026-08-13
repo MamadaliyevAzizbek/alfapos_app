@@ -233,8 +233,7 @@ class ReceiptWidget extends StatelessWidget {
           if (isRestaurantLayout &&
               !isPrecheck &&
               queueNumber != null &&
-              queueNumber! > 0 &&
-              design.showRestaurantQueueNumber) ...[
+              queueNumber! > 0) ...[
             const SizedBox(height: 8),
             Center(
               child: Text(

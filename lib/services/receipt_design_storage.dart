@@ -39,7 +39,7 @@ class ReceiptDesignStorage {
     }
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
-      _cache = ReceiptDesignConfig.standardFrom(ReceiptDesignConfig.fromJson(map));
+      _cache = ReceiptDesignConfig.fromJson(map);
       return _ensureDefaultLogo(_cache!);
     } catch (_) {
       _cache = ReceiptDesignConfig.defaults;

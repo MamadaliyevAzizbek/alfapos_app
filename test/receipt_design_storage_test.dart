@@ -84,14 +84,14 @@ void main() {
     expect(File(oldPath).existsSync(), isFalse);
   });
 
-  test('reload ignores saved custom store title', () async {
+  test('reload keeps saved custom store title', () async {
     SharedPreferences.setMockInitialValues({
       'receipt_design_config_v1':
           '{"showLogo":true,"storeTitle":"ssssss","useBranchNameAsTitle":false}',
     });
     final loaded = await ReceiptDesignStorage.reload();
-    expect(loaded.storeTitle, isEmpty);
-    expect(loaded.useBranchNameAsTitle, isTrue);
+    expect(loaded.storeTitle, 'ssssss');
+    expect(loaded.useBranchNameAsTitle, isFalse);
   });
 
   test('old showLogo false still installs bundled default logo', () async {
