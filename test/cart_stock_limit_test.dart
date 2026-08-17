@@ -38,6 +38,103 @@ void main() {
       );
     });
 
+    test('allowsLineQuantity: nusxa ro‘yxatda miqdor ikki marta hisoblanmaydi', () {
+      // Desktop sotuv oynasi snapshot'i `CartItem.copy()` saqlaydi — o'sha nusxa
+      // o'zgartirilayotgan qator bilan `identical` bo'lmaydi.
+      final p = _product(id: '1', stock: 10, packSize: 1);
+      final line = CartItem(product: p, quantity: 6);
+      final snapshot = [line.copy()];
+      expect(
+        CartStockLimit.allowsLineQuantity(
+          product: p,
+          allItems: snapshot,
+          line: line,
+          newQuantity: 7,
+        ),
+        isTrue,
+      );
+      expect(
+        CartStockLimit.allowsLineQuantity(
+          product: p,
+          allItems: snapshot,
+          line: line,
+          newQuantity: 11,
+        ),
+        isFalse,
+      );
+    });
+
+    test('allowsLineQuantity: boshqa oyna savati qo‘shilib hisoblanadi', () {
+      final p = _product(id: '1', stock: 10, packSize: 1);
+      final otherWindow = CartItem(product: p, quantity: 5);
+      final line = CartItem(product: p, quantity: 3);
+      final all = [otherWindow, line];
+      expect(
+        CartStockLimit.allowsLineQuantity(
+          product: p,
+          allItems: all,
+          line: line,
+          newQuantity: 5,
+        ),
+        isTrue,
+      );
+      expect(
+        CartStockLimit.allowsLineQuantity(
+          product: p,
+          allItems: all,
+          line: line,
+          newQuantity: 6,
+        ),
+        isFalse,
+      );
+    });
+
+    test('maxLineQuantity: ombor qoldig‘i qaytariladi', () {
+      final p = _product(id: '1', stock: 3, packSize: 1);
+      final line = CartItem(product: p, quantity: 3);
+      expect(
+        CartStockLimit.maxLineQuantity(product: p, allItems: [line], line: line),
+        3,
+      );
+    });
+
+    test('maxLineQuantity: boshqa qatorlar egallagani ayiriladi', () {
+      final p = _product(id: '1', stock: 10, packSize: 1);
+      final otherWindow = CartItem(product: p, quantity: 6);
+      final line = CartItem(product: p, quantity: 3);
+      expect(
+        CartStockLimit.maxLineQuantity(
+          product: p,
+          allItems: [otherWindow, line],
+          line: line,
+        ),
+        4,
+      );
+    });
+
+    test('maxLineQuantity: pachkada sotilsa pachka soni qaytadi', () {
+      final p = _product(id: '1', stock: 12, packSize: 5);
+      final line = CartItem(product: p, quantity: 1, sellByPack: true);
+      expect(
+        CartStockLimit.maxLineQuantity(product: p, allItems: [line], line: line),
+        2,
+      );
+    });
+
+    test('maxLineQuantity: qoldiq tugagan bo‘lsa 0', () {
+      final p = _product(id: '1', stock: 5, packSize: 1);
+      final otherWindow = CartItem(product: p, quantity: 5);
+      final line = CartItem(product: p, quantity: 1);
+      expect(
+        CartStockLimit.maxLineQuantity(
+          product: p,
+          allItems: [otherWindow, line],
+          line: line,
+        ),
+        0,
+      );
+    });
+
     test('allowsLineQuantity respects pack multiplier', () {
       final p = _product(id: '1', stock: 10, packSize: 5);
       final line = CartItem(product: p, quantity: 1, sellByPack: true);

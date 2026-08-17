@@ -19,6 +19,7 @@ class HoldOrderResume {
     this.discountPercent,
     this.grandTotal,
     this.queueNumber,
+    this.description,
   });
 
   final List<CartItem> items;
@@ -28,6 +29,7 @@ class HoldOrderResume {
   final int? discountPercent;
   final int? grandTotal;
   final int? queueNumber;
+  final String? description;
 }
 
 class HoldOrderCart {
@@ -44,7 +46,8 @@ class HoldOrderCart {
   ];
 
   /// Chop etish uchun — tez: ichki cart yoki bitta continue-sale (invoice/catalog yo‘q).
-  static Future<HoldOrderResume?> fetchResumeForPrint(Map<String, dynamic> hold) async {
+  static Future<HoldOrderResume?> fetchResumeForPrint(
+      Map<String, dynamic> hold) async {
     final embedded = parse(hold);
     if (embedded != null && embedded.items.isNotEmpty) return embedded;
 
@@ -158,16 +161,26 @@ class HoldOrderCart {
         [];
     if (datarows is! List && inv['data'] is Map) {
       final d = inv['data'] as Map;
-      datarows = d['datarows'] as List<dynamic>? ?? d['items'] as List<dynamic>? ?? [];
+      datarows =
+          d['datarows'] as List<dynamic>? ?? d['items'] as List<dynamic>? ?? [];
     }
     if (datarows is! List) return null;
 
-    const summaryTitles = {'sub total', 'tax', 'total', 'discount', 'chegirma', 'umumiy', 'umumiy summa'};
+    const summaryTitles = {
+      'sub total',
+      'tax',
+      'total',
+      'discount',
+      'chegirma',
+      'umumiy',
+      'umumiy summa'
+    };
     final items = <CartItem>[];
     for (final row in datarows) {
       if (row is! Map) continue;
       final m = Map<String, dynamic>.from(row);
-      final title = (m['title'] ?? m['name'] ?? '').toString().trim().toLowerCase();
+      final title =
+          (m['title'] ?? m['name'] ?? '').toString().trim().toLowerCase();
       if (summaryTitles.contains(title)) continue;
       final hasQty = m.containsKey('quantity') || m.containsKey('qty');
       final hasPrice = m.containsKey('price') || m.containsKey('unit_price');
@@ -208,7 +221,10 @@ class HoldOrderCart {
     final invoiceId = HoldOrdersResponse.resolveInvoiceId(hold) ??
         (extra != null ? HoldOrdersResponse.resolveInvoiceId(extra) : null);
     final discount = _int(hold['discount'] ?? extra?['discount']);
-    final grand = _int(hold['grandTotal'] ?? hold['grand_total'] ?? extra?['grandTotal'] ?? extra?['grand_total']);
+    final grand = _int(hold['grandTotal'] ??
+        hold['grand_total'] ??
+        extra?['grandTotal'] ??
+        extra?['grand_total']);
 
     return HoldOrderResume(
       items: items,
@@ -219,7 +235,26 @@ class HoldOrderCart {
       grandTotal: grand,
       queueNumber: HoldOrdersResponse.resolveQueueNumber(hold) ??
           (extra != null ? HoldOrdersResponse.resolveQueueNumber(extra) : null),
+      description: _noteFrom(hold) ?? (extra != null ? _noteFrom(extra) : null),
     );
+  }
+
+  static String? _noteFrom(Map<String, dynamic> source) {
+    for (final key in const [
+      'description',
+      'note',
+      'comment',
+      'izoh',
+      'remarks'
+    ]) {
+      final value = source[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    final nested = source['data'];
+    if (nested is Map) {
+      return _noteFrom(Map<String, dynamic>.from(nested));
+    }
+    return null;
   }
 
   static Future<void> _ensureCatalog() async {
@@ -236,7 +271,9 @@ class HoldOrderCart {
     if (orderType == 'discount') return null;
 
     var productId = (m['productID'] ?? m['product_id'] ?? '').toString();
-    final title = (m['productTitle'] ?? m['product_title'] ?? m['title'] ?? 'Mahsulot').toString();
+    final title =
+        (m['productTitle'] ?? m['product_title'] ?? m['title'] ?? 'Mahsulot')
+            .toString();
     if (productId.isEmpty || productId == '0') {
       final resolved = _resolveProductId(title);
       if (resolved == null) return null;
@@ -244,12 +281,19 @@ class HoldOrderCart {
     }
 
     final qty = m['quantity'] ?? m['qty'];
-    final quantity = qty is num ? qty : num.tryParse(qty?.toString() ?? '') ?? 1;
-    final price = m['price'] ?? m['unit_price'] ?? m['calculatedPrice'] ?? m['total'];
-    final unitPrice = price is num ? price.toDouble() : double.tryParse(price?.toString() ?? '') ?? 0;
+    final quantity =
+        qty is num ? qty : num.tryParse(qty?.toString() ?? '') ?? 1;
+    final price =
+        m['price'] ?? m['unit_price'] ?? m['calculatedPrice'] ?? m['total'];
+    final unitPrice = price is num
+        ? price.toDouble()
+        : double.tryParse(price?.toString() ?? '') ?? 0;
     final variantId = _int(m['variantID'] ?? m['variant_id']);
-    final isPack = m['isPackage'] == true || m['isPackage'] == 1 || m['is_package'] == true;
-    final unitsPerPackage = _int(m['unitsPerPackage'] ?? m['units_per_package']) ?? 1;
+    final isPack = m['isPackage'] == true ||
+        m['isPackage'] == 1 ||
+        m['is_package'] == true;
+    final unitsPerPackage =
+        _int(m['unitsPerPackage'] ?? m['units_per_package']) ?? 1;
 
     Product? catalog;
     for (final p in ProductsProvider.instance.items) {

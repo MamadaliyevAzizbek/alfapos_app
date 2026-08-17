@@ -18,8 +18,9 @@ class ReceiveStoreBody {
     double usdRate = 1,
   }) {
     final cartApi = cart.map((item) {
-      final purchase = _priceInUzs(item.purchasePriceUzs, item.purchaseCurrency, usdRate);
-      final sell = _priceInUzs(item.sellPriceUzs, item.sellCurrency, usdRate);
+      final purchase = item.unitPurchaseInUzs(usdRate: usdRate);
+      final wholesale = item.unitWholesaleInUzs(usdRate: usdRate);
+      final sell = item.unitSellInUzs(usdRate: usdRate);
       final lineTotal = (purchase * item.quantity).round();
       final productId = int.tryParse(item.product.id) ?? 0;
       return {
@@ -30,7 +31,9 @@ class ReceiveStoreBody {
         'quantity': item.quantity,
         'price': purchase,
         'purchase_price': purchase,
-        'price_currency': item.purchaseCurrency == 'usd' ? 'usd' : 'uzs',
+        // API: store body faqat so‘m (kurs bo‘yicha aylantirilgan).
+        'price_currency': 'uzs',
+        'wholesale_price': wholesale,
         'selling_price': sell,
         'calculatedPrice': lineTotal,
         'orderType': 'receiving',
@@ -77,11 +80,6 @@ class ReceiveStoreBody {
         },
       ],
     };
-  }
-
-  static int _priceInUzs(int price, String currency, double usdRate) {
-    if (currency == 'usd' && usdRate > 0) return (price * usdRate).round();
-    return price;
   }
 
   static String buildSalesNote({String? comment, int? deliveryCostUzs}) {

@@ -132,12 +132,20 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   bool get _isInvoiceEditMode => _invoiceEditOrderId != null;
 
+  /// Ekranni tortib yangilash — katalogni serverdan to‘liq o‘qiydi.
+  ///
+  /// Avval faqat diskdan o‘qib, API yangilanishini fonga qo‘yardik; u esa
+  /// 15 daqiqalik throttle ichida hech narsa qilmasdi — spinner tugasa ham
+  /// webda qo‘shilgan mahsulot ko‘rinmasdi. Ketma-ket tortish
+  /// `PullRefreshGuard` bilan cheklangani uchun force xavfsiz.
   Future<void> _onRefresh() async {
-    // To‘liq force sync qilmaymiz — 429 (Too Many Attempts) xavfi.
-    await _products.loadFromStorage(refreshInBackground: true);
+    await _products.refreshFromServer(force: true);
     if (_sales.initError == null) {
-      await _sales.loadProducts(reset: true, searchValue: '');
-      _sales.setSearchQuery('');
+      // Qidiruv matni ekranda qolgani uchun uni tozalamaymiz — aks holda
+      // server natijalari yo‘qolib, eski lokal ro‘yxat ko‘rinib qolardi.
+      final q = _query.trim();
+      await _sales.loadProducts(reset: true, searchValue: q);
+      _sales.setSearchQuery(q);
     }
     if (mounted) setState(() {});
   }
@@ -604,16 +612,21 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   bool get _allowNegativeStockSales => SalesStockLimitSettings.allowNegative.value;
 
+  /// Ombor tekshiruvi uchun barcha savat qatorlari.
+  ///
+  /// Desktopda bir nechta sotuv oynasi bitta omborni bo‘lishadi. Joriy oyna
+  /// snapshot’i `CartItem.copy()` nusxalarini saqlagani uchun uni emas, jonli
+  /// `_cart.items` ni qo‘shamiz — aks holda o‘zgartirilayotgan qator ikki marta
+  /// hisoblanib, qoldiq yetarli bo‘lsa ham cheklov chiqadi.
   List<CartItem> _allCartItemsForStockCheck() {
-    if (isDesktopPosLayout) {
-      _captureActiveSalesWindow();
-      return [
-        for (final window in _salesWindows)
-          for (final item in window.cartItems)
-            item,
-      ];
+    if (!isDesktopPosLayout) return _cart.items;
+    final items = <CartItem>[];
+    for (var i = 0; i < _salesWindows.length; i++) {
+      if (i == _activeSalesWindowIndex) continue;
+      items.addAll(_salesWindows[i].cartItems);
     }
-    return _cart.items;
+    items.addAll(_cart.items);
+    return items;
   }
 
   void _notifyStockInsufficient() {
@@ -626,7 +639,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     bool sellByPack = false,
   }) {
     if (_allowNegativeStockSales || _isReturnMode || _isInvoiceEditMode) return true;
-    final aligned = ProductsProvider.instance.withCatalogStock(product);
+    final aligned = ProductsProvider.instance.withBestKnownStock(product);
     final ok = CartStockLimit.allowsAdd(
       product: aligned,
       allItems: _allCartItemsForStockCheck(),
@@ -637,10 +650,15 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     return ok;
   }
 
-  bool _canSetCartLineQuantity(CartItem item, num newQuantity, {bool? sellByPack}) {
+  bool _canSetCartLineQuantity(
+    CartItem item,
+    num newQuantity, {
+    bool? sellByPack,
+    bool notify = true,
+  }) {
     if (_allowNegativeStockSales || _isReturnMode || _isInvoiceEditMode) return true;
     if (newQuantity <= 0) return true;
-    final aligned = ProductsProvider.instance.withCatalogStock(item.product);
+    final aligned = ProductsProvider.instance.withBestKnownStock(item.product);
     final ok = CartStockLimit.allowsLineQuantity(
       product: aligned,
       allItems: _allCartItemsForStockCheck(),
@@ -648,12 +666,37 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       newQuantity: newQuantity,
       sellByPack: sellByPack,
     );
-    if (!ok) _notifyStockInsufficient();
+    if (!ok && notify) _notifyStockInsufficient();
     return ok;
   }
 
+  /// Ombor cheklovi yoniq bo‘lsa, so‘ralgan miqdorni qoldiqqacha qisqartiradi.
+  ///
+  /// `null` — o‘zgarish qo‘llanmaydi (qoldiq umuman yo‘q yoki allaqachon to‘lgan).
+  num? _cartLineQuantityWithinStock(CartItem item, num quantity) {
+    if (_canSetCartLineQuantity(item, quantity, notify: false)) return quantity;
+    final aligned = ProductsProvider.instance.withBestKnownStock(item.product);
+    final maxQty = CartStockLimit.maxLineQuantity(
+      product: aligned,
+      allItems: _allCartItemsForStockCheck(),
+      line: item,
+    );
+    if (maxQty <= 0 || maxQty >= quantity || maxQty == item.quantity) {
+      _notifyStockInsufficient();
+      return null;
+    }
+    final label = maxQty == maxQty.roundToDouble() ? '${maxQty.round()}' : '$maxQty';
+    AppNotify.warning(
+      context,
+      'Omborda $label ta qoldi — miqdor shunga moslashtirildi',
+    );
+    return maxQty;
+  }
+
   void _updateCartQuantity(CartItem item, num quantity) {
-    if (!_canSetCartLineQuantity(item, quantity)) return;
+    final within = _cartLineQuantityWithinStock(item, quantity);
+    if (within == null) return;
+    quantity = within;
     if (quantity <= 0) {
       _cart.remove(item);
       if (identical(_expandedCartLine, item)) _expandedCartLine = null;
@@ -892,6 +935,78 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     );
   }
 
+  /// Mobil: «Sotuv bo'limi» / «Qaytarishlar» — desktopdagi yuqori kartochkalar muqobili.
+  Widget _mobileModeSwitch(bool returnMode) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: AppTheme.cardBg,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _mobileModeTab(
+                label: "Sotuv bo'limi",
+                icon: Icons.shopping_cart_rounded,
+                selected: !returnMode,
+                color: AppTheme.primary,
+                onTap: () => _setReturnMode(false),
+              ),
+            ),
+            Expanded(
+              child: _mobileModeTab(
+                label: 'Qaytarishlar',
+                icon: Icons.replay_rounded,
+                selected: returnMode,
+                color: AppTheme.returnAccent,
+                onTap: () => _setReturnMode(true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileModeTab({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final fg = selected ? Colors.white : AppTheme.textSecondary;
+    return Material(
+      color: selected ? color : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: selected ? null : onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: fg),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isDesktopPosLayout) {
@@ -906,43 +1021,47 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         (_sales.productsLoading || !_products.isLoaded);
     final shift = CashRegisterShiftProvider.instance;
     final showShiftDashboard = shift.requiresCashRegister && shift.isShiftOpen;
+    final returnMode = _isReturnMode;
+    final accent = returnMode ? AppTheme.returnAccent : AppTheme.primary;
 
     return CashRegisterShiftGate(
       child: Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
-            const Text(Strings.savatcha),
+            Text(returnMode ? 'Qaytarishlar' : Strings.savatcha),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: AppTheme.cardBg,
+                color: returnMode ? AppTheme.returnSurface : AppTheme.cardBg,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 '${items.length}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
+                  color: returnMode ? AppTheme.returnText : AppTheme.textPrimary,
                 ),
               ),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: Strings.saqlanganBuyurtmalar,
-            onPressed: () => _openHoldOrders(context),
-            icon: Badge(
-              isLabelVisible: _savedOrdersCount > 0,
-              label: Text(
-                _savedOrdersCount > 9 ? '9+' : '$_savedOrdersCount',
-                style: const TextStyle(fontSize: 10),
+          if (!returnMode)
+            IconButton(
+              tooltip: Strings.saqlanganBuyurtmalar,
+              onPressed: () => _openHoldOrders(context),
+              icon: Badge(
+                isLabelVisible: _savedOrdersCount > 0,
+                label: Text(
+                  _savedOrdersCount > 9 ? '9+' : '$_savedOrdersCount',
+                  style: const TextStyle(fontSize: 10),
+                ),
+                child: const Icon(Icons.list_alt_rounded),
               ),
-              child: const Icon(Icons.list_alt_rounded),
             ),
-          ),
           if (showShiftDashboard)
             IconButton(
               tooltip: 'Kassa smenasi',
@@ -958,8 +1077,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       ),
       body: Column(
         children: [
+          _mobileModeSwitch(returnMode),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Row(
               children: [
                 Expanded(
@@ -983,7 +1103,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 ),
                 const SizedBox(width: 8),
                 Material(
-                  color: AppTheme.primary,
+                  color: accent,
                   borderRadius: BorderRadius.circular(10),
                   child: InkWell(
                     onTap: () => _openScanner(context),
@@ -1067,6 +1187,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                             height: MediaQuery.of(context).size.height * 0.7,
                             child: _EmptyCart(
                               onScanner: () => _openScanner(context),
+                              accent: accent,
                             ),
                           ),
                         )
@@ -1103,41 +1224,44 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
               children: [
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _sales.holdCartInFlight ? null : () => _holdCart(context),
-                        icon: _sales.holdCartInFlight
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                              )
-                            : const Icon(Icons.pause_circle_outline_rounded, size: 20),
-                        label: Text(_sales.holdCartInFlight ? 'Saqlanmoqda...' : Strings.toxtatish),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          visualDensity: VisualDensity.compact,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                    // Qaytarishda saqlangan buyurtma bo‘lmaydi (desktop bilan bir xil).
+                    if (!returnMode) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _sales.holdCartInFlight ? null : () => _holdCart(context),
+                          icon: _sales.holdCartInFlight
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                                )
+                              : const Icon(Icons.pause_circle_outline_rounded, size: 20),
+                          label: Text(_sales.holdCartInFlight ? 'Saqlanmoqda...' : Strings.toxtatish),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => _showDiscountDialog(context),
                         icon: Icon(
                           Icons.percent_rounded,
                           size: 20,
-                          color: _sales.cartDiscountPercent != 0 ? AppTheme.primary : null,
+                          color: _sales.cartDiscountPercent != 0 ? accent : null,
                         ),
                         label: Text(
                           _sales.cartDiscountPercent != 0
                               ? 'Chegirma ${CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent)}%'
                               : 'Chegirma',
                           style: TextStyle(
-                            color: _sales.cartDiscountPercent != 0 ? AppTheme.primary : null,
+                            color: _sales.cartDiscountPercent != 0 ? accent : null,
                             fontWeight: _sales.cartDiscountPercent != 0 ? FontWeight.w600 : null,
                           ),
                         ),
@@ -1159,17 +1283,24 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                   child: ElevatedButton(
                     onPressed: () => _openPayment(context),
                     style: ElevatedButton.styleFrom(
+                      backgroundColor: returnMode ? AppTheme.returnAccent : null,
+                      foregroundColor: returnMode ? Colors.white : null,
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(Strings.keyingisi),
-                        SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_rounded, size: 18),
+                        Text(returnMode ? 'Qaytarish qilish' : Strings.keyingisi),
+                        const SizedBox(width: 4),
+                        Icon(
+                          returnMode
+                              ? Icons.assignment_return_rounded
+                              : Icons.arrow_forward_rounded,
+                          size: 18,
+                        ),
                       ],
                     ),
                   ),
@@ -1511,6 +1642,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
               _shortcutKeys,
               SalesShortcutAction.focusCustomerSearch,
             ),
+            accentColor: _isReturnMode ? AppTheme.returnAccent : AppTheme.primary,
           ),
         ),
         shortcutKeys: _shortcutKeys,
@@ -1878,9 +2010,22 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         return;
       }
 
-      if (mounted) {
-        AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
+      // barcode-search topmadi — kod SKU yoki nom ichida bo‘lishi mumkin,
+      // shuning uchun web kabi umumiy qidiruvga tushamiz.
+      _sales.setSearchQuery(q);
+      await _sales.loadProducts(reset: true, searchValue: q);
+      if (!mounted) return;
+      setState(() {});
+
+      final pending = _sales.takePendingBarcodeProduct();
+      if (pending != null) {
+        _addProductToCart(pending);
+        _clearSearchField();
+        return;
       }
+      if (_desktopCatalogProductsFor(q).isNotEmpty) return;
+
+      AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
     } catch (_) {
       if (mounted) {
         AppNotify.info(context, "Bu shtrix kod bo'yicha mahsulot topilmadi");
@@ -2381,6 +2526,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           initialQueueNumber: queueNumber,
           editOrderId: editOrderId,
           editReason: editReason,
+          isReturnCheckout: _isReturnMode,
           onCustomerChanged: _onCustomerSelected,
         ),
       ),
@@ -2388,10 +2534,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (result == 'held') {
         afterPayment();
       } else if (result is String && result.isNotEmpty) {
+        final wasReturn = _isReturnMode;
         afterPayment();
         if (mounted) {
           final label = result.startsWith('POS') ? result : 'POS$result';
-          AppNotify.success(context, 'Tranzaksiya #$label muvaffaqiyatli!');
+          AppNotify.success(
+            context,
+            wasReturn
+                ? 'Qaytarish #$label muvaffaqiyatli!'
+                : 'Tranzaksiya #$label muvaffaqiyatli!',
+          );
         }
       }
     });
@@ -2401,8 +2553,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
 class _EmptyCart extends StatelessWidget {
   final VoidCallback onScanner;
+  final Color accent;
 
-  const _EmptyCart({required this.onScanner});
+  const _EmptyCart({required this.onScanner, this.accent = AppTheme.primary});
 
   @override
   Widget build(BuildContext context) {
@@ -2447,6 +2600,8 @@ class _EmptyCart extends StatelessWidget {
                 icon: const Icon(Icons.qr_code_scanner_rounded),
                 label: const Text(Strings.skaner),
                 style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),

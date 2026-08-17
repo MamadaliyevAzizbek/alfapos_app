@@ -10,9 +10,9 @@ import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_total_text.dart';
-import '../utils/thermal_receipt_formatter.dart';
 import '../utils/thermal_receipt_line_wrap.dart';
 import '../utils/thermal_receipt_logo_fit.dart';
+import '../utils/thermal_receipt_note_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
 import 'printer_paper_profile.dart';
 
@@ -62,9 +62,8 @@ class EscPosReceiptBuilder {
     final g = Generator(paperSize, profile, spaceBetweenRows: 0);
     final bytes = <int>[];
 
-    final maxWidth = paperSize == PaperSize.mm58
-        ? kThermalChars58mm
-        : kThermalChars80mm;
+    final maxWidth =
+        paperSize == PaperSize.mm58 ? kThermalChars58mm : kThermalChars80mm;
     final wrapped = ThermalReceiptLineWrap.wrapAll(lines, maxWidth: maxWidth);
     final cfg = design ?? ReceiptDesignConfig.defaults;
     final codeTable = _codeTableId(cfg.printerCodePage);
@@ -97,13 +96,31 @@ class EscPosReceiptBuilder {
 
     var contentStarted = false;
     for (final line in wrapped) {
-      final isBlank = line.isEmpty || ThermalReceiptProductTitleText.isGapLine(line);
+      final isBlank =
+          line.isEmpty || ThermalReceiptProductTitleText.isGapLine(line);
       if (isBlank) {
         if (!contentStarted) continue;
         bytes.addAll(List<int>.from(g.feed(1)));
         continue;
       }
       contentStarted = true;
+
+      if (ThermalReceiptNoteText.isNoteLine(line)) {
+        final text = ThermalReceiptNoteText.unwrap(line);
+        bytes.addAll(
+          g.textEncoded(
+            EscPosTextCodec.encodeSync(text, codePage: codePage),
+            styles: PosStyles(
+              codeTable: codeTable,
+              fontType: PosFontType.fontA,
+              align: PosAlign.left,
+              bold: true,
+            ),
+            maxCharsPerLine: maxWidth,
+          ),
+        );
+        continue;
+      }
 
       if (ThermalReceiptProductTitleText.isTitleLine(line)) {
         final text = ThermalReceiptProductTitleText.unwrap(line);
@@ -270,7 +287,9 @@ class EscPosReceiptBuilder {
     if (text.isEmpty) return const [];
     // 2× balandlik ~48 nuqta: ESC 3 32 yetmaydi — keyingi qator ustiga chiqadi.
     return <int>[
-      27, 51, 56,
+      27,
+      51,
+      56,
       ...g.textEncoded(
         EscPosTextCodec.encodeSync(text, codePage: codePage),
         styles: PosStyles(
@@ -369,7 +388,8 @@ class EscPosReceiptBuilder {
   static bool _isDateTimeLine(String text) =>
       RegExp(r'^\d{4}-\d{2}-\d{2}\s*\|').hasMatch(text.trim());
 
-  static Future<img.Image?> _loadLogoImage(String path, {required bool mm58}) async {
+  static Future<img.Image?> _loadLogoImage(String path,
+      {required bool mm58}) async {
     final key = '$path|${mm58 ? 58 : 80}';
     if (_cachedLogoKey == key && _cachedLogoImage != null) {
       return _cachedLogoImage;

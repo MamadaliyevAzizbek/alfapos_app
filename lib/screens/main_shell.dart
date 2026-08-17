@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../core/constants.dart';
 import '../core/seller_preferences.dart';
 import '../core/theme.dart';
+import '../core/user_permissions.dart';
 import '../services/app_data_sync.dart';
 import '../utils/platform_layout.dart';
 import '../utils/pos_navigation.dart';
@@ -48,6 +49,7 @@ class _MainShellState extends State<MainShell> {
       });
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      UserPermissionsStore.instance.loadFromDisk();
       syncSellerNameFromApi();
       AppDataSync.warmAll();
     });

@@ -80,16 +80,28 @@ int productSearchRelevanceScore(Product product, String query) {
     }
   }
 
+  // Harf-raqamli kod (`SK51D25120407`) — shtrix / SKU bilan aynan mos.
+  if (product.matchesCodeExact(raw)) {
+    const codeScore = 89000;
+    if (codeScore > best) best = codeScore;
+  }
+
   // To'liq shtrix (8+ raqam) yoki skaner.
   if (looksLikeBarcodeInput(raw) && product.matchesBarcode(raw)) {
     const barcodeScore = 88000;
     if (barcodeScore > best) best = barcodeScore;
   }
 
-  // Faqat raqam: oxirgi 4–7 ta shtrix raqami (masalan …8479).
-  if (looksLikeBarcodeSuffixInput(raw) && product.matchesBarcodeSuffix(raw)) {
-    final suffixScore = 86000 + raw.replaceAll(RegExp(r'\D'), '').length;
-    if (suffixScore > best) best = suffixScore;
+  // Faqat raqam, 4–7 ta: shtrixning oxiri (…8479) yoki boshqa qismi (544900).
+  if (looksLikeBarcodeSuffixInput(raw)) {
+    final digitCount = raw.replaceAll(RegExp(r'\D'), '').length;
+    if (product.matchesBarcodeSuffix(raw)) {
+      final suffixScore = 86000 + digitCount;
+      if (suffixScore > best) best = suffixScore;
+    } else if (product.matchesBarcodePartial(raw)) {
+      final partialScore = 84000 + digitCount;
+      if (partialScore > best) best = partialScore;
+    }
   }
 
   // PLU / tarozi ichidagi PLU.
@@ -156,17 +168,34 @@ void scheduleBarcodeAutoAction({
   });
 }
 
-/// Skaner / to'liq raqamli shtrix (faqat raqamlar, kamida 8 ta) — avtomatik qo'shish uchun.
+/// Skaner / to'liq shtrix — avtomatik qidirish va qo'shish uchun.
+///
+/// Raqamli (8+ raqam) va harf-raqamli (`SK51D25120407`) kodlarni qabul qiladi.
 bool looksLikeBarcodeInput(String query) {
   final trimmed = query.trim();
   if (trimmed.isEmpty) return false;
   if (looksLikePossibleScaleBarcode(trimmed)) return true;
+  if (looksLikeAlphanumericCodeInput(trimmed)) return true;
   final digitsOnly = trimmed.replaceAll(RegExp(r'\D'), '');
   if (digitsOnly.length < 8) return false;
   final compact = trimmed.replaceAll(RegExp(r'[\s\-]'), '');
   if (compact == digitsOnly) return true;
   if (RegExp(r'^[\d\s\-]+$').hasMatch(trimmed)) return true;
   return false;
+}
+
+/// Harf-raqamli shtrix / SKU kodi: bo'shliqsiz, 8+ belgi, harf ham raqam ham bor.
+///
+/// Nom bo'yicha qidiruvni shtrix deb hisoblab yubormaslik uchun shartlar qat'iy:
+/// mahsulot nomlari odatda bo'shliqli yoki qisqaroq bo'ladi.
+bool looksLikeAlphanumericCodeInput(String query) {
+  final trimmed = query.trim();
+  if (trimmed.length < 8) return false;
+  if (RegExp(r'[\s]').hasMatch(trimmed)) return false;
+  if (!RegExp(r'^[A-Za-z0-9\-_./]+$').hasMatch(trimmed)) return false;
+  if (!RegExp(r'[A-Za-z]').hasMatch(trimmed)) return false;
+  final digits = trimmed.replaceAll(RegExp(r'\D'), '');
+  return digits.length >= 4;
 }
 
 /// Shtrix, tarozi yorlig‘i yoki qisqa PLU — savatchaga avtomatik qidirish uchun.

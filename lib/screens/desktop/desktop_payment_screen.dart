@@ -234,7 +234,10 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
           padding: EdgeInsets.fromLTRB(24, 20, 24, 8),
           child: Text(
             "Sotuv bo'limi Tafsilotlar",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary),
           ),
         ),
         Padding(
@@ -242,24 +245,34 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(widget.storeName, style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-              Text(_dateStr, style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+              Text(widget.storeName,
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.textSecondary)),
+              Text(_dateStr,
+                  style: const TextStyle(
+                      fontSize: 14, color: AppTheme.textSecondary)),
               const Text(
                 "Sotuv bo'limi Chek",
                 style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
               ),
               Text(
                 'Sotuvchi: ${widget.sellerName}',
-                style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                style: const TextStyle(
+                    fontSize: 14, color: AppTheme.textSecondary),
               ),
               Text(
                 'Mijoz: ${widget.client?.name ?? 'Mijoz'}',
-                style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                style: const TextStyle(
+                    fontSize: 14, color: AppTheme.textSecondary),
               ),
               if (widget.description.trim().isNotEmpty)
                 Text(
                   'Izoh: ${widget.description.trim()}',
-                  style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
                 ),
               if (widget.clientBalanceUzs > 0) ...[
                 const SizedBox(height: 4),
@@ -306,16 +319,19 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
         3: FlexColumnWidth(1),
       },
       border: TableBorder(
-        horizontalInside: BorderSide(color: AppTheme.divider.withValues(alpha: 0.6)),
+        horizontalInside:
+            BorderSide(color: AppTheme.divider.withValues(alpha: 0.6)),
       ),
       children: [
         TableRow(
           decoration: BoxDecoration(color: Colors.grey.shade50),
-          children: _headerCells(['Mahsulot nomi', 'Miqdori', 'Narxi', 'Umumiy']),
+          children:
+              _headerCells(['Mahsulot nomi', 'Miqdori', 'Narxi', 'Umumiy']),
         ),
         ...widget.items.map((item) {
           final p = item.product;
-          final unit = item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
+          final unit =
+              item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
           return TableRow(
             children: [
               _cell(item.product.name),
@@ -326,7 +342,12 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
           );
         }),
         for (final pay in paymentRows)
-          TableRow(children: [_cell(''), _cell(''), _cell(pay.key), _cell(formatThousands(pay.value))]),
+          TableRow(children: [
+            _cell(''),
+            _cell(''),
+            _cell(pay.key),
+            _cell(formatThousands(pay.value))
+          ]),
         TableRow(
           children: [
             _cell(''),
@@ -346,7 +367,10 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
             child: Text(
               t,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary),
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: AppTheme.textPrimary),
             ),
           ),
         )
@@ -390,7 +414,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
         _buildPaymentHeader(title: headerTitle),
         Expanded(
           child: widget.paymentTypesLoading
-              ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppTheme.primary))
               : SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                   child: Column(
@@ -408,7 +433,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                           child: Text(
                             "To'lovsiz: balansdan ${formatThousands(widget.tolovsizPreviewBalancePart)} UZS, "
                             "qarzga ${formatThousands(widget.tolovsizPreviewCreditPart)} UZS",
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -425,7 +451,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                           child: Text(
                             "To'lovsiz qaytarish: qarzdan ${formatThousands(widget.tolovsizReturnDebtPart)} UZS, "
                             "balansga ${formatThousands(widget.tolovsizReturnBalancePart)} UZS",
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -439,10 +466,12 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                             border: Border.all(color: const Color(0xFFFFB74D)),
                           ),
                           child: Text(
-                            widget.tolovsizReturnDebtPart > 0 || widget.tolovsizReturnBalancePart > 0
+                            widget.tolovsizReturnDebtPart > 0 ||
+                                    widget.tolovsizReturnBalancePart > 0
                                 ? "Qaytarish: to'lovsiz — avval qarz kamayadi, qolgani balansga qo'shiladi (web bilan bir xil)."
                                 : "Qaytarish: naqd/karta summalari mijozga qaytariladi. Qarzli chek uchun «To'lovsiz» tanlang (sof «Qarz» amend qiladi).",
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500),
                           ),
                         ),
                         if (widget.returnCreditUsesGeneralDebt) ...[
@@ -452,12 +481,14 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                             decoration: BoxDecoration(
                               color: const Color(0xFFE8F5E9),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFF81C784)),
+                              border:
+                                  Border.all(color: const Color(0xFF81C784)),
                             ),
                             child: const Text(
                               'Qarz to\'lovi: mijozning umumiy qarzidan avtomatik ayiriladi (chek tanlash shart emas). '
                               'Qancha kamaygani mijoz sotuvlari ro\'yxatida due_amount yangilanadi.',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              style: TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w500),
                             ),
                           ),
                         ],
@@ -465,7 +496,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                       ],
                       const SizedBox(height: 16),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF5F5F5),
                           borderRadius: BorderRadius.circular(8),
@@ -475,19 +507,25 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                             const Expanded(
                               child: Text(
                                 "Aralash to'lov",
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w500),
                               ),
                             ),
                             Switch(
                               value: widget.mixedPayment,
-                              activeTrackColor: AppTheme.primary.withValues(alpha: 0.45),
+                              activeTrackColor:
+                                  AppTheme.primary.withValues(alpha: 0.45),
                               activeThumbColor: AppTheme.primary,
-                              onChanged: widget.submitting ? null : widget.onMixedPaymentChanged,
+                              onChanged: widget.submitting
+                                  ? null
+                                  : widget.onMixedPaymentChanged,
                             ),
                           ],
                         ),
                       ),
-                      if (widget.mixedPayment || widget.remainingToPay > 0 || widget.changeAmount > 0) ...[
+                      if (widget.mixedPayment ||
+                          widget.remainingToPay > 0 ||
+                          widget.changeAmount > 0) ...[
                         const SizedBox(height: 10),
                         Row(
                           children: [
@@ -521,7 +559,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                         GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
                             mainAxisSpacing: 12,
                             crossAxisSpacing: 12,
@@ -537,11 +576,15 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                               title: e.value,
                               icon: iconForPaymentName(e.value),
                               amount: amount,
-                              balanceUzs: isBalance ? widget.clientBalanceUzs : null,
-                              onAmountChanged: (raw) => widget.onMixedPaymentAmountChanged(e.key, raw),
-                              onActivate: widget.onMixedPaymentMethodActivate == null
-                                  ? null
-                                  : () => widget.onMixedPaymentMethodActivate!(e.key),
+                              balanceUzs:
+                                  isBalance ? widget.clientBalanceUzs : null,
+                              onAmountChanged: (raw) => widget
+                                  .onMixedPaymentAmountChanged(e.key, raw),
+                              onActivate:
+                                  widget.onMixedPaymentMethodActivate == null
+                                      ? null
+                                      : () => widget
+                                          .onMixedPaymentMethodActivate!(e.key),
                             );
                           },
                         ),
@@ -550,9 +593,12 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          Icon(Icons.description_outlined, size: 18, color: Colors.grey.shade600),
+                          Icon(Icons.description_outlined,
+                              size: 18, color: Colors.grey.shade600),
                           const SizedBox(width: 6),
-                          Text('Izoh:', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                          Text('Izoh:',
+                              style: TextStyle(
+                                  fontSize: 14, color: Colors.grey.shade700)),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -632,24 +678,31 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
       height: _footerButtonHeight,
       width: double.infinity,
       child: FilledButton(
-        onPressed: widget.canComplete && !widget.submitting ? widget.onComplete : null,
+        onPressed:
+            widget.canComplete && !widget.submitting ? widget.onComplete : null,
         style: FilledButton.styleFrom(
-          backgroundColor: widget.canComplete ? AppTheme.primary : const Color(0xFFBDBDBD),
+          backgroundColor:
+              widget.canComplete ? AppTheme.primary : const Color(0xFFBDBDBD),
           disabledBackgroundColor: const Color(0xFFE0E0E0),
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, _footerButtonHeight),
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
         child: widget.submitting
             ? const SizedBox(
                 height: 28,
                 width: 28,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: Colors.white),
               )
             : const Text(
                 "To'lov amalga oshirildi",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2),
               ),
       ),
     );
@@ -666,11 +719,13 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.check_circle_rounded, size: 72, color: Colors.green.shade600),
+                Icon(Icons.check_circle_rounded,
+                    size: 72, color: Colors.green.shade600),
                 const SizedBox(height: 20),
                 Text(
                   'Umumiy ${formatThousands(widget.totalAfterDiscount)} UZS',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 28),
                 _buildLargePrintButton(),
@@ -694,7 +749,11 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             ),
           ),
           IconButton(
-            onPressed: (widget.submitting || widget.printing || widget.printingPrecheck) ? null : widget.onClose,
+            onPressed: (widget.submitting ||
+                    widget.printing ||
+                    widget.printingPrecheck)
+                ? null
+                : widget.onClose,
             style: IconButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
@@ -710,7 +769,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
   }
 
   Widget _buildPrecheckPrintButton() {
-    final busy = widget.printingPrecheck || widget.printing || widget.submitting;
+    final busy =
+        widget.printingPrecheck || widget.printing || widget.submitting;
     return SizedBox(
       height: _footerButtonHeight,
       width: double.infinity,
@@ -720,18 +780,26 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             ? const SizedBox(
                 width: 22,
                 height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.primary),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: AppTheme.primary),
               )
-            : const Icon(Icons.print_rounded, size: 22, color: AppTheme.primary),
+            : const Icon(Icons.print_rounded,
+                size: 22, color: AppTheme.primary),
         label: Text(
-          widget.printingPrecheck ? 'Chop etilmoqda...' : 'Chop etish (oldindan chek)',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.primary),
+          widget.printingPrecheck
+              ? 'Chop etilmoqda...'
+              : 'Chop etish (oldindan chek)',
+          style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primary),
         ),
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(double.infinity, _footerButtonHeight),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           side: const BorderSide(color: AppTheme.primary, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );
@@ -747,18 +815,24 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             ? const SizedBox(
                 width: 22,
                 height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.primary),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: AppTheme.primary),
               )
-            : const Icon(Icons.print_rounded, size: 24, color: AppTheme.primary),
+            : const Icon(Icons.print_rounded,
+                size: 24, color: AppTheme.primary),
         label: Text(
           widget.printing ? 'Chop etilmoqda...' : 'Qabulni chop etish',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppTheme.primary),
+          style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primary),
         ),
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(double.infinity, _footerButtonHeight),
           padding: const EdgeInsets.symmetric(horizontal: 24),
           side: const BorderSide(color: AppTheme.primary, width: 1.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );
@@ -777,7 +851,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
       decoration: BoxDecoration(
         color: const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+            color: AppTheme.primary.withValues(alpha: 0.35), width: 1.5),
       ),
       child: Row(
         children: [
@@ -789,7 +864,10 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
               children: [
                 Text(
                   selectedName,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -798,14 +876,18 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                       : "To'liq summa: ${formatThousands(amount)} UZS",
                   style: TextStyle(
                     fontSize: 14,
-                    color: insufficient ? const Color(0xFFE53935) : AppTheme.textSecondary,
-                    fontWeight: insufficient ? FontWeight.w600 : FontWeight.normal,
+                    color: insufficient
+                        ? const Color(0xFFE53935)
+                        : AppTheme.textSecondary,
+                    fontWeight:
+                        insufficient ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
                 const SizedBox(height: 2),
                 const Text(
                   "Aralash to'lovni yoqsangiz, har bir tur uchun summani alohida kiritasiz.",
-                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.3),
+                  style: TextStyle(
+                      fontSize: 12, color: AppTheme.textSecondary, height: 1.3),
                 ),
               ],
             ),
@@ -835,7 +917,9 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
       color: selected ? AppTheme.primary : const Color(0xFFBDBDBD),
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
-        onTap: widget.submitting ? null : () => widget.onPaymentKeySelected(entry.key),
+        onTap: widget.submitting
+            ? null
+            : () => widget.onPaymentKeySelected(entry.key),
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
           height: 52,

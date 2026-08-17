@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
+import 'user_permissions.dart';
 
 const String _keySellerName = 'alfapos_seller_name';
 const String _keySellerPhone = 'alfapos_seller_phone';
@@ -75,6 +76,7 @@ Future<void> clearUserProfileCache() async {
   await prefs.remove(_keySellerPhone);
   await prefs.remove(_keyUserId);
   await prefs.remove(_keyUserSyncedAt);
+  await UserPermissionsStore.instance.clear();
 }
 
 /// GET /user javobidan ko'rinadigan ism (first_name + last_name, name yoki email).
@@ -97,6 +99,9 @@ const String _keyUserSyncedAt = 'alfapos_user_synced_at_ms';
 
 /// Login yoki ilova ochilganda — keshda ism bo‘lsa har 6 soatda bir marta / [force] da.
 Future<void> syncSellerNameFromApi({bool force = false}) async {
+  if (!UserPermissionsStore.instance.loaded) {
+    await UserPermissionsStore.instance.loadFromDisk();
+  }
   if (!force) {
     final prefs = await SharedPreferences.getInstance();
     final ms = prefs.getInt(_keyUserSyncedAt);
@@ -113,6 +118,7 @@ Future<void> syncSellerNameFromApi({bool force = false}) async {
     final phone = sellerPhoneFromUserResponse(res);
     if (phone.isNotEmpty) await setSellerPhone(phone);
     await setCurrentUserId(userIdFromUserResponse(res));
+    await UserPermissionsStore.instance.applyFromUserResponse(res);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyUserSyncedAt, DateTime.now().millisecondsSinceEpoch);
   } catch (_) {

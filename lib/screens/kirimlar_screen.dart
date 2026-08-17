@@ -13,7 +13,8 @@ import '../utils/product_search.dart' as product_search;
 import '../widgets/ios_style_modals.dart';
 import '../widgets/product_tile.dart';
 import 'kirim_qoralamalar_screen.dart';
-import 'kirim_savat_screen.dart' show ReceiveCartEditValues, ReceiveCartItemEditSheet;
+import 'kirim_savat_screen.dart'
+    show ReceiveCartEditValues, ReceiveCartItemEditSheet;
 import 'kirim_tarix_screen.dart';
 import 'kirim_yakunlash_screen.dart';
 import '../models/receive_cart_item.dart';
@@ -31,7 +32,8 @@ class KirimlarScreen extends StatefulWidget {
   State<KirimlarScreen> createState() => _KirimlarScreenState();
 }
 
-class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMixin {
+class _KirimlarScreenState extends State<KirimlarScreen>
+    with DesktopShellSyncMixin {
   final _searchController = TextEditingController();
   final _session = ReceiveSessionProvider.instance;
   String _query = '';
@@ -50,7 +52,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
 
   Future<void> _init({bool force = false}) async {
     // Sotuv/Mahsulotlar kabi: UI darhol, kesh + fon sync.
-    unawaited(ProductsProvider.instance.loadFromStorage(refreshInBackground: true));
+    unawaited(
+        ProductsProvider.instance.loadFromStorage(refreshInBackground: true));
     if (force) {
       await _session.loadInit(force: true);
     } else {
@@ -79,8 +82,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     if (mounted) setState(() {});
   }
 
-  List<Product> get _localCatalog =>
-      ProductsProvider.instance.withCatalogStockAll(ProductsProvider.instance.items);
+  List<Product> get _localCatalog => ProductsProvider.instance
+      .withCatalogStockAll(ProductsProvider.instance.items);
 
   List<Product> _mergeSearchResults(String query, List<Product> local) {
     final q = query.trim();
@@ -105,7 +108,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
       });
       return;
     }
-    final hasLocal = product_search.filterProductsByQuery(_localCatalog, query).isNotEmpty;
+    final hasLocal =
+        product_search.filterProductsByQuery(_localCatalog, query).isNotEmpty;
     if (!hasLocal) {
       setState(() {
         _loadingProducts = true;
@@ -159,7 +163,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
         setState(() => _query = '');
         if (mounted) {
           final qtyLabel = hit.isScaleItem ? ' (${hit.quantity} kg)' : '';
-          AppNotify.success(context, '${hit.product.name}$qtyLabel savatga qo\'shildi');
+          AppNotify.success(
+              context, '${hit.product.name}$qtyLabel savatga qo\'shildi');
         }
         return;
       }
@@ -171,7 +176,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     if (!mounted) return;
     final list = product_search.filterProductsByBarcodeQuery(_products, q);
     if (list.length == 1) {
-      _session.addToCart(ProductsProvider.instance.withCatalogStock(list.single));
+      _session
+          .addToCart(ProductsProvider.instance.withCatalogStock(list.single));
       _searchController.clear();
       setState(() => _query = '');
       AppNotify.success(context, '${list.single.name} savatga qo\'shildi');
@@ -197,9 +203,17 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
       AppNotify.info(context, 'Savat bo\'sh');
       return;
     }
+    final isUpdate = _session.activeDraftId != null;
     try {
       await ReceiveDraftStorage.saveFromSession(_session);
-      if (mounted) AppNotify.success(context, 'Qoralama saqlandi');
+      _session.resetAfterDraftSaved();
+      if (!mounted) return;
+      setState(() => _query = '');
+      _searchController.clear();
+      AppNotify.success(
+        context,
+        isUpdate ? 'Qoralama yangilandi' : 'Qoralamalarga saqlandi',
+      );
     } catch (e) {
       if (mounted) AppNotify.error(context, '$e');
     }
@@ -229,7 +243,17 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
       productId,
       quantity: values.quantity,
       purchasePriceUzs: values.purchasePriceUzs,
+      wholesalePriceUzs: values.wholesalePriceUzs,
       sellPriceUzs: values.sellPriceUzs,
+      purchaseCurrency: values.purchaseCurrency,
+      wholesaleCurrency: values.wholesaleCurrency,
+      sellCurrency: values.sellCurrency,
+      purchasePriceApi: values.purchasePriceApi,
+      wholesalePriceApi: values.wholesalePriceApi,
+      sellPriceApi: values.sellPriceApi,
+      clearPurchasePriceApi: values.purchaseCurrency != 'usd',
+      clearWholesalePriceApi: values.wholesaleCurrency != 'usd',
+      clearSellPriceApi: values.sellCurrency != 'usd',
     );
     _session.resumeNotify();
     setState(() {});
@@ -240,7 +264,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
     _session.clearCart();
   }
 
-  Product _displayProduct(Product p) => ProductsProvider.instance.withCatalogStock(p);
+  Product _displayProduct(Product p) =>
+      ProductsProvider.instance.withCatalogStock(p);
 
   List<Product> get _filtered {
     final q = _query.trim();
@@ -265,14 +290,16 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
             if (items.isNotEmpty) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppTheme.cardBg,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   '${items.length}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -303,133 +330,140 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
         ],
       ),
       body: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: _onSearchChanged,
-                              onSubmitted: (q) async {
-                                final trimmed = q.trim();
-                                if (trimmed.isEmpty) return;
-                                await _searchProducts(trimmed);
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    onSubmitted: (q) async {
+                      final trimmed = q.trim();
+                      if (trimmed.isEmpty) return;
+                      await _searchProducts(trimmed);
+                    },
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      hintText: Strings.artikulShtrixIsm,
+                      prefixIcon: Icon(Icons.search_rounded,
+                          color: AppTheme.textSecondary),
+                    ),
+                  ),
+                ),
+                if (!isDesktopPosLayout) ...[
+                  const SizedBox(width: 8),
+                  Material(
+                    color: AppTheme.primary,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: _openScanner,
+                      borderRadius: BorderRadius.circular(10),
+                      child: const Padding(
+                        padding: EdgeInsets.all(11),
+                        child: Icon(Icons.qr_code_scanner_rounded,
+                            color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Expanded(
+            child: ThrottledRefreshIndicator(
+              onRefresh: () => _init(force: true),
+              child: showSearchResults
+                  ? _buildSearchResults()
+                  : items.isEmpty
+                      ? _buildEmptyCart()
+                      : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            final item = items[index];
+                            return _ReceiveLineTile(
+                              item: item,
+                              onTap: () => _editCartItem(item),
+                              onIncrement: () => _session.updateCartItem(
+                                item,
+                                quantity: item.quantity + 1,
+                              ),
+                              onDecrement: () {
+                                if (item.quantity > 1) {
+                                  _session.updateCartItem(item,
+                                      quantity: item.quantity - 1);
+                                } else {
+                                  _session.removeFromCart(item);
+                                }
                               },
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                hintText: Strings.artikulShtrixIsm,
-                                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                              ),
-                            ),
-                          ),
-                          if (!isDesktopPosLayout) ...[
-                            const SizedBox(width: 8),
-                            Material(
-                              color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(10),
-                              child: InkWell(
-                                onTap: _openScanner,
-                                borderRadius: BorderRadius.circular(10),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(11),
-                                  child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 22),
-                                ),
-                              ),
-                            ),
-                          ],
+                              onQuantityChanged: (q) =>
+                                  _session.updateCartItem(item, quantity: q),
+                            );
+                          },
+                        ),
+            ),
+          ),
+          if (items.isNotEmpty && !showSearchResults)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _saveDraft,
+                      icon:
+                          const Icon(Icons.bookmark_outline_rounded, size: 20),
+                      label: const Text('Qoralamalarga saqlash'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        await Navigator.push<void>(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const KirimYakunlashScreen()),
+                        );
+                        if (mounted) setState(() {});
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(Strings.keyingisi),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_rounded, size: 18),
                         ],
                       ),
                     ),
-                    Expanded(
-                      child: ThrottledRefreshIndicator(
-                        onRefresh: () => _init(force: true),
-                        child: showSearchResults
-                            ? _buildSearchResults()
-                            : items.isEmpty
-                                ? _buildEmptyCart()
-                                : ListView.builder(
-                                    physics: const AlwaysScrollableScrollPhysics(),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    itemCount: items.length,
-                                    itemBuilder: (context, index) {
-                                      final item = items[index];
-                                      return _ReceiveLineTile(
-                                        item: item,
-                                        onTap: () => _editCartItem(item),
-                                        onIncrement: () => _session.updateCartItem(
-                                          item,
-                                          quantity: item.quantity + 1,
-                                        ),
-                                        onDecrement: () {
-                                          if (item.quantity > 1) {
-                                            _session.updateCartItem(item, quantity: item.quantity - 1);
-                                          } else {
-                                            _session.removeFromCart(item);
-                                          }
-                                        },
-                                        onQuantityChanged: (q) => _session.updateCartItem(item, quantity: q),
-                                      );
-                                    },
-                                  ),
-                      ),
-                    ),
-                    if (items.isNotEmpty && !showSearchResults)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _saveDraft,
-                                icon: const Icon(Icons.bookmark_outline_rounded, size: 20),
-                                label: const Text('Qoralama'),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  visualDensity: VisualDensity.compact,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 44,
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  await Navigator.push<void>(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => const KirimYakunlashScreen()),
-                                  );
-                                  if (mounted) setState(() {});
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(Strings.keyingisi),
-                                    SizedBox(width: 4),
-                                    Icon(Icons.arrow_forward_rounded, size: 18),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -448,7 +482,10 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
         const Text(
           'Kirim savati bo\'sh',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary),
         ),
         const SizedBox(height: 8),
         const Text(
@@ -474,7 +511,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
   Widget _buildSearchResults() {
     final list = _filtered;
     if (list.isEmpty && _loadingProducts) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+      return const Center(
+          child: CircularProgressIndicator(color: AppTheme.primary));
     }
     if (list.isEmpty && _productsError != null) {
       return ListView(
@@ -498,7 +536,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
         children: const [
           SizedBox(height: 120),
           Center(
-            child: Text('Mahsulot topilmadi', style: TextStyle(color: AppTheme.textSecondary)),
+            child: Text('Mahsulot topilmadi',
+                style: TextStyle(color: AppTheme.textSecondary)),
           ),
         ],
       );
@@ -511,7 +550,8 @@ class _KirimlarScreenState extends State<KirimlarScreen> with DesktopShellSyncMi
         final p = _displayProduct(list[index]);
         return ProductTile(
           product: p,
-          primaryPriceLabel: 'Kelish: ${formatThousands(p.costPriceUzs ?? 0)} so\'m',
+          primaryPriceLabel:
+              'Kelish: ${formatThousands(p.costPriceUzs ?? 0)} so\'m',
           secondaryPriceLabel: 'Sotish: ${p.priceFormatted}',
           showBarcode: true,
           showMenu: false,
@@ -608,6 +648,33 @@ class _ReceiveLineTileState extends State<_ReceiveLineTile> {
     return q.toString();
   }
 
+  static String _formatUsd(num n) {
+    final d = n.toDouble();
+    if (d == d.roundToDouble()) return '${d.round()}';
+    var s = d.toStringAsFixed(4);
+    s = s.replaceFirst(RegExp(r'0+$'), '');
+    s = s.replaceFirst(RegExp(r'\.$'), '');
+    return s;
+  }
+
+  static String _kelishLine(ReceiveCartItem item) {
+    if (item.purchaseCurrency == 'usd') {
+      final v = item.purchasePriceApi ?? item.purchasePriceUzs;
+      return 'Kelish ${_qty(item.quantity)} × ${_formatUsd(v)} USD';
+    }
+    return 'Kelish ${_qty(item.quantity)} × ${formatThousands(item.purchasePriceUzs)}';
+  }
+
+  static String _pricesLine(ReceiveCartItem item) {
+    final wholesale = item.wholesaleCurrency == 'usd'
+        ? '${_formatUsd(item.wholesalePriceApi ?? item.wholesalePriceUzs)} USD'
+        : formatThousands(item.wholesalePriceUzs);
+    final sell = item.sellCurrency == 'usd'
+        ? '${_formatUsd(item.sellPriceApi ?? item.sellPriceUzs)} USD'
+        : formatThousands(item.sellPriceUzs);
+    return 'Ulgurji $wholesale · Sotish $sell';
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
@@ -651,7 +718,7 @@ class _ReceiveLineTileState extends State<_ReceiveLineTile> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '${formatThousands(item.lineTotalUzs)} so\'m',
+                            '${formatThousands(item.lineTotalInUzs(usdRate: ReceiveSessionProvider.instance.usdExchangeRate))} so\'m',
                             style: const TextStyle(
                               color: AppTheme.primary,
                               fontWeight: FontWeight.w600,
@@ -659,10 +726,22 @@ class _ReceiveLineTileState extends State<_ReceiveLineTile> {
                             ),
                           ),
                           Text(
-                            'Kelish ${_qty(item.quantity)} × ${formatThousands(item.purchasePriceUzs)}',
+                            _kelishLine(item),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                          Text(
+                            _pricesLine(item),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -697,7 +776,8 @@ class _ReceiveLineTileState extends State<_ReceiveLineTile> {
                       readOnly: !_editing,
                       showCursor: _editing,
                       enableInteractiveSelection: _editing,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
@@ -705,7 +785,8 @@ class _ReceiveLineTileState extends State<_ReceiveLineTile> {
                       ),
                       decoration: const InputDecoration(
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                         border: InputBorder.none,
                       ),
                       onTap: () {

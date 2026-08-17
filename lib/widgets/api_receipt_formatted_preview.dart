@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../utils/api_receipt_html_parser.dart';
+import '../utils/thermal_receipt_note_text.dart';
 
 /// API HTML → Alfapos.pdf ko‘rinishidagi ko‘rinish (sozlamalar / tekshiruv).
 class ApiReceiptFormattedPreview extends StatelessWidget {
@@ -36,10 +37,7 @@ class ApiReceiptFormattedPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final line in lines)
-            if (line.isEmpty)
-              const SizedBox(height: 6)
-            else
-              _lineWidget(line),
+            if (line.isEmpty) const SizedBox(height: 6) else _lineWidget(line),
         ],
       ),
     );
@@ -47,7 +45,9 @@ class ApiReceiptFormattedPreview extends StatelessWidget {
 
   Widget _lineWidget(String line) {
     final centered = line.startsWith('^');
-    final text = centered ? line.substring(1) : line;
+    final rawText = centered ? line.substring(1) : line;
+    final isNote = ThermalReceiptNoteText.isNoteLine(rawText);
+    final text = ThermalReceiptNoteText.unwrap(rawText);
     final isSep = text.startsWith('---');
     final isTotal = text.toLowerCase().contains('umumiy summa');
 
@@ -56,7 +56,8 @@ class ApiReceiptFormattedPreview extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           text,
-          style: const TextStyle(fontSize: 12, color: Colors.black54, letterSpacing: -0.5),
+          style: const TextStyle(
+              fontSize: 12, color: Colors.black54, letterSpacing: -0.5),
         ),
       );
     }
@@ -67,8 +68,14 @@ class ApiReceiptFormattedPreview extends StatelessWidget {
         text,
         textAlign: centered ? TextAlign.center : TextAlign.start,
         style: TextStyle(
-          fontSize: isTotal ? 24 : 13,
-          fontWeight: isTotal || (centered && text.length < 30) ? FontWeight.w900 : FontWeight.w500,
+          fontSize: isTotal
+              ? 24
+              : isNote
+                  ? ThermalReceiptNoteText.onScreenFontSize
+                  : 13,
+          fontWeight: isTotal || isNote || (centered && text.length < 30)
+              ? FontWeight.w900
+              : FontWeight.w500,
           color: Colors.black,
           height: isTotal ? 1.2 : 1.35,
         ),

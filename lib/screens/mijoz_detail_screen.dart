@@ -1014,6 +1014,16 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
       );
     }
 
+    // Mobilda 5 ustunli jadval sig'maydi — har bir yozuv karta ko'rinishida.
+    if (!_desktop) {
+      return ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        itemCount: _balanceRows.length,
+        itemBuilder: (context, i) => _buildBalanceCard(_balanceRows[i]),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.fromLTRB(_rowPadH, _desktop ? 16 : 8, _rowPadH, _desktop ? 16 : 8),
       child: DecoratedBox(
@@ -1042,6 +1052,109 @@ class _MijozDetailScreenState extends State<MijozDetailScreen> with SingleTicker
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Mobil karta: sana + summa, tavsif, yaratgan va o'chirish tugmasi.
+  Widget _buildBalanceCard(Map<String, dynamic> raw) {
+    final row = CustomerBalanceTransactionRow(raw);
+    final amountText =
+        CustomerBalanceTransactionRow.formatSignedAmount(row.signedAmount);
+    final amountColor = row.signedAmount < 0
+        ? const Color(0xFFDC2626)
+        : row.signedAmount > 0
+            ? const Color(0xFF16A34A)
+            : AppTheme.textPrimary;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.divider),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        row.dateDisplay,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      amountText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: amountColor,
+                      ),
+                    ),
+                  ],
+                ),
+                if (row.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    row.description,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.textPrimary,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+                if (row.createdBy.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.person_outline_rounded,
+                        size: 14,
+                        color: AppTheme.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          row.createdBy,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (row.id != null)
+            IconButton(
+              tooltip: 'O\'chirish',
+              onPressed: () => _deleteBalanceTransaction(row.id!),
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: Color(0xFFDC2626),
+                size: 20,
+              ),
+            ),
+        ],
       ),
     );
   }

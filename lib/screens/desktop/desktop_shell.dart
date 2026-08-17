@@ -3,6 +3,7 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 import '../../core/app_notify.dart';
 import '../../core/seller_preferences.dart';
 import '../../core/theme.dart';
+import '../../core/user_permissions.dart';
 import '../../services/api_service.dart';
 import '../../services/app_data_sync.dart';
 import '../../widgets/auth_network_image.dart';
@@ -50,6 +51,7 @@ class _DesktopShellState extends State<DesktopShell> {
     PosNavigation.openSalesSection = () => _go(salesSectionIndex);
     PosNavigation.openTransactionsSection = () => _go(transactionsSectionIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      UserPermissionsStore.instance.loadFromDisk();
       syncSellerNameFromApi();
       AppDataSync.warmAll();
     });

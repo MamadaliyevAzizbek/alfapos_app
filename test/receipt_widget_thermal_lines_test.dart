@@ -1,4 +1,5 @@
 import 'package:alfapos_app/widgets/receipt_widget.dart';
+import 'package:alfapos_app/utils/thermal_receipt_note_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -27,9 +28,10 @@ void main() {
     expect(lines.any((l) => l.contains('2026-05-20')), isTrue);
     expect(lines, contains('Chek raqami: POS99'));
     expect(lines.any((l) => l.contains('1) Non')), isTrue);
-    expect(lines.any((l) => l.contains('2 dona') && l.contains("so'm")), isTrue);
+    expect(
+        lines.any((l) => l.contains('2 dona') && l.contains("so'm")), isTrue);
     expect(lines.any((l) => l.contains('Naqd')), isTrue);
-    expect(lines, contains('Izoh: Izoh matni'));
+    expect(lines, contains(ThermalReceiptNoteText.line('Izoh: Izoh matni')));
     expect(lines, isNot(contains('Mahsulot')));
     expect(lines.join('\n').length, lessThan(800));
   });

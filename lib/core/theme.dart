@@ -9,6 +9,16 @@ class AppTheme {
   static const Color textSecondary = Color(0xFF64748B);
   static const Color divider = Color(0xFFE2E8F0);
 
+  /// Qaytarish rejimi — desktop va mobil bir xil to‘q sariq urg‘udan foydalanadi.
+  static const Color returnAccent = Color(0xFFE65100);
+  static const Color returnAccentDisabled = Color(0xFFFFB74D);
+  static const Color returnSurface = Color(0xFFFFF3E0);
+  static const Color returnText = Color(0xFF6D4C41);
+
+  /// Qaytarishda savat foni va pastdagi summa paneli (sotuvdagi ko‘k-kulrang o‘rniga).
+  static const Color returnPanelBg = Color(0xFFFFF8F2);
+  static const Color returnTotalBar = Color(0xFF4E342E);
+
   static ThemeData get light {
     return ThemeData(
       useMaterial3: true,

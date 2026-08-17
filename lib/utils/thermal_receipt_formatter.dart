@@ -4,6 +4,7 @@ import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
+import 'thermal_receipt_note_text.dart';
 import 'thermal_receipt_total_text.dart';
 import 'thermal_receipt_product_title_text.dart';
 import 'product_weight.dart';
@@ -16,6 +17,7 @@ class ThermalReceiptProductLine {
   final String lineTotal;
   final String? catalogUnitPrice;
   final String? catalogLineTotal;
+
   /// Qator og'irligi (kg) — mahsulot `weight` × miqdor.
   final double? lineWeightKg;
 
@@ -175,7 +177,8 @@ class ThermalReceiptFormatter {
         i++;
         continue;
       }
-      if (lower.startsWith('sotuvchi nomeri') || lower.startsWith('sotuvchi telefon')) {
+      if (lower.startsWith('sotuvchi nomeri') ||
+          lower.startsWith('sotuvchi telefon')) {
         sellerPhone = _afterColon(line);
         i++;
         continue;
@@ -278,7 +281,7 @@ class ThermalReceiptFormatter {
       from: config.itemSeparator,
     );
 
-    _appendReceiptHeaderAndMeta(lines, d, config: config);
+    _appendReceiptHeaderAndMeta(lines, d, config: config, maxWidth: maxWidth);
 
     var n = 0;
     for (final p in d.products) {
@@ -310,12 +313,14 @@ class ThermalReceiptFormatter {
       }
     }
 
-    _appendReceiptPaymentsDiscountTotal(lines, d, config: config, sep: sep, maxWidth: maxWidth);
+    _appendReceiptPaymentsDiscountTotal(lines, d,
+        config: config, sep: sep, maxWidth: maxWidth);
 
     return ThermalReceiptLineWrap.wrapAll(lines, maxWidth: maxWidth);
   }
 
-  static void _appendLeftLine(List<String> lines, String s, {int maxWidth = kThermalChars80mm}) {
+  static void _appendLeftLine(List<String> lines, String s,
+      {int maxWidth = kThermalChars80mm}) {
     for (final part in ThermalReceiptLineWrap.wrapLine(s, maxWidth: maxWidth)) {
       lines.add(part);
     }
@@ -325,6 +330,7 @@ class ThermalReceiptFormatter {
     List<String> lines,
     ThermalReceiptPrintData d, {
     required ReceiptDesignConfig config,
+    required int maxWidth,
   }) {
     void center(String s) => lines.add('^${s.trim()}');
 
@@ -357,13 +363,15 @@ class ThermalReceiptFormatter {
       lines.add('');
       _appendLeftLine(lines, "${config.receiptNumberLabel}: to'lov oldin");
     } else if (d.receiptNumber.isNotEmpty) {
-      _appendLeftLine(lines, '${config.receiptNumberLabel}: ${d.receiptNumber}');
+      _appendLeftLine(
+          lines, '${config.receiptNumberLabel}: ${d.receiptNumber}');
     }
     _appendLeftLine(lines, '${config.sellerLabel}: ${d.sellerName}');
     if (config.showSellerPhone &&
         d.sellerPhone != null &&
         d.sellerPhone!.trim().isNotEmpty) {
-      _appendLeftLine(lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
+      _appendLeftLine(
+          lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
     }
     if (config.showClientLine &&
         d.clientName != null &&
@@ -373,16 +381,23 @@ class ThermalReceiptFormatter {
     if (config.showClientPhone &&
         d.clientPhone != null &&
         d.clientPhone!.trim().isNotEmpty) {
-      _appendLeftLine(lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
+      _appendLeftLine(
+          lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
     }
     if (config.showClientAddress &&
         d.clientAddress != null &&
         d.clientAddress!.trim().isNotEmpty) {
-      _appendLeftLine(lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
+      _appendLeftLine(
+          lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
     }
     final note = d.description?.trim() ?? '';
     if (note.isNotEmpty) {
-      _appendLeftLine(lines, 'Izoh: $note');
+      for (final part in ThermalReceiptLineWrap.wrapLine(
+        'Izoh: $note',
+        maxWidth: maxWidth,
+      )) {
+        lines.add(ThermalReceiptNoteText.line(part));
+      }
     }
     lines.add('');
   }
@@ -411,14 +426,16 @@ class ThermalReceiptFormatter {
 
     final discountValue = formatAmountForReceipt(d.discountAmount);
     if (discountValue != '0' && discountValue.isNotEmpty) {
-      summaryRows.add((label: config.discountLabel, value: amountLabel(d.discountAmount)));
+      summaryRows.add(
+          (label: config.discountLabel, value: amountLabel(d.discountAmount)));
     }
 
     if (summaryRows.isNotEmpty) {
       final totalRows = <({String label, String value})>[
         (label: config.totalLabel, value: amountLabel(d.totalAmount)),
       ];
-      final cols = ThermalReceiptLineWrap.equalsColumnWidths([...summaryRows, ...totalRows]);
+      final cols = ThermalReceiptLineWrap.equalsColumnWidths(
+          [...summaryRows, ...totalRows]);
       lines.addAll(
         ThermalReceiptLineWrap.formatEqualsRows(
           summaryRows,
@@ -440,11 +457,14 @@ class ThermalReceiptFormatter {
         lines.add(sep);
       }
       lines.add(
-        ThermalReceiptTotalText.line(config.totalLabel, amountLabel(d.totalAmount)),
+        ThermalReceiptTotalText.line(
+            config.totalLabel, amountLabel(d.totalAmount)),
       );
     }
 
-    if (!d.isRestaurantLayout && d.totalWeightKg != null && d.totalWeightKg! > 0) {
+    if (!d.isRestaurantLayout &&
+        d.totalWeightKg != null &&
+        d.totalWeightKg! > 0) {
       lines.add('');
       _appendLeftLine(
         lines,
@@ -503,7 +523,8 @@ class ThermalReceiptFormatter {
   ) {
     final line = raw[i].trim();
     final lower = line.toLowerCase();
-    if (!_containsTableHeaderWords(lower) || !lower.contains('summa')) return null;
+    if (!_containsTableHeaderWords(lower) || !lower.contains('summa'))
+      return null;
 
     var t = line;
     for (final h in ['Mahsulot', 'Miqdor', 'Narx', 'Summa']) {
@@ -588,16 +609,19 @@ class ThermalReceiptFormatter {
 
   static bool _isSkippableMeta(String line) {
     final lower = line.toLowerCase();
-    if (lower.startsWith('mijoz telefon') && _afterColon(line).isEmpty) return true;
+    if (lower.startsWith('mijoz telefon') && _afterColon(line).isEmpty)
+      return true;
     if (lower.startsWith('manzil') && _afterColon(line).isEmpty) return true;
     if (lower.startsWith('izoh') && _afterColon(line).isEmpty) return true;
-    if (lower.startsWith('qarz muddat') && _afterColon(line).isEmpty) return true;
+    if (lower.startsWith('qarz muddat') && _afterColon(line).isEmpty)
+      return true;
     return false;
   }
 
   static ThermalReceiptPaymentLine? _parsePaymentLine(String line) {
     final lower = line.toLowerCase();
-    if (lower.startsWith('chegirma') || lower.contains('umumiy summa')) return null;
+    if (lower.startsWith('chegirma') || lower.contains('umumiy summa'))
+      return null;
     final amount = _extractTrailingAmount(line);
     if (amount == null) return null;
     var method = line.substring(0, line.lastIndexOf(amount)).trim();
@@ -626,7 +650,9 @@ class ThermalReceiptFormatter {
     final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
     if (t.isEmpty) return '0 $suf';
     final lower = t.toLowerCase();
-    if (lower.contains("so'm") || lower.contains('sum') || lower.endsWith(suf.toLowerCase())) {
+    if (lower.contains("so'm") ||
+        lower.contains('sum') ||
+        lower.endsWith(suf.toLowerCase())) {
       return t;
     }
     return '$t $suf';
@@ -635,15 +661,18 @@ class ThermalReceiptFormatter {
   static String _restaurantProductLine(ThermalReceiptProductLine p) {
     final qty = _normalizeQtyUnit(p.quantity.trim());
     final price = formatAmountForReceipt(
-      p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+      p.unitPrice
+          .replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
     );
     final total = formatAmountForReceipt(
-      p.lineTotal.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+      p.lineTotal
+          .replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
     );
     final catalog = p.catalogUnitPrice == null
         ? null
         : formatAmountForReceipt(
-            p.catalogUnitPrice!.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+            p.catalogUnitPrice!.replaceAll(
+                RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
           );
     if (catalog != null &&
         catalog.isNotEmpty &&
@@ -654,21 +683,27 @@ class ThermalReceiptFormatter {
     return '$qty x $price=$total';
   }
 
-  static String _productQtyLine(ThermalReceiptProductLine p, {String suffix = "so'm"}) {
+  static String _productQtyLine(ThermalReceiptProductLine p,
+      {String suffix = "so'm"}) {
     final qty = _normalizeQtyUnit(p.quantity.trim());
     final price = formatAmountForReceipt(
-      p.unitPrice.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+      p.unitPrice
+          .replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
     );
     final catalog = p.catalogUnitPrice == null
         ? null
         : formatAmountForReceipt(
-            p.catalogUnitPrice!.replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
+            p.catalogUnitPrice!.replaceAll(
+                RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
           );
     final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
     if (qty.contains('x') || qty.contains('×')) {
       return '${qty.replaceAll('×', 'x')} $suf.';
     }
-    if (catalog != null && catalog.isNotEmpty && catalog != price && _looksNumeric(catalog.replaceAll(',', ''))) {
+    if (catalog != null &&
+        catalog.isNotEmpty &&
+        catalog != price &&
+        _looksNumeric(catalog.replaceAll(',', ''))) {
       return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price $suf';
     }
     if (price.isNotEmpty && _looksNumeric(price.replaceAll(',', ''))) {

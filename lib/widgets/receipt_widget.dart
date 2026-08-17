@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import '../utils/thermal_receipt_large_text.dart';
+import '../utils/thermal_receipt_note_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
 import '../utils/product_weight.dart';
 import '../utils/thermal_receipt_formatter.dart';
@@ -16,14 +17,19 @@ import 'receipt_logo_image.dart';
 class ReceiptRow {
   final String productName;
   final String quantityStr;
+
   /// To'langan birlik narxi
   final int price;
+
   /// To'langan qator jami
   final int sum;
+
   /// Katalog birlik narxi (chegirma bo'lsa — ustidan chiziladi)
   final int? catalogPrice;
+
   /// Katalog qator jami (chegirma bo'lsa — ustidan chiziladi)
   final int? catalogSum;
+
   /// Qator og'irligi (kg).
   final double? lineWeightKg;
 
@@ -37,11 +43,9 @@ class ReceiptRow {
     this.lineWeightKg,
   });
 
-  bool get hasUnitDiscount =>
-      catalogPrice != null && catalogPrice! > price;
+  bool get hasUnitDiscount => catalogPrice != null && catalogPrice! > price;
 
-  bool get hasSumDiscount =>
-      catalogSum != null && catalogSum! > sum;
+  bool get hasSumDiscount => catalogSum != null && catalogSum! > sum;
 }
 
 /// To'lov qatori: usul, summa
@@ -61,6 +65,7 @@ class ReceiptWidget extends StatelessWidget {
   final String receiptNumber;
   final String sellerName;
   final String? sellerPhone;
+
   /// API filial nomi (sarlavha uchun; Kassa 1 emas).
   final String branchName;
   final String? clientName;
@@ -125,7 +130,8 @@ class ReceiptWidget extends StatelessWidget {
                 quantity: r.quantityStr,
                 unitPrice: _fmt(r.price),
                 lineTotal: _fmt(r.sum),
-                catalogUnitPrice: r.hasUnitDiscount ? _fmt(r.catalogPrice!) : null,
+                catalogUnitPrice:
+                    r.hasUnitDiscount ? _fmt(r.catalogPrice!) : null,
                 lineWeightKg: r.lineWeightKg,
               ),
             )
@@ -205,7 +211,8 @@ class ReceiptWidget extends StatelessWidget {
             const SizedBox(height: 8),
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.grey.shade700, width: 1.5),
                   borderRadius: BorderRadius.circular(4),
@@ -283,17 +290,27 @@ class ReceiptWidget extends StatelessWidget {
           if (design.showSellerPhone &&
               sellerPhone != null &&
               sellerPhone!.trim().isNotEmpty)
-            Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}', style: textStyle),
+            Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}',
+                style: textStyle),
           if ((clientName ?? '').trim().isNotEmpty) ...[
-            Text('${design.clientLabel}: ${clientName!.trim()}', style: textStyle),
+            Text('${design.clientLabel}: ${clientName!.trim()}',
+                style: textStyle),
             if ((clientPhone ?? '').trim().isNotEmpty)
-              Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}', style: textStyle),
+              Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}',
+                  style: textStyle),
             if ((clientAddress ?? '').trim().isNotEmpty)
-              Text('${design.clientAddressLabel}: ${clientAddress!.trim()}', style: textStyle),
+              Text('${design.clientAddressLabel}: ${clientAddress!.trim()}',
+                  style: textStyle),
           ],
           if ((description ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Izoh: ${description!.trim()}', style: textStyle),
+            Text(
+              'Izoh: ${description!.trim()}',
+              style: textStyle.copyWith(
+                fontSize: ThermalReceiptNoteText.onScreenFontSize,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ],
           const SizedBox(height: 6),
           for (var i = 0; i < productRows.length; i++) ...[
@@ -317,7 +334,9 @@ class ReceiptWidget extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: _productPriceLine(productRows[i], textStyle, som)),
+                    Expanded(
+                        child:
+                            _productPriceLine(productRows[i], textStyle, som)),
                     SizedBox(
                       width: 108,
                       child: _productSumColumn(productRows[i], textStyle, som),
@@ -328,7 +347,8 @@ class ReceiptWidget extends StatelessWidget {
             if (design.showItemSeparator) ...[
               const SizedBox(height: 4),
               Text(
-                ThermalReceiptLineWrap.fullSeparator(kReceiptPreviewChars, from: design.itemSeparator),
+                ThermalReceiptLineWrap.fullSeparator(kReceiptPreviewChars,
+                    from: design.itemSeparator),
                 style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
                 softWrap: false,
                 overflow: TextOverflow.clip,
@@ -336,18 +356,18 @@ class ReceiptWidget extends StatelessWidget {
             ],
             const SizedBox(height: 6),
           ],
-      ..._buildReceiptSummarySection(
-        design: design,
-        paymentRows: paymentRows,
-        discount: discount,
-        totalSum: totalSum,
-        totalWeightKg: _totalWeightKg(),
-        som: som,
-        isPrecheck: isPrecheck,
-        isRestaurantLayout: isRestaurantLayout,
-        textStyle: textStyle,
-        headerStyle: headerStyle,
-      ),
+          ..._buildReceiptSummarySection(
+            design: design,
+            paymentRows: paymentRows,
+            discount: discount,
+            totalSum: totalSum,
+            totalWeightKg: _totalWeightKg(),
+            som: som,
+            isPrecheck: isPrecheck,
+            isRestaurantLayout: isRestaurantLayout,
+            textStyle: textStyle,
+            headerStyle: headerStyle,
+          ),
           if (!isPrecheck) ...[
             if (design.showBarcode) ...[
               const SizedBox(height: 16),
@@ -401,8 +421,7 @@ class ReceiptWidget extends StatelessWidget {
         .replaceAll('×', 'x');
   }
 
-  static TextStyle _strikeStyle(TextStyle base) =>
-      base.copyWith(
+  static TextStyle _strikeStyle(TextStyle base) => base.copyWith(
         decoration: TextDecoration.lineThrough,
         decorationThickness: 2,
         decorationColor: Colors.grey.shade700,
@@ -453,7 +472,8 @@ class ReceiptWidget extends StatelessWidget {
       if (design.showItemSeparator) ...[
         const SizedBox(height: 4),
         Text(
-          ThermalReceiptLineWrap.fullSeparator(kReceiptPreviewChars, from: design.itemSeparator),
+          ThermalReceiptLineWrap.fullSeparator(kReceiptPreviewChars,
+              from: design.itemSeparator),
           style: textStyle.copyWith(fontSize: 11, letterSpacing: 0),
           softWrap: false,
           overflow: TextOverflow.clip,
@@ -461,12 +481,15 @@ class ReceiptWidget extends StatelessWidget {
       ],
       ..._buildSummaryLines(
         [totalRow],
-        headerStyle.copyWith(fontSize: 16, fontWeight: FontWeight.w800, height: 1.2),
+        headerStyle.copyWith(
+            fontSize: 16, fontWeight: FontWeight.w800, height: 1.2),
         labelWidth: cols.labelWidth,
         valueWidth: cols.valueWidth,
         bold: true,
       ),
-      if (!isRestaurantLayout && totalWeightKg != null && totalWeightKg > 0) ...[
+      if (!isRestaurantLayout &&
+          totalWeightKg != null &&
+          totalWeightKg > 0) ...[
         const SizedBox(height: 4),
         Text(
           'Jami og\'irlik: ${ProductWeight.formatKg(totalWeightKg)}',
@@ -488,7 +511,8 @@ class ReceiptWidget extends StatelessWidget {
     final cols = labelWidth != null && valueWidth != null
         ? (labelWidth: labelWidth, valueWidth: valueWidth)
         : ThermalReceiptLineWrap.equalsColumnWidths(rows);
-    final textStyle = bold ? style.copyWith(fontWeight: FontWeight.w700) : style;
+    final textStyle =
+        bold ? style.copyWith(fontWeight: FontWeight.w700) : style;
     return [
       for (final row in rows)
         Padding(
@@ -507,7 +531,8 @@ class ReceiptWidget extends StatelessWidget {
     return restaurantLayout ? formatted : '$formatted $som';
   }
 
-  static Widget _restaurantProductLineWidget(ReceiptRow row, TextStyle textStyle) {
+  static Widget _restaurantProductLineWidget(
+      ReceiptRow row, TextStyle textStyle) {
     final qty = _normalizeQty(row.quantityStr);
     if (row.hasUnitDiscount) {
       return Text.rich(
@@ -515,7 +540,9 @@ class ReceiptWidget extends StatelessWidget {
           style: textStyle,
           children: [
             TextSpan(text: '$qty x '),
-            TextSpan(text: '${_fmt(row.catalogPrice!)}', style: _strikeStyle(textStyle)),
+            TextSpan(
+                text: '${_fmt(row.catalogPrice!)}',
+                style: _strikeStyle(textStyle)),
             TextSpan(text: ' ${_fmt(row.price)}=${_fmt(row.sum)}'),
           ],
         ),
@@ -529,7 +556,8 @@ class ReceiptWidget extends StatelessWidget {
     );
   }
 
-  static Widget _productPriceLine(ReceiptRow row, TextStyle textStyle, String som) {
+  static Widget _productPriceLine(
+      ReceiptRow row, TextStyle textStyle, String som) {
     final qty = _normalizeQty(row.quantityStr);
     if (row.hasUnitDiscount) {
       return Text.rich(
@@ -537,7 +565,9 @@ class ReceiptWidget extends StatelessWidget {
           style: textStyle,
           children: [
             TextSpan(text: '$qty x '),
-            TextSpan(text: '${_fmt(row.catalogPrice!)}', style: _strikeStyle(textStyle)),
+            TextSpan(
+                text: '${_fmt(row.catalogPrice!)}',
+                style: _strikeStyle(textStyle)),
             TextSpan(text: ' ${_fmt(row.price)} $som'),
           ],
         ),
@@ -546,7 +576,8 @@ class ReceiptWidget extends StatelessWidget {
     return Text('$qty x ${_fmt(row.price)} $som', style: textStyle);
   }
 
-  static Widget _productSumColumn(ReceiptRow row, TextStyle textStyle, String som) {
+  static Widget _productSumColumn(
+      ReceiptRow row, TextStyle textStyle, String som) {
     return Text(
       '${_fmt(row.sum)} $som',
       style: textStyle,

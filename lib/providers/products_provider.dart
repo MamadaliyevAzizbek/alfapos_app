@@ -38,6 +38,7 @@ class ProductsProvider extends ChangeNotifier {
   int? _cachedDefaultBranchId;
   /// Parallel loadFromApi bo‘lmasin (429 oldini olish).
   Future<void>? _loadFromApiInFlight;
+  bool _loadFromApiInFlightForce = false;
   /// Bir vaqtda faqat bitta yangi mahsulot POST (UI race / qayta bosishdan himoya).
   bool _serverCreateInFlight = false;
 
@@ -688,14 +689,24 @@ class ProductsProvider extends ChangeNotifier {
 
   Future<void> loadFromApi({bool force = false}) async {
     final existing = _loadFromApiInFlight;
-    if (existing != null) return existing;
+    if (existing != null) {
+      if (!force || _loadFromApiInFlightForce) return existing;
+      // Fonda force=false so‘rov ketmoqda. Uni qaytarib yuborsak, force so‘rov
+      // fingerprint qisqa yo‘liga tushib qolardi va katalog yangilanmasdi.
+      // Shuning uchun kutamiz va so‘ng to‘liq o‘qiymiz.
+      try {
+        await existing;
+      } catch (_) {}
+    }
     final future = _loadFromApiBody(force: force);
     _loadFromApiInFlight = future;
+    _loadFromApiInFlightForce = force;
     try {
       await future;
     } finally {
       if (identical(_loadFromApiInFlight, future)) {
         _loadFromApiInFlight = null;
+        _loadFromApiInFlightForce = false;
       }
     }
   }
@@ -1003,6 +1014,22 @@ class ProductsProvider extends ChangeNotifier {
 
   List<Product> withCatalogStockAll(Iterable<Product> products) =>
       products.map(withCatalogStock).toList();
+
+  /// Ombor chegarasini tekshirish uchun eng ishonchli miqdor.
+  ///
+  /// [withCatalogStock] katalog miqdorini (0 bo‘lsa ham) ustun qo‘yadi. Katalog
+  /// keshi eskirgan bo‘lsa, sotuv/barkod javobidagi haqiqiy qoldiq yo‘qoladi va
+  /// yetarli mahsulot ham «omborda yetarli emas» deb bloklanadi. Shu sabab
+  /// tekshiruvda ikki manbaning kattasi olinadi — yakuniy tasdiq baribir
+  /// serverda (`checkAvailableQuantity`).
+  Product withBestKnownStock(Product fromSalesOrReceiveApi) {
+    final aligned = withCatalogStock(fromSalesOrReceiveApi);
+    if (fromSalesOrReceiveApi.availableStockQuantity >
+        aligned.availableStockQuantity) {
+      return fromSalesOrReceiveApi.mergeWithLocalFallback(aligned);
+    }
+    return aligned;
+  }
 
   /// Sotuv API sahifasini yagona katalogga qo‘shadi (yo‘q mahsulotlar).
   void mergeSalesOverlay(Iterable<Product> salesProducts) {

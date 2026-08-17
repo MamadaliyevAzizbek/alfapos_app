@@ -1,5 +1,6 @@
 import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
+import 'thermal_receipt_note_text.dart';
 import 'thermal_receipt_product_title_text.dart';
 import 'thermal_receipt_total_text.dart';
 
@@ -28,6 +29,7 @@ class ThermalReceiptLineWrap {
         continue;
       }
       if (ThermalReceiptLargeText.isLargeLine(line) ||
+          ThermalReceiptNoteText.isNoteLine(line) ||
           ThermalReceiptCompactText.isAnyCompactLine(line) ||
           ThermalReceiptTotalText.isTotalLine(line) ||
           ThermalReceiptProductTitleText.isAnySpecialLine(line)) {
@@ -35,7 +37,8 @@ class ThermalReceiptLineWrap {
         continue;
       }
       if (line.startsWith('^')) {
-        out.addAll(wrapLine(line.substring(1), maxWidth: maxWidth).map((p) => '^$p'));
+        out.addAll(
+            wrapLine(line.substring(1), maxWidth: maxWidth).map((p) => '^$p'));
         continue;
       }
       if (_isSeparatorLine(line)) {
@@ -61,7 +64,8 @@ class ThermalReceiptLineWrap {
     if (line.length != width) return false;
     final trimmed = line.trimLeft();
     if (trimmed.isEmpty) return false;
-    return RegExp(r'^[\d\s,.]+(\s*so.?m)?$', caseSensitive: false).hasMatch(trimmed) ||
+    return RegExp(r'^[\d\s,.]+(\s*so.?m)?$', caseSensitive: false)
+            .hasMatch(trimmed) ||
         RegExp(r'^\S+.*\d').hasMatch(trimmed);
   }
 
@@ -84,7 +88,8 @@ class ThermalReceiptLineWrap {
     ];
   }
 
-  static List<String> wrapLine(String line, {int maxWidth = kThermalChars80mm}) {
+  static List<String> wrapLine(String line,
+      {int maxWidth = kThermalChars80mm}) {
     final t = line.trim();
     if (t.isEmpty) return [''];
     if (t.length <= maxWidth) return [t];
@@ -114,7 +119,8 @@ class ThermalReceiptLineWrap {
     final r = right.trim();
     if (r.isEmpty) return wrapLine(l, maxWidth: totalWidth);
 
-    final single = _alignedTwoColumn(l, r, totalWidth: totalWidth, rightWidth: rightWidth);
+    final single =
+        _alignedTwoColumn(l, r, totalWidth: totalWidth, rightWidth: rightWidth);
     if (single != null) return [single];
 
     final compact = _alignedTwoColumn(
@@ -202,7 +208,9 @@ class ThermalReceiptLineWrap {
       final bold = boldIndices.contains(i);
       if (compact) {
         out.add(
-          bold ? ThermalReceiptCompactText.boldLine(text) : ThermalReceiptCompactText.line(text),
+          bold
+              ? ThermalReceiptCompactText.boldLine(text)
+              : ThermalReceiptCompactText.line(text),
         );
       } else {
         out.add(bold ? ThermalReceiptCompactText.boldLine(text) : text);

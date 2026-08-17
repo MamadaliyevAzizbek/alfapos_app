@@ -915,6 +915,181 @@ class ReceivesApi {
   static Future<Map<String, dynamic>> getEditableOrder(int orderId, {String orderType = 'receiving'}) async {
     return ApiClient.get('/receives/editable-order/$orderId?orderType=$orderType');
   }
+
+  /// GET /receives/drafts — filial bo‘yicha saqlangan qoralamalar.
+  static Future<Map<String, dynamic>> getDrafts() async {
+    return ApiClient.get('/receives/drafts');
+  }
+
+  /// POST /receives/drafts — yangi qoralama.
+  static Future<Map<String, dynamic>> saveDraft(Map<String, dynamic> body) async {
+    return ApiClient.post('/receives/drafts', body: body);
+  }
+
+  /// POST /receives/drafts/{id} — ochilgan qoralamani yangilash.
+  static Future<Map<String, dynamic>> updateDraft(
+    String id,
+    Map<String, dynamic> body,
+  ) async {
+    return ApiClient.post('/receives/drafts/$id', body: body);
+  }
+
+  /// DELETE /receives/drafts/{id}
+  static Future<Map<String, dynamic>> deleteDraft(String id) async {
+    return ApiClient.delete('/receives/drafts/$id');
+  }
+}
+
+/// Inventarizatsiya / reviziya — INVENTORY_API_UZ.md.
+///
+/// Hujjatdagi endpointlar web (sessiya) route'lari; mobil `/api/v1` da ba'zilari
+/// GET sifatida ochilgan. Shuning uchun 405 kelsa boshqa metod bilan qayta uriniladi.
+class InventoryApi {
+  /// Backend hali `/api/v1` ostida route ochmaganida ko‘rsatiladigan matn.
+  static const String notPublishedMessage =
+      'Inventarizatsiya API mobil ilova uchun ochilmagan.\n'
+      'Hozircha bu endpointlar faqat web (sessiya + CSRF) route‘lari sifatida ishlaydi.\n'
+      'Backendda routes/api.php ichida v1 guruhiga (auth:sanctum) '
+      'inventories / inventory/* route‘larini qo‘shish kerak.';
+
+  /// Route umuman yo‘q (404) yoki boshqa metodda (405) — ikkalasi ham
+  /// «mobil API da chiqarilmagan» degani.
+  static bool _isRouteMissing(ApiException e) {
+    if (e.statusCode == 404 || e.statusCode == 405) return true;
+    final m = e.message.toLowerCase();
+    return m.contains('method is not supported') ||
+        m.contains('method not allowed');
+  }
+
+  static Map<String, String> _asQuery(Map<String, dynamic> body) {
+    final out = <String, String>{};
+    body.forEach((k, v) {
+      if (v == null) return;
+      out[k] = v.toString();
+    });
+    return out;
+  }
+
+  static Future<Map<String, dynamic>> _postOrGet(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      return await ApiClient.post(path, body: body);
+    } on ApiException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      try {
+        return await ApiClient.get(path, queryParams: _asQuery(body));
+      } on ApiException catch (e2) {
+        if (!_isRouteMissing(e2)) rethrow;
+        throw ApiException(notPublishedMessage, e.statusCode);
+      }
+    }
+  }
+
+  static Future<Map<String, dynamic>> _getOrPost(
+    String path, {
+    Map<String, dynamic> body = const {},
+  }) async {
+    try {
+      return await ApiClient.get(path, queryParams: _asQuery(body));
+    } on ApiException catch (e) {
+      if (!_isRouteMissing(e)) rethrow;
+      try {
+        return await ApiClient.post(path, body: body);
+      } on ApiException catch (e2) {
+        if (!_isRouteMissing(e2)) rethrow;
+        throw ApiException(notPublishedMessage, e.statusCode);
+      }
+    }
+  }
+
+  /// POST /inventories — tarix / jarayondagilar (GET ham qo‘llab-quvvatlanadi).
+  static Future<Map<String, dynamic>> listDocuments({
+    int rowLimit = 50,
+    int rowOffset = 0,
+    String searchValue = '',
+  }) {
+    return _postOrGet('/inventories', {
+      'rowLimit': rowLimit,
+      'rowOffset': rowOffset,
+      'searchValue': searchValue,
+    });
+  }
+
+  /// GET /inventory-reports-filter — wizard kategoriyalari.
+  static Future<Map<String, dynamic>> getFilterOptions() {
+    return _getOrPost('/inventory-reports-filter');
+  }
+
+  /// POST /inventory/create
+  static Future<Map<String, dynamic>> create({
+    String categoryId = 'all',
+    String? notes,
+  }) {
+    return _postOrGet('/inventory/create', {
+      'category_id': categoryId,
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+    });
+  }
+
+  /// GET /inventory/{id}
+  static Future<Map<String, dynamic>> getDocument(int id) {
+    return _getOrPost('/inventory/$id');
+  }
+
+  /// POST /inventory/search-products
+  static Future<Map<String, dynamic>> searchProducts({
+    required int inventoryId,
+    String searchValue = '',
+    String countFilter = 'all',
+    int? categoryId,
+    int rowLimit = 50,
+    int rowOffset = 0,
+  }) {
+    return _postOrGet('/inventory/search-products', {
+      'inventory_id': inventoryId,
+      'searchValue': searchValue,
+      'count_filter': countFilter,
+      if (categoryId != null) 'category_id': categoryId,
+      'rowLimit': rowLimit,
+      'rowOffset': rowOffset,
+    });
+  }
+
+  /// POST /inventory/items — sanalgan / sanalmagan badge.
+  static Future<Map<String, dynamic>> getItems({
+    required int inventoryId,
+    String filter = 'all',
+  }) {
+    return _postOrGet('/inventory/items', {
+      'inventory_id': inventoryId,
+      'filter': filter,
+    });
+  }
+
+  /// POST /inventory/update-quantity
+  static Future<Map<String, dynamic>> updateQuantity({
+    required int inventoryId,
+    required int variantId,
+    num? countedQuantity,
+  }) {
+    return _postOrGet('/inventory/update-quantity', {
+      'inventory_id': inventoryId,
+      'variant_id': variantId,
+      'counted_quantity': countedQuantity,
+    });
+  }
+
+  /// POST /inventory/save/{id}
+  static Future<Map<String, dynamic>> save(int id) {
+    return _postOrGet('/inventory/save/$id', {'id': id});
+  }
+
+  /// POST /inventory/complete/{id}
+  static Future<Map<String, dynamic>> complete(int id) {
+    return _postOrGet('/inventory/complete/$id', {'id': id});
+  }
 }
 
 /// Savdo hisoboti (tranzaksiyalar ro'yxati, invoice batafsil)

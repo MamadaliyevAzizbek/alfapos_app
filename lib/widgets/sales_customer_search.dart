@@ -25,6 +25,8 @@ class SalesCustomerSearch extends StatefulWidget {
   final FocusNode? searchFocusNode;
   /// Tezkor klavish belgisi (masalan F2).
   final String? shortcutKeyLabel;
+  /// Urg‘u rangi — qaytarish rejimida to‘q sariq.
+  final Color accentColor;
 
   const SalesCustomerSearch({
     super.key,
@@ -36,6 +38,7 @@ class SalesCustomerSearch extends StatefulWidget {
     this.sharpCorners = false,
     this.searchFocusNode,
     this.shortcutKeyLabel,
+    this.accentColor = AppTheme.primary,
   });
 
   @override
@@ -286,6 +289,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
           child: FilledButton(
             onPressed: widget.onAddNew,
             style: FilledButton.styleFrom(
+              backgroundColor: widget.accentColor,
               padding: EdgeInsets.zero,
               minimumSize: Size(h, h),
               shape: const RoundedRectangleBorder(
@@ -405,7 +409,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: cornerRadius,
                         borderSide: BorderSide(
-                          color: AppTheme.primary,
+                          color: widget.accentColor,
                           width: _sz(1.5).clamp(1.0, 2.0),
                         ),
                       ),
@@ -432,6 +436,7 @@ class _SalesCustomerSearchState extends State<SalesCustomerSearch> {
                   ),
                 ),
                 style: FilledButton.styleFrom(
+                  backgroundColor: widget.accentColor,
                   padding: EdgeInsets.symmetric(
                     horizontal: _sz(widget.largeButtons ? 18 : 12),
                   ),

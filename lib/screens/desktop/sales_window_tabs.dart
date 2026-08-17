@@ -12,6 +12,9 @@ class SalesWindowTabs extends StatelessWidget {
   final bool canAddWindow;
   final int maxWindows;
 
+  /// Faol oyna foni — qaytarish rejimida to‘q sariq.
+  final Color accentColor;
+
   const SalesWindowTabs({
     super.key,
     required this.windowCount,
@@ -20,9 +23,9 @@ class SalesWindowTabs extends StatelessWidget {
     required this.onAddWindow,
     this.canAddWindow = true,
     this.maxWindows = 12,
+    this.accentColor = AppTheme.primary,
   });
 
-  static const Color _activeBg = AppTheme.primary;
   static const Color _border = Color(0xFFDDE5F0);
   static const double _radius = 8;
 
@@ -50,6 +53,7 @@ class SalesWindowTabs extends StatelessWidget {
             selected: i == activeIndex,
             onTap: () => onWindowSelected(i),
             size: size,
+            accentColor: accentColor,
           ),
         ],
         SizedBox(width: gap),
@@ -58,6 +62,7 @@ class SalesWindowTabs extends StatelessWidget {
           tooltip: _addTooltip,
           onTap: onAddWindow,
           size: size,
+          accentColor: accentColor,
         ),
       ],
     );
@@ -69,12 +74,14 @@ class _WindowChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final double size;
+  final Color accentColor;
 
   const _WindowChip({
     required this.number,
     required this.selected,
     required this.onTap,
     required this.size,
+    required this.accentColor,
   });
 
   @override
@@ -83,7 +90,7 @@ class _WindowChip extends StatelessWidget {
       width: size,
       height: size,
       child: Material(
-        color: selected ? SalesWindowTabs._activeBg : Colors.white,
+        color: selected ? accentColor : Colors.white,
         borderRadius: BorderRadius.circular(SalesWindowTabs._radius),
         child: InkWell(
           onTap: onTap,
@@ -119,12 +126,14 @@ class _AddWindowChip extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
   final double size;
+  final Color accentColor;
 
   const _AddWindowChip({
     required this.enabled,
     required this.tooltip,
     required this.onTap,
     required this.size,
+    required this.accentColor,
   });
 
   @override
@@ -149,7 +158,7 @@ class _AddWindowChip extends StatelessWidget {
                 child: Icon(
                   Icons.add_rounded,
                   size: SalesUiScaleSettings.navbarAccentIconSize(),
-                  color: enabled ? SalesWindowTabs._activeBg : const Color(0xFF94A3B8),
+                  color: enabled ? accentColor : const Color(0xFF94A3B8),
                 ),
               ),
             ),

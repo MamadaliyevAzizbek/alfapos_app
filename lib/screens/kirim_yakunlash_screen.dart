@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../models/receive_supplier.dart';
 import '../providers/receive_session_provider.dart';
 import '../services/api_service.dart';
+import '../services/receive_draft_storage.dart';
 import '../utils/receive_payment_types.dart';
 import '../widgets/app_dropdown.dart';
 import '../widgets/ios_style_modals.dart';
@@ -63,8 +64,13 @@ class _KirimYakunlashScreenState extends State<KirimYakunlashScreen> {
       return;
     }
     setState(() => _submitting = true);
+    final draftId = _session.activeDraftId;
+    final branchId = _session.branchId ?? 1;
     try {
       final res = await _session.submitReceive();
+      if (draftId != null) {
+        await ReceiveDraftStorage.deleteDraft(branchId, draftId);
+      }
       if (!mounted) return;
       final msg = (res['message'] ?? '').toString();
       AppNotify.success(context, msg.isNotEmpty ? msg : 'Kirim saqlandi');

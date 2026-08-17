@@ -16,7 +16,8 @@ import 'hold_orders_response.dart';
 class HoldOrderPrecheckPrint {
   HoldOrderPrecheckPrint._();
 
-  static Future<ThermalPrintResult> printHoldOrder(Map<String, dynamic> hold) async {
+  static Future<ThermalPrintResult> printHoldOrder(
+      Map<String, dynamic> hold) async {
     if (!Platform.isWindows && !Platform.isMacOS) {
       return ThermalPrintResult.fail(
         'Termal chop etish faqat Windows yoki macOS desktop ilovasida',
@@ -57,6 +58,7 @@ class HoldOrderPrecheckPrint {
       clientName: client?.name,
       clientPhone: client?.phone,
       clientAddress: client?.address,
+      description: resume.description,
       productRows: ReceiptRowBuilder.fromCartItems(resume.items),
       paymentRows: const [],
       discount: ReceiptRowBuilder.totalDiscountUzs(
@@ -66,7 +68,8 @@ class HoldOrderPrecheckPrint {
       totalSum: total,
       isPrecheck: true,
       isRestaurantLayout: isRestaurantLayout,
-      queueNumber: HoldOrdersResponse.resolveQueueNumber(hold) ?? resume.queueNumber,
+      queueNumber:
+          HoldOrdersResponse.resolveQueueNumber(hold) ?? resume.queueNumber,
       design: design,
     );
 
@@ -88,7 +91,8 @@ class HoldOrderPrecheckPrint {
     return raw;
   }
 
-  static String? _receiptLabel(Map<String, dynamic> hold, HoldOrderResume resume) {
+  static String? _receiptLabel(
+      Map<String, dynamic> hold, HoldOrderResume resume) {
     final inv = HoldOrdersResponse.resolveInvoiceId(hold) ?? resume.invoiceId;
     if (inv != null && inv.isNotEmpty) {
       final s = inv.trim();

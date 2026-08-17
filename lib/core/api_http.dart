@@ -32,6 +32,14 @@ class ApiHttp {
     return _client!;
   }
 
+  /// Faqat testlar uchun: tarmoqqa chiqmasdan soxta klient qo‘yish.
+  /// `null` berilsa keyingi so‘rovda haqiqiy klient qayta yaratiladi.
+  @visibleForTesting
+  static set debugClient(http.Client? client) {
+    _client?.close();
+    _client = client;
+  }
+
   static const Duration timeout = Duration(seconds: 45);
 
   /// Desktop POS: default — to‘g‘ridan-to‘g‘ri HTTPS (tizim/ENV proksisiz).

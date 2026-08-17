@@ -1,3 +1,12 @@
+/// ALFAPOS bilan bog'lanish kanallari (menyu ekranidagi tugmalar).
+class AppContacts {
+  static const phone = '+998994414001';
+  static const instagram = 'https://www.instagram.com/alfapos.uz/';
+  static const telegramUsername = 'alfapos';
+  static const telegram = 'https://t.me/$telegramUsername';
+  static const youtube = 'https://youtube.com/@alfapos_uz';
+}
+
 /// O'zbek tilidagi matnlar
 class Strings {
   static const appName = 'ALFAPOS';

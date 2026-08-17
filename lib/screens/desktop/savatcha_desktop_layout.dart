@@ -255,6 +255,13 @@ class SavatchaDesktopLayout extends StatelessWidget {
   static const Color _navBlue = AppTheme.primary;
   static const Color _navInactive = Color(0xFF64748B);
 
+  /// Qaytarish rejimida butun POS ekrani to‘q sariq urg‘uga o‘tadi (sotuvda — ko‘k).
+  Color get _accent => isReturnMode ? AppTheme.returnAccent : _navBlue;
+
+  Color get _cartPanelBg => isReturnMode ? AppTheme.returnPanelBg : Colors.white;
+
+  Color get _totalBarColor => isReturnMode ? AppTheme.returnTotalBar : _totalBar;
+
   double get _navBtnHeight => SalesUiScaleSettings.navbarControlSize();
 
   double get _toolGap => SalesUiScaleSettings.navbarGap();
@@ -304,6 +311,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                         onWindowSelected: onSalesWindowSelected!,
                         onAddWindow: onAddSalesWindow!,
                         canAddWindow: canAddSalesWindow,
+                        accentColor: _accent,
                       ),
                   ],
                 ),
@@ -331,7 +339,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
         padding: EdgeInsets.zero,
         visualDensity: VisualDensity.compact,
         style: IconButton.styleFrom(
-          foregroundColor: _navBlue,
+          foregroundColor: _accent,
           shape: const RoundedRectangleBorder(borderRadius: _navCorners),
           side: const BorderSide(color: _chromeBorder),
           backgroundColor: Colors.white,
@@ -346,7 +354,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     return _navSquareIconButton(
       tooltip: 'Bo\'limlar',
       onPressed: onOpenSectionMenu,
-      icon: Icon(Icons.menu_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navBlue),
+      icon: Icon(Icons.menu_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _accent),
     );
   }
 
@@ -408,9 +416,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
                     ? SizedBox(
                         width: SalesUiScaleSettings.navbarIconSize(),
                         height: SalesUiScaleSettings.navbarIconSize(),
-                        child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: _accent),
                       )
-                    : Icon(Icons.sync_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _navBlue),
+                    : Icon(Icons.sync_rounded, size: SalesUiScaleSettings.navbarIconSize(), color: _accent),
               );
             },
           ),
@@ -435,7 +443,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                 child: Center(
                   child: Icon(
                     Icons.person_outline_rounded,
-                    color: _navBlue,
+                    color: _accent,
                     size: SalesUiScaleSettings.navbarIconSize(),
                   ),
                 ),
@@ -500,7 +508,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
         child: Material(
           elevation: 0,
           borderRadius: _navCorners,
-          color: _navBlue,
+          color: _accent,
           child: InkWell(
             onTap: onTap,
             borderRadius: _navCorners,
@@ -591,6 +599,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                     onChanged: onSearchChanged,
                     onSubmitted: onSearchSubmitted,
                     shortcutKeyLabel: _shortcutLabel(SalesShortcutAction.focusProductSearch),
+                    accentColor: _accent,
                   ),
                 ),
                 SizedBox(width: gap),
@@ -608,7 +617,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           ),
         Expanded(
           child: initialLoading
-              ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+              ? Center(child: CircularProgressIndicator(color: _accent))
               : catalogProducts.isEmpty
                   ? Center(
                       child: Text(
@@ -660,7 +669,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                           ),
                         ),
                         if (loadingMore)
-                          const Positioned(
+                          Positioned(
                             left: 0,
                             right: 0,
                             bottom: 8,
@@ -670,7 +679,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                                 height: 28,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  color: AppTheme.primary,
+                                  color: _accent,
                                 ),
                               ),
                             ),
@@ -685,6 +694,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   Widget _buildCatalogFilterButton() {
     return SalesPosToolbarIconButton(
       icon: Icons.tune_rounded,
+      iconColor: _accent,
       onTap: onFilterTap,
       tooltip: 'Filtr',
       badge: _isRestaurantMode
@@ -731,61 +741,35 @@ class SavatchaDesktopLayout extends StatelessWidget {
             onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
             onSellByPackChanged: (pack) => onCartSellByPackChanged(line, pack),
             onSuspendCatalogSearchRefocus: onSuspendCatalogSearchRefocus,
+            accent: _accent,
           );
         },
       );
     }
 
     return ColoredBox(
-      color: Colors.white,
+      color: _cartPanelBg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Qidiruv card ichida; dropdown ochilganda layoutda joy oladi (bosiladi).
           Padding(
             padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, headerBottom),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: customerSearchSection),
-                    SizedBox(width: gap),
-                    SizedBox(
-                      height: h,
-                      child: SalesPosToolbarIconButton(
-                        icon: Icons.delete_outline_rounded,
-                        iconColor: Colors.red.shade400,
-                        borderColor: Colors.red.shade200,
-                        onTap: onClearCart,
-                        tooltip: 'Savatni tozalash',
-                      ),
-                    ),
-                  ],
-                ),
-                if (isReturnMode) ...[
-                  SizedBox(height: gap),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF3E0),
-                      borderRadius: _navCorners,
-                      border: const Border.fromBorderSide(
-                        BorderSide(color: Color(0xFFFFCC80)),
-                      ),
-                    ),
-                    child: const Text(
-                      'Mahsulot tanlang va qaytarish qiling. Qarzli chek uchun mijoz tanlab «To\'lovsiz» to\'lovini ishlating — qarzi kamayadi (web bilan bir xil).',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF6D4C41),
-                      ),
-                    ),
+                Expanded(child: customerSearchSection),
+                SizedBox(width: gap),
+                SizedBox(
+                  height: h,
+                  child: SalesPosToolbarIconButton(
+                    icon: Icons.delete_outline_rounded,
+                    iconColor: Colors.red.shade400,
+                    borderColor: Colors.red.shade200,
+                    onTap: onClearCart,
+                    tooltip: 'Savatni tozalash',
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -802,7 +786,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
           Expanded(child: cartBody()),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            color: _totalBar,
+            color: _totalBarColor,
             child: Row(
               children: [
                 Row(
@@ -888,9 +872,15 @@ class SavatchaDesktopLayout extends StatelessWidget {
                       loading: holdCartInFlight,
                     ),
                     _footerDivider(),
-                    _footerAction(Icons.percent_rounded, 'Chegirma', onDiscount),
-                    _footerDivider(),
                   ],
+                  // Chegirma qaytarishda ham kerak — qaytarish chegirmali narxda bo‘ladi.
+                  _footerAction(
+                    Icons.percent_rounded,
+                    'Chegirma',
+                    onDiscount,
+                    iconColor: isReturnMode ? AppTheme.returnAccent : null,
+                  ),
+                  _footerDivider(),
                   _footerAction(
                     Icons.send_outlined,
                     'Kunlik hisobot',
@@ -919,7 +909,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
     final enabled = cartItems.isNotEmpty;
     final Color bg;
     if (isReturnMode) {
-      bg = enabled ? const Color(0xFFE65100) : const Color(0xFFFFB74D);
+      bg = enabled ? AppTheme.returnAccent : AppTheme.returnAccentDisabled;
     } else {
       bg = enabled ? _paymentBlueActive : _paymentBlue;
     }
@@ -1084,7 +1074,7 @@ class _DesktopProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final qty = product.initialQuantity;
+    final qty = product.availableStockQuantity;
     final primary = CatalogProductPriceLabel.primary(
       product,
       sellType: catalogSellPriceType,
@@ -1220,6 +1210,9 @@ class _DesktopCartLine extends StatefulWidget {
   final ValueChanged<bool> onSellByPackChanged;
   final VoidCallback? onSuspendCatalogSearchRefocus;
 
+  /// Sotuvda ko‘k, qaytarishda to‘q sariq.
+  final Color accent;
+
   const _DesktopCartLine({
     required this.item,
     required this.expanded,
@@ -1236,6 +1229,7 @@ class _DesktopCartLine extends StatefulWidget {
     required this.onUnitPriceChanged,
     required this.onSellByPackChanged,
     this.onSuspendCatalogSearchRefocus,
+    this.accent = AppTheme.primary,
   });
 
   @override
@@ -1363,7 +1357,17 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       if (resetIfInvalid) _qtyController.text = _qtyText(widget.item.quantity);
       return;
     }
-    if (q != widget.item.quantity) widget.onQuantityChanged(q);
+    if (q == widget.item.quantity) return;
+    widget.onQuantityChanged(q);
+    // Ombor cheklovi miqdorni qisqartirishi mumkin — maydon fokusda bo‘lgani
+    // uchun `didUpdateWidget` uni yangilamaydi, shuning uchun o‘zimiz sinxronlaymiz.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final applied = _qtyText(widget.item.quantity);
+      if (_qtyController.text == applied) return;
+      _qtyController.text = applied;
+      _qtyController.selection = TextSelection.collapsed(offset: applied.length);
+    });
   }
 
   void _commitQuantity() => _applyQuantityInput(_qtyController.text, resetIfInvalid: true);
@@ -1419,9 +1423,9 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 borderRadius: SavatchaDesktopLayout._sharp,
                 borderSide: BorderSide(color: AppTheme.divider),
               ),
-              focusedBorder: const OutlineInputBorder(
+              focusedBorder: OutlineInputBorder(
                 borderRadius: SavatchaDesktopLayout._sharp,
-                borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
+                borderSide: BorderSide(color: widget.accent, width: 1.5),
               ),
             ),
             onChanged: _applyQuantityInput,
@@ -1550,9 +1554,9 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
               borderRadius: SavatchaDesktopLayout._sharp,
               borderSide: BorderSide(color: AppTheme.divider),
             ),
-            focusedBorder: const OutlineInputBorder(
+            focusedBorder: OutlineInputBorder(
               borderRadius: SavatchaDesktopLayout._sharp,
-              borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
+              borderSide: BorderSide(color: widget.accent, width: 1.5),
             ),
           ),
           onChanged: _applyPriceInput,
@@ -1642,7 +1646,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: selected ? AppTheme.primary.withValues(alpha: 0.06) : Colors.white,
+      color: selected ? widget.accent.withValues(alpha: 0.06) : Colors.white,
       borderRadius: SavatchaDesktopLayout._sharp,
       child: InkWell(
         onTap: onTap,
@@ -1651,7 +1655,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             border: Border.all(
-              color: selected ? AppTheme.primary : AppTheme.divider,
+              color: selected ? widget.accent : AppTheme.divider,
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -1663,7 +1667,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: selected ? AppTheme.primary : AppTheme.textSecondary,
+                  color: selected ? widget.accent : AppTheme.textSecondary,
                 ),
               ),
               const SizedBox(width: 6),
@@ -1672,7 +1676,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: selected ? AppTheme.primary : AppTheme.textPrimary,
+                  color: selected ? widget.accent : AppTheme.textPrimary,
                 ),
               ),
             ],
@@ -1692,7 +1696,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(
-            color: widget.expanded ? AppTheme.primary.withValues(alpha: 0.35) : AppTheme.divider,
+            color: widget.expanded ? widget.accent.withValues(alpha: 0.35) : AppTheme.divider,
           ),
         ),
         child: Column(
@@ -1793,7 +1797,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
         onTap: onPressed,
         child: Padding(
           padding: EdgeInsets.all(compact ? 3 : 4),
-          child: Icon(icon, size: compact ? 18 : 20, color: primary ? AppTheme.primary : AppTheme.textSecondary),
+          child: Icon(icon, size: compact ? 18 : 20, color: primary ? widget.accent : AppTheme.textSecondary),
         ),
       ),
     );

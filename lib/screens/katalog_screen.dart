@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
+import '../core/user_permissions.dart';
 import '../models/product.dart';
 import '../providers/products_provider.dart';
 import '../providers/categories_provider.dart';
@@ -48,9 +49,15 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   late TabController _tabController;
   List<String> _categoryOrderIds = [];
 
+  /// Ekranni tortib yangilash — foydalanuvchi ataylab so‘ragan sinxronizatsiya.
+  ///
+  /// `force: true` bo‘lmasa 15 daqiqalik throttle va fingerprint tekshiruvi
+  /// tarmoqqa umuman chiqmasligi mumkin: webda qo‘shilgan mahsulot ko‘rinmay
+  /// qoladi. Ketma-ket tortish `PullRefreshGuard` bilan cheklangani uchun
+  /// bu yerda force xavfsiz.
   Future<void> _pullRefreshCatalog() async {
-    await _products.refreshFromServer(force: false);
-    await _categories.refreshFromServer(force: false);
+    await _products.refreshFromServer(force: true);
+    await _categories.refreshFromServer(force: true);
     if (mounted) setState(() {});
   }
 
@@ -67,8 +74,13 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
     _categoriesSub = _categories.stream.listen((_) {
       if (mounted) unawaited(_reloadCategoryOrder());
     });
+    UserPermissionsStore.instance.addListener(_onPermissionsChanged);
     unawaited(_bootstrapCatalog());
     unawaited(_reloadCategoryOrder());
+  }
+
+  void _onPermissionsChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _bootstrapCatalog() async {
@@ -122,6 +134,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    UserPermissionsStore.instance.removeListener(_onPermissionsChanged);
     _productsSub?.cancel();
     _categoriesSub?.cancel();
     _tabController.dispose();
@@ -623,22 +636,23 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
                 }
               },
             ),
-            ListTile(
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(10),
+            if (UserPermissionsStore.instance.canDeleteProducts)
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
                 ),
-                child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
+                title: Text("O'chirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmDelete(context, product);
+                },
               ),
-              title: Text("O'chirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _confirmDelete(context, product);
-              },
-            ),
             const SizedBox(height: 16),
           ],
         ),
@@ -647,6 +661,7 @@ class _KatalogScreenState extends State<KatalogScreen> with SingleTickerProvider
   }
 
   void _confirmDelete(BuildContext context, Product product) {
+    if (!UserPermissionsStore.instance.canDeleteProducts) return;
     IosStyleModals.showSheet<void>(
       context: context,
       showGrabber: true,

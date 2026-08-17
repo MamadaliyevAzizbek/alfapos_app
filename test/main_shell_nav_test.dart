@@ -1,5 +1,6 @@
 import 'package:alfapos_app/core/constants.dart';
 import 'package:alfapos_app/screens/main_shell.dart';
+import 'package:alfapos_app/utils/platform_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,6 +9,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Future<void> pumpMainShell(WidgetTester tester, Size logicalSize) async {
+    debugIsDesktopPosLayoutOverride = false;
     tester.view.physicalSize = Size(
       logicalSize.width * 3,
       logicalSize.height * 3,
@@ -25,6 +27,7 @@ void main() {
   testWidgets('iPhone 12 (390pt): pastki menyu overflow yo‘q, qisqa yorliqlar', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(() => debugIsDesktopPosLayoutOverride = null);
 
     await pumpMainShell(tester, const Size(390, 844));
 
@@ -42,6 +45,7 @@ void main() {
   testWidgets('iPhone SE (320pt): faqat ikonka, overflow yo‘q', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(() => debugIsDesktopPosLayoutOverride = null);
 
     await pumpMainShell(tester, const Size(320, 568));
 
@@ -55,6 +59,7 @@ void main() {
   testWidgets('iPhone 14 Pro Max (430pt): to‘liq yorliqlar', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(() => debugIsDesktopPosLayoutOverride = null);
 
     await pumpMainShell(tester, const Size(430, 932));
 

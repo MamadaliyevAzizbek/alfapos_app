@@ -3,6 +3,7 @@ import '../core/app_notify.dart';
 import '../core/constants.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
+import '../core/user_permissions.dart';
 import '../providers/clients_provider.dart';
 import '../services/api_service.dart';
 import '../utils/customer_filter_options.dart';
@@ -55,10 +56,15 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
   @override
   void initState() {
     super.initState();
+    UserPermissionsStore.instance.addListener(_onPermissionsChanged);
     _loadFilterOptions();
     _loadTabGroups();
     _loadSuppliers();
     _reload();
+  }
+
+  void _onPermissionsChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadFilterOptions() async {
@@ -186,6 +192,7 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
 
   @override
   void dispose() {
+    UserPermissionsStore.instance.removeListener(_onPermissionsChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -1207,56 +1214,72 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _searchController,
-              onSubmitted: (_) => _applySearch(),
-              decoration: InputDecoration(
-                hintText: 'Mijoz ismi yoki telefon',
-                isDense: true,
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
-                suffixIcon: _search.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                        onPressed: () {
-                          _searchController.clear();
-                          _search = '';
-                          _reload(force: true);
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AppTheme.divider),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onSubmitted: (_) => _applySearch(),
+                    decoration: InputDecoration(
+                      hintText: 'Mijoz ismi yoki telefon',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary),
+                      suffixIcon: _search.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              onPressed: () {
+                                _searchController.clear();
+                                _search = '';
+                                _reload(force: true);
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: AppTheme.divider),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-            child: SizedBox(
-              width: double.infinity,
-              height: 36,
-              child: FilledButton.icon(
-                onPressed: () => _openAddCustomer(),
-                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                label: const Text(
-                  "Yangi mijoz qo'shish",
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                const SizedBox(width: 8),
+                _squareActionButton(
+                  icon: Icons.add_rounded,
+                  tooltip: "Yangi mijoz qo'shish",
+                  onTap: () => _openAddCustomer(),
                 ),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
+              ],
             ),
           ),
           Expanded(child: _buildMobileBody()),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Katalog bilan bir xil: qidiruv yonidagi kvadrat tugma.
+  Widget _squareActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: AppTheme.primary,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.all(11),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+        ),
       ),
     );
   }
@@ -1577,22 +1600,23 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
                 _showEditCustomer(c);
               },
             ),
-            ListTile(
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(10),
+            if (UserPermissionsStore.instance.canDeleteCustomers)
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
                 ),
-                child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
+                title: Text("O'chirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmDelete(c);
+                },
               ),
-              title: Text("O'chirish", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _confirmDelete(c);
-              },
-            ),
             const SizedBox(height: 16),
           ],
         ),
@@ -1642,18 +1666,20 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
             ],
           ),
         ),
-        const PopupMenuDivider(height: 1),
-        PopupMenuItem<String>(
-          value: 'delete',
-          height: 48,
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline, size: 22, color: Colors.blue.shade700),
-              const SizedBox(width: 12),
-              const Text("O'chirish", style: TextStyle(fontSize: 15)),
-            ],
+        if (UserPermissionsStore.instance.canDeleteCustomers) ...[
+          const PopupMenuDivider(height: 1),
+          PopupMenuItem<String>(
+            value: 'delete',
+            height: 48,
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, size: 22, color: Colors.blue.shade700),
+                const SizedBox(width: 12),
+                const Text("O'chirish", style: TextStyle(fontSize: 15)),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1677,6 +1703,7 @@ class _MijozlarScreenState extends State<MijozlarScreen> with DesktopShellSyncMi
   }
 
   Future<void> _confirmDelete(Client c) async {
+    if (!UserPermissionsStore.instance.canDeleteCustomers) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

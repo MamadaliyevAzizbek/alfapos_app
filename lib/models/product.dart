@@ -356,6 +356,15 @@ class Product {
     return s.replaceAll(RegExp(r'\D'), '');
   }
 
+  /// Harf-raqamli kod (`SK51D25120407`) uchun: kichik harf, ajratgichlarsiz.
+  ///
+  /// [normalizeBarcode] harflarni tashlab yuboradi, shuning uchun harfli
+  /// shtrix / SKU kodlarini solishtirishga yaramaydi.
+  static String normalizeCode(String? s) {
+    if (s == null || s.isEmpty) return '';
+    return s.trim().toLowerCase().replaceAll(RegExp(r'[\s\-_./]+'), '');
+  }
+
   /// Taqqoslash uchun: raqamlardan keyin boshidagi nollarni olib tashlash (076950450479 == 76950450479)
   static String _barcodeForMatch(String? s) {
     final digits = normalizeBarcode(s);
@@ -377,8 +386,30 @@ class Product {
     return out;
   }
 
+  /// Kod (shtrix / qo'shimcha shtrix / SKU / PLU) bilan aynan mos keladimi.
+  ///
+  /// Harfli kodlar uchun ham ishlaydi va faqat to'liq moslikni qabul qiladi —
+  /// shu sabab qisqa so'rovlarda yolg'on moslik bermaydi.
+  bool matchesCodeExact(String query) {
+    final q = normalizeCode(query);
+    if (q.isEmpty) return false;
+
+    bool same(String? code) => normalizeCode(code) == q;
+
+    if (same(barcode)) return true;
+    if (same(sku)) return true;
+    if (same(pluCode)) return true;
+    if (additionalBarcodes != null) {
+      for (final ab in additionalBarcodes!) {
+        if (same(ab)) return true;
+      }
+    }
+    return false;
+  }
+
   /// Berilgan qator asosiy barcode, PLU yoki qo'shimcha barcode'lardan biriga to'g'ri kelsa true
   bool matchesBarcode(String query) {
+    if (matchesCodeExact(query)) return true;
     final rawNorm = normalizeBarcode(query);
     if (rawNorm.isEmpty) return false;
     bool same(String? a, String b) {
@@ -429,6 +460,25 @@ class Product {
     if (pn.isEmpty || qn.isEmpty) return false;
     if (pn == qn) return true;
     return _barcodeForMatch(p) == _barcodeForMatch(q);
+  }
+
+  /// Shtrixning bir qismi (boshi, o'rtasi yoki oxiri) — kamida [minDigits] raqam.
+  bool matchesBarcodePartial(String query, {int minDigits = 4}) {
+    final part = normalizeBarcode(query);
+    if (part.length < minDigits) return false;
+
+    bool hit(String? code) {
+      final digits = normalizeBarcode(code);
+      return digits.length >= part.length && digits.contains(part);
+    }
+
+    if (hit(barcode)) return true;
+    if (additionalBarcodes != null) {
+      for (final ab in additionalBarcodes!) {
+        if (hit(ab)) return true;
+      }
+    }
+    return false;
   }
 
   /// Shtrix oxirgi [minSuffix]… raqam (masalan oxirgi 4 ta) bilan mos keladimi.

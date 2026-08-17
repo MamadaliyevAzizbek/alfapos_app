@@ -7,6 +7,7 @@ import 'package:alfapos_app/utils/receipt_strikethrough_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
 import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_note_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_total_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -77,7 +78,8 @@ void main() {
 
     expect(lines.any(ThermalReceiptLargeText.isLargeLine), isTrue);
 
-    final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines, design: config);
+    final bytes =
+        await EscPosReceiptBuilder.buildReceipt(lines: lines, design: config);
     expect(bytes, isNotEmpty);
     expect(bytes.length, greaterThan(40));
     // GS ! — matn kattalashtirish buyrug'i (navbat raqami uchun).
@@ -130,7 +132,8 @@ void main() {
     expect(bytes, isNotEmpty);
   });
 
-  test('restaurant receipt uses standard feed and enlarges total like shop', () async {
+  test('restaurant receipt uses standard feed and enlarges total like shop',
+      () async {
     final config = ReceiptDesignConfig.defaults.copyWith(
       showRestaurantQueueNumber: true,
       restaurantQueueLabel: 'Navbat raqami',
@@ -210,6 +213,17 @@ void main() {
     expect(bytes, containsAllInOrder([0x1D, 0x21, 0x01]));
   });
 
+  test('izoh is printed bold on every thermal receipt', () async {
+    final bytes = await EscPosReceiptBuilder.buildReceipt(
+      lines: [ThermalReceiptNoteText.line('Izoh: Eshikkacha yetkazilsin')],
+    );
+
+    // ESC E 1 — izoh qalin.
+    expect(bytes, containsAllInOrder([0x1B, 0x45, 1]));
+    // Ichki marker printerga chiqmaydi.
+    expect(bytes, isNot(containsAllInOrder('!RECEIPT_NOTE!'.codeUnits)));
+  });
+
   test('receipt with default logo builds without fixed-list error', () async {
     final src = File('Untitled-1-08.png');
     expect(src.existsSync(), isTrue);
@@ -238,7 +252,8 @@ void main() {
     expect(bytes[feedIndex + 1], 2);
   });
 
-  test('XP-80C uses 8-line feed and compact spacing, not g.cut waste', () async {
+  test('XP-80C uses 8-line feed and compact spacing, not g.cut waste',
+      () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
       printerName: 'Xprinter XP-80C',

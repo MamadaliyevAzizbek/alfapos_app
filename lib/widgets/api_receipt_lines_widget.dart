@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/thermal_receipt_note_text.dart';
+
 /// API dan parse qilingan chek qatorlari (ko'rinish / skrinshot uchun).
 class ApiReceiptLinesWidget extends StatelessWidget {
   final List<String> lines;
@@ -34,7 +36,15 @@ class ApiReceiptLinesWidget extends StatelessWidget {
             else
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 1),
-                child: Text(line, style: textStyle),
+                child: Text(
+                  ThermalReceiptNoteText.unwrap(line),
+                  style: ThermalReceiptNoteText.isNoteLine(line)
+                      ? textStyle.copyWith(
+                          fontSize: ThermalReceiptNoteText.onScreenFontSize,
+                          fontWeight: FontWeight.w800,
+                        )
+                      : textStyle,
+                ),
               ),
         ],
       ),

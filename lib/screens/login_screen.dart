@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../core/auth_storage.dart';
 import '../core/session_reset.dart';
 import '../core/seller_preferences.dart';
+import '../core/user_permissions.dart';
 import '../core/api_client.dart';
 import '../core/api_http.dart';
 import '../core/desktop_runtime.dart';
@@ -138,6 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       await resetAppSessionForAccountChange();
       await saveAuth(token: token, companyId: companyId, email: login);
+      await UserPermissionsStore.instance.applyFromLoginResponse(res);
       await _saveLoginData(companyId, login, password);
       await syncSellerNameFromApi(force: true);
       if (!mounted) return;

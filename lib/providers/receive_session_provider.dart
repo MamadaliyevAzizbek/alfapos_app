@@ -29,6 +29,9 @@ class ReceiveSessionProvider extends ChangeNotifier {
   int? editOrderId;
   String? editReason;
 
+  /// Ochilgan qoralama id — qayta saqlanganda yangisi emas, shu yozuv yangilanadi.
+  String? activeDraftId;
+
   bool initLoading = false;
   String? initError;
   bool _initialized = false;
@@ -63,7 +66,10 @@ class ReceiveSessionProvider extends ChangeNotifier {
   }
 
   int get cartCount => _cart.length;
-  int get cartTotalUzs => _cart.fold<int>(0, (s, e) => s + e.lineTotalUzs);
+  int get cartTotalUzs => _cart.fold<int>(
+        0,
+        (s, e) => s + e.lineTotalInUzs(usdRate: usdExchangeRate),
+      );
 
   void resetForAccountChange() {
     _cart.clear();
@@ -78,6 +84,7 @@ class ReceiveSessionProvider extends ChangeNotifier {
     deliveryCostUzs = 0;
     editOrderId = null;
     editReason = null;
+    activeDraftId = null;
     initLoading = false;
     initError = null;
     _initialized = false;
@@ -87,6 +94,18 @@ class ReceiveSessionProvider extends ChangeNotifier {
 
   void clearCart() {
     _cart.clear();
+    activeDraftId = null;
+    notifyListeners();
+  }
+
+  /// Qoralama saqlangandan keyin yangi kirim boshlanadi — savat va izoh bo‘shaydi.
+  void resetAfterDraftSaved() {
+    _cart.clear();
+    comment = '';
+    deliveryCostUzs = 0;
+    editOrderId = null;
+    editReason = null;
+    activeDraftId = null;
     notifyListeners();
   }
 
@@ -129,11 +148,36 @@ class ReceiveSessionProvider extends ChangeNotifier {
     ReceiveCartItem item, {
     num? quantity,
     int? purchasePriceUzs,
+    int? wholesalePriceUzs,
     int? sellPriceUzs,
+    String? purchaseCurrency,
+    String? wholesaleCurrency,
+    String? sellCurrency,
+    num? purchasePriceApi,
+    num? wholesalePriceApi,
+    num? sellPriceApi,
+    bool clearPurchasePriceApi = false,
+    bool clearWholesalePriceApi = false,
+    bool clearSellPriceApi = false,
   }) {
     final i = _cart.indexOf(item);
     if (i < 0) return;
-    _applyCartItemEdits(_cart[i], quantity: quantity, purchasePriceUzs: purchasePriceUzs, sellPriceUzs: sellPriceUzs);
+    _applyCartItemEdits(
+      _cart[i],
+      quantity: quantity,
+      purchasePriceUzs: purchasePriceUzs,
+      wholesalePriceUzs: wholesalePriceUzs,
+      sellPriceUzs: sellPriceUzs,
+      purchaseCurrency: purchaseCurrency,
+      wholesaleCurrency: wholesaleCurrency,
+      sellCurrency: sellCurrency,
+      purchasePriceApi: purchasePriceApi,
+      wholesalePriceApi: wholesalePriceApi,
+      sellPriceApi: sellPriceApi,
+      clearPurchasePriceApi: clearPurchasePriceApi,
+      clearWholesalePriceApi: clearWholesalePriceApi,
+      clearSellPriceApi: clearSellPriceApi,
+    );
     notifyListeners();
   }
 
@@ -141,11 +185,36 @@ class ReceiveSessionProvider extends ChangeNotifier {
     String productId, {
     num? quantity,
     int? purchasePriceUzs,
+    int? wholesalePriceUzs,
     int? sellPriceUzs,
+    String? purchaseCurrency,
+    String? wholesaleCurrency,
+    String? sellCurrency,
+    num? purchasePriceApi,
+    num? wholesalePriceApi,
+    num? sellPriceApi,
+    bool clearPurchasePriceApi = false,
+    bool clearWholesalePriceApi = false,
+    bool clearSellPriceApi = false,
   }) {
     final i = _cart.indexWhere((e) => e.product.id == productId);
     if (i < 0) return;
-    _applyCartItemEdits(_cart[i], quantity: quantity, purchasePriceUzs: purchasePriceUzs, sellPriceUzs: sellPriceUzs);
+    _applyCartItemEdits(
+      _cart[i],
+      quantity: quantity,
+      purchasePriceUzs: purchasePriceUzs,
+      wholesalePriceUzs: wholesalePriceUzs,
+      sellPriceUzs: sellPriceUzs,
+      purchaseCurrency: purchaseCurrency,
+      wholesaleCurrency: wholesaleCurrency,
+      sellCurrency: sellCurrency,
+      purchasePriceApi: purchasePriceApi,
+      wholesalePriceApi: wholesalePriceApi,
+      sellPriceApi: sellPriceApi,
+      clearPurchasePriceApi: clearPurchasePriceApi,
+      clearWholesalePriceApi: clearWholesalePriceApi,
+      clearSellPriceApi: clearSellPriceApi,
+    );
     notifyListeners();
   }
 
@@ -153,11 +222,46 @@ class ReceiveSessionProvider extends ChangeNotifier {
     ReceiveCartItem item, {
     num? quantity,
     int? purchasePriceUzs,
+    int? wholesalePriceUzs,
     int? sellPriceUzs,
+    String? purchaseCurrency,
+    String? wholesaleCurrency,
+    String? sellCurrency,
+    num? purchasePriceApi,
+    num? wholesalePriceApi,
+    num? sellPriceApi,
+    bool clearPurchasePriceApi = false,
+    bool clearWholesalePriceApi = false,
+    bool clearSellPriceApi = false,
   }) {
     if (quantity != null) item.quantity = quantity;
     if (purchasePriceUzs != null) item.purchasePriceUzs = purchasePriceUzs;
+    if (wholesalePriceUzs != null) {
+      item.wholesalePriceUzs = wholesalePriceUzs;
+    }
     if (sellPriceUzs != null) item.sellPriceUzs = sellPriceUzs;
+    if (purchaseCurrency != null) {
+      item.purchaseCurrency = purchaseCurrency.toLowerCase();
+    }
+    if (wholesaleCurrency != null) {
+      item.wholesaleCurrency = wholesaleCurrency.toLowerCase();
+    }
+    if (sellCurrency != null) item.sellCurrency = sellCurrency.toLowerCase();
+    if (clearPurchasePriceApi) {
+      item.purchasePriceApi = null;
+    } else if (purchasePriceApi != null) {
+      item.purchasePriceApi = purchasePriceApi;
+    }
+    if (clearWholesalePriceApi) {
+      item.wholesalePriceApi = null;
+    } else if (wholesalePriceApi != null) {
+      item.wholesalePriceApi = wholesalePriceApi;
+    }
+    if (clearSellPriceApi) {
+      item.sellPriceApi = null;
+    } else if (sellPriceApi != null) {
+      item.sellPriceApi = sellPriceApi;
+    }
     if (item.quantity <= 0) _cart.remove(item);
   }
 
@@ -228,7 +332,8 @@ class ReceiveSessionProvider extends ChangeNotifier {
   }
 
   /// Taroz + oddiy barcode (DESKTOP_SCALE_BARCODE_API.md — receives/scale-barcode).
-  Future<({Product product, num quantity, bool isScaleItem})?> findByBarcodeDetailed(
+  Future<({Product product, num quantity, bool isScaleItem})?>
+      findByBarcodeDetailed(
     String barcode,
   ) async {
     final q = barcode.trim();
@@ -293,7 +398,8 @@ class ReceiveSessionProvider extends ChangeNotifier {
     if (_cart.isEmpty) {
       throw ApiException('Savat bo\'sh', 400);
     }
-    final payment = selectedPaymentType ?? (paymentTypes.isNotEmpty ? paymentTypes.first : null);
+    final payment = selectedPaymentType ??
+        (paymentTypes.isNotEmpty ? paymentTypes.first : null);
     if (payment == null) {
       throw ApiException('To\'lov turini tanlang', 400);
     }
@@ -323,6 +429,7 @@ class ReceiveSessionProvider extends ChangeNotifier {
     _cart.clear();
     editOrderId = null;
     editReason = null;
+    activeDraftId = null;
     notifyListeners();
     return res;
   }
@@ -348,7 +455,8 @@ class ReceiveSessionProvider extends ChangeNotifier {
     for (final e in list) {
       if (e is! Map) continue;
       final m = Map<String, dynamic>.from(e);
-      final code = (m['code'] ?? m['currency_code'] ?? '').toString().toUpperCase();
+      final code =
+          (m['code'] ?? m['currency_code'] ?? '').toString().toUpperCase();
       if (code == 'USD') {
         final rate = m['exchange_rate'] ?? m['rate'];
         if (rate is num && rate > 0) return rate.toDouble();

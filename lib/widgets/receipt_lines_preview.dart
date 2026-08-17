@@ -7,6 +7,7 @@ import 'receipt_logo_image.dart';
 import '../utils/receipt_strikethrough_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
+import '../utils/thermal_receipt_note_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
 import '../utils/thermal_receipt_total_text.dart';
 import '../utils/thermal_receipt_logo_fit.dart';
@@ -49,7 +50,8 @@ class ThermalReceiptPreview extends StatelessWidget {
     }
 
     return Container(
-      key: ValueKey('receipt_preview_${design.logoFilePath}_${design.showLogo}'),
+      key:
+          ValueKey('receipt_preview_${design.logoFilePath}_${design.showLogo}'),
       width: width,
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
@@ -74,10 +76,7 @@ class ThermalReceiptPreview extends StatelessWidget {
             const SizedBox(height: 4),
           ],
           for (final line in lines)
-            if (line.isEmpty)
-              const SizedBox(height: 4)
-            else
-              _line(line),
+            if (line.isEmpty) const SizedBox(height: 4) else _line(line),
         ],
       ),
     );
@@ -100,6 +99,20 @@ class ThermalReceiptPreview extends StatelessWidget {
           ),
           textAlign: TextAlign.start,
           bold: true,
+        ),
+      );
+    }
+
+    if (ThermalReceiptNoteText.isNoteLine(line)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Text(
+          ThermalReceiptNoteText.unwrap(line),
+          style: _previewText.copyWith(
+            fontSize: ThermalReceiptNoteText.previewFontSize,
+            fontWeight: FontWeight.w800,
+            height: 1.55,
+          ),
         ),
       );
     }
@@ -161,7 +174,6 @@ class ThermalReceiptPreview extends StatelessWidget {
     final centered = line.startsWith('^');
     final text = centered ? line.substring(1) : line;
     final isSep = RegExp(r'^[-─—_=.]+$').hasMatch(text.trim());
-    final isTotal = text.toLowerCase().contains('umumiy summa');
 
     if (isSep) {
       return Padding(

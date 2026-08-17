@@ -1005,7 +1005,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: _submittingPay ? null : () => Navigator.pop(context),
         ),
-        title: const Text('Yangi chek'),
+        title: Text(widget.isReturnCheckout ? 'Qaytarish cheki' : 'Yangi chek'),
       ),
       body: Column(
         children: [
@@ -1080,33 +1080,36 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                       ],
                       Row(
                         children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _holdingCart || widget.items.isEmpty || _submittingPay
-                                  ? null
-                                  : _pauseAndHoldCart,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: AppTheme.primary,
-                                disabledBackgroundColor: const Color(0xFFF0F2F5),
-                                disabledForegroundColor: AppTheme.textSecondary,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  side: const BorderSide(color: AppTheme.primary, width: 1.5),
+                          // Qaytarish chekini pauza qilib bo‘lmaydi.
+                          if (!widget.isReturnCheckout) ...[
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _holdingCart || widget.items.isEmpty || _submittingPay
+                                    ? null
+                                    : _pauseAndHoldCart,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: AppTheme.primary,
+                                  disabledBackgroundColor: const Color(0xFFF0F2F5),
+                                  disabledForegroundColor: AppTheme.textSecondary,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    side: const BorderSide(color: AppTheme.primary, width: 1.5),
+                                  ),
                                 ),
+                                icon: _holdingCart
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
+                                      )
+                                    : const Icon(Icons.pause_circle_outline_rounded, size: 22),
+                                label: Text(_holdingCart ? 'Saqlanmoqda...' : Strings.toxtatish),
                               ),
-                              icon: _holdingCart
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
-                                    )
-                                  : const Icon(Icons.pause_circle_outline_rounded, size: 22),
-                              label: Text(_holdingCart ? 'Saqlanmoqda...' : Strings.toxtatish),
                             ),
-                          ),
-                          const SizedBox(width: 12),
+                            const SizedBox(width: 12),
+                          ],
                           Expanded(
                             child: ElevatedButton(
                               onPressed: _submittingPay
@@ -1115,7 +1118,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                                       ? () => setState(() => _tabDetails = false)
                                       : (_canCompletePayment ? () => _doPay() : null)),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primary,
+                                backgroundColor: widget.isReturnCheckout
+                                    ? AppTheme.returnAccent
+                                    : AppTheme.primary,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
@@ -1128,7 +1133,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                                       width: 22,
                                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                     )
-                                  : Text(_tabDetails ? "To'lovga o'tish" : "To'lash"),
+                                  : Text(
+                                      _tabDetails
+                                          ? "To'lovga o'tish"
+                                          : (widget.isReturnCheckout ? 'Qaytarish' : "To'lash"),
+                                    ),
                             ),
                           ),
                         ],

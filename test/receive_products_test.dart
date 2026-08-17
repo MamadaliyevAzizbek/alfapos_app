@@ -3,7 +3,9 @@ import 'package:alfapos_app/utils/receive_products.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('mergeProductsWithVariants keeps product title when variant has default_variant', () {
+  test(
+      'mergeProductsWithVariants keeps product title when variant has default_variant',
+      () {
     final res = {
       'products': [
         {
@@ -20,6 +22,7 @@ void main() {
           'title': 'default_variant',
           'availableQuantity': 5,
           'purchase_price': 10000,
+          'wholesale_price': 11000,
           'selling_price': 12000,
         },
       ],
@@ -29,6 +32,7 @@ void main() {
     expect(list.first.id, '42');
     expect(list.first.name, 'Coca Cola 1.5L');
     expect(list.first.variantId, 7);
+    expect(list.first.wholesalePriceUzs, 11000);
   });
 
   test('fromApiJson prefers productTitle when title is variant slug', () {

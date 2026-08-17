@@ -20,6 +20,9 @@ class SalesPosSearchField extends StatelessWidget {
   final bool loading;
   final Key? fieldKey;
 
+  /// Fokus chegarasi rangi — qaytarish rejimida to‘q sariq.
+  final Color accentColor;
+
   const SalesPosSearchField({
     super.key,
     required this.controller,
@@ -32,6 +35,7 @@ class SalesPosSearchField extends StatelessWidget {
     this.shortcutKeyLabel,
     this.loading = false,
     this.fieldKey,
+    this.accentColor = AppTheme.primary,
   });
 
   static double get height => SalesUiScaleSettings.navbarControlSize();
@@ -124,9 +128,9 @@ class SalesPosSearchField extends StatelessWidget {
                   borderRadius: radius,
                   borderSide: BorderSide(color: borderColor),
                 ),
-                focusedBorder: const OutlineInputBorder(
+                focusedBorder: OutlineInputBorder(
                   borderRadius: radius,
-                  borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
+                  borderSide: BorderSide(color: accentColor, width: 1.5),
                 ),
               ),
             ),

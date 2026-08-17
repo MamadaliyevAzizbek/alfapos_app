@@ -3,6 +3,7 @@ import 'package:alfapos_app/utils/api_receipt_html_parser.dart';
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
 import 'package:alfapos_app/utils/thermal_receipt_compact_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_note_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_product_title_text.dart';
 import 'package:alfapos_app/utils/thermal_receipt_total_text.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +34,10 @@ void main() {
     ];
     final lines = ThermalReceiptFormatter.fromApiRawLines(raw);
     expect(lines.any((l) => l.contains('Alfa market')), isTrue);
-    expect(lines.any((l) => ThermalReceiptProductTitleText.unwrap(l).startsWith('1) sprite')), isTrue);
+    expect(
+        lines.any((l) =>
+            ThermalReceiptProductTitleText.unwrap(l).startsWith('1) sprite')),
+        isTrue);
     expect(lines.any((l) => l.contains('sprite')), isTrue);
     expect(lines.any((l) => l.contains('x') && l.contains("so'm")), isTrue);
     expect(lines, isNot(contains('Mahsulot')));
@@ -78,7 +82,10 @@ void main() {
     expect(data.products.first.name, 'aaaaaa');
     expect(data.payments.first.method, 'Naqd pul');
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
-    expect(lines.any((l) => ThermalReceiptProductTitleText.unwrap(l).startsWith('1) aaaaaa')), isTrue);
+    expect(
+        lines.any((l) =>
+            ThermalReceiptProductTitleText.unwrap(l).startsWith('1) aaaaaa')),
+        isTrue);
     expect(lines.any((l) => l.contains('38,000') && l.contains('so')), isTrue);
   });
 
@@ -100,19 +107,22 @@ void main() {
         totalAmount: '123,750,000',
       ),
     );
-    final productIdx = lines.indexWhere((l) => l.contains('Juda uzun mahsulot'));
+    final productIdx =
+        lines.indexWhere((l) => l.contains('Juda uzun mahsulot'));
     expect(productIdx, greaterThanOrEqualTo(0));
     expect(lines.any((l) => l.contains('99 dona x 1,250,000')), isTrue);
     expect(
       lines.any(
-        (l) => l.contains('123,750,000') &&
+        (l) =>
+            l.contains('123,750,000') &&
             (ThermalReceiptCompactText.isCompactLine(l) || l.contains('so\'m')),
       ),
       isTrue,
     );
   });
 
-  test('shop and restaurant totals use large total marker not compact bold', () {
+  test('shop and restaurant totals use large total marker not compact bold',
+      () {
     List<String> build({required bool restaurant}) {
       return ThermalReceiptFormatter.toPrintLines(
         ThermalReceiptPrintData(
@@ -138,7 +148,8 @@ void main() {
     }
 
     for (final lines in [build(restaurant: false), build(restaurant: true)]) {
-      expect(lines.any((l) => l.contains("Do'kon") || l.contains('Restoran')), isTrue);
+      expect(lines.any((l) => l.contains("Do'kon") || l.contains('Restoran')),
+          isTrue);
       expect(lines.any((l) => l.contains('2026-06-10')), isTrue);
       expect(lines.any(ThermalReceiptProductTitleText.isTitleLine), isTrue);
       expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
@@ -146,7 +157,9 @@ void main() {
         lines.any(
           (l) =>
               ThermalReceiptCompactText.isCompactBoldLine(l) &&
-              ThermalReceiptCompactText.unwrap(l).toLowerCase().contains('umumiy'),
+              ThermalReceiptCompactText.unwrap(l)
+                  .toLowerCase()
+                  .contains('umumiy'),
         ),
         isFalse,
       );
@@ -187,7 +200,8 @@ void main() {
           : line;
     }
 
-    final payments = lines.map(plain).where((l) => l.contains('Naqd pul')).toList();
+    final payments =
+        lines.map(plain).where((l) => l.contains('Naqd pul')).toList();
     expect(payments.any((l) => l.contains(' - ') && l.contains('1')), isTrue);
     expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
     final total = ThermalReceiptTotalText.parse(
@@ -265,13 +279,19 @@ void main() {
     );
     expect(lines.any(ThermalReceiptLargeText.isLargeLine), isTrue);
     expect(
-      lines.any((l) => ThermalReceiptLargeText.isLargeLine(l) && ThermalReceiptLargeText.unwrap(l) == '7'),
+      lines.any((l) =>
+          ThermalReceiptLargeText.isLargeLine(l) &&
+          ThermalReceiptLargeText.unwrap(l) == '7'),
       isTrue,
     );
-    expect(lines.any((l) => l.contains('1) Choy') || l.contains('Choy')), isTrue);
+    expect(
+        lines.any((l) => l.contains('1) Choy') || l.contains('Choy')), isTrue);
     expect(lines.any((l) => l.contains('1 dona x 10,000=10,000')), isTrue);
     expect(lines.any((l) => l.contains("so'm")), isFalse);
-    expect(lines.any((l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')), isFalse);
+    expect(
+        lines.any(
+            (l) => ThermalReceiptCompactText.unwrap(l).contains('Mahsulot')),
+        isFalse);
   });
 
   test('receipt prints store title and date', () {
@@ -296,11 +316,13 @@ void main() {
       ),
     );
     expect(lines.any((l) => l.contains('GULISTON')), isTrue);
-    expect(lines.any((l) => l.contains('2026-08-11') && l.contains('18:43')), isTrue);
+    expect(lines.any((l) => l.contains('2026-08-11') && l.contains('18:43')),
+        isTrue);
   });
 
   test('client lines appear only when a client is selected', () {
-    ThermalReceiptPrintData base({String? name, String? phone, String? address}) {
+    ThermalReceiptPrintData base(
+        {String? name, String? phone, String? address}) {
       return ThermalReceiptPrintData(
         storeName: 'Filial',
         dateTime: DateTime(2026, 8, 11, 18, 0),
@@ -370,10 +392,28 @@ void main() {
       );
     }
 
-    expect(ThermalReceiptFormatter.toPrintLines(base()).any((l) => l.toLowerCase().contains('izoh')), isFalse);
+    expect(
+        ThermalReceiptFormatter.toPrintLines(base())
+            .any((l) => l.toLowerCase().contains('izoh')),
+        isFalse);
     expect(
       ThermalReceiptFormatter.toPrintLines(base(note: 'Tez yetkazib berish')),
-      contains('Izoh: Tez yetkazib berish'),
+      contains(ThermalReceiptNoteText.line('Izoh: Tez yetkazib berish')),
+    );
+
+    final longNoteLines = ThermalReceiptFormatter.toPrintLines(
+      base(
+        note:
+            'Eshikkacha yetkazib berilsin va mijozga oldindan telefon qilinsin',
+      ),
+      maxWidth: 32,
+    ).where(ThermalReceiptNoteText.isNoteLine).toList();
+    expect(longNoteLines.length, greaterThan(1));
+    expect(
+      longNoteLines.every(
+        (line) => ThermalReceiptNoteText.unwrap(line).length <= 32,
+      ),
+      isTrue,
     );
   });
 }

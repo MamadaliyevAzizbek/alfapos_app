@@ -22,6 +22,24 @@ abstract final class CartStockLimit {
     return quantity.round();
   }
 
+  /// [allItems] nusxalardan tuzilgan bo‘lsa (desktop sotuv oynalari snapshot’i
+  /// `CartItem.copy()` qaytaradi), `identical` mos kelmaydi va o‘zgartirilayotgan
+  /// qator ikki marta hisoblanib ketadi. Shuning uchun aynan bitta mos qator
+  /// bo‘lsa, qiymat bo‘yicha ham topamiz.
+  static CartItem? _resolveReplaceLine(List<CartItem> allItems, CartItem? replaceLine) {
+    if (replaceLine == null) return null;
+    for (final item in allItems) {
+      if (identical(item, replaceLine)) return replaceLine;
+    }
+    CartItem? single;
+    for (final item in allItems) {
+      if (!CartProvider.isSameCartLine(item, replaceLine)) continue;
+      if (single != null) return null;
+      single = item;
+    }
+    return single;
+  }
+
   static int projectedTotalPieces({
     required List<CartItem> allItems,
     required Product product,
@@ -34,11 +52,12 @@ abstract final class CartStockLimit {
     var total = 0;
     var replaced = replaceLine == null;
     var mergedAdd = addQuantity == null;
+    final replaceTarget = _resolveReplaceLine(allItems, replaceLine);
 
     for (final item in allItems) {
       if (!sameStockProduct(item.product, product)) continue;
 
-      if (replaceLine != null && identical(item, replaceLine)) {
+      if (replaceTarget != null && identical(item, replaceTarget)) {
         final qty = replaceQuantity ?? item.quantity;
         final byPack = replaceSellByPack ?? item.sellByPack;
         total += piecesForQuantity(product, qty, byPack);
@@ -88,6 +107,31 @@ abstract final class CartStockLimit {
       addSellByPack: sellByPack,
     );
     return projected <= available;
+  }
+
+  /// Qatorga ruxsat etilgan eng katta miqdor — [sellByPack] bo‘yicha dona yoki
+  /// pachkada. Ombordagi qoldiqdan boshqa qatorlar (desktopda boshqa sotuv
+  /// oynalari ham) egallagan dona soni ayiriladi. Qoldiq bo‘lmasa 0.
+  static num maxLineQuantity({
+    required Product product,
+    required List<CartItem> allItems,
+    required CartItem line,
+    bool? sellByPack,
+  }) {
+    final available = product.availableStockQuantity;
+    if (available <= 0) return 0;
+    final otherLines = projectedTotalPieces(
+      allItems: allItems,
+      product: product,
+      replaceLine: line,
+      replaceQuantity: 0,
+      replaceSellByPack: sellByPack,
+    );
+    final remaining = available - otherLines;
+    if (remaining <= 0) return 0;
+    final byPack = (sellByPack ?? line.sellByPack) && product.canSellByPack;
+    if (!byPack || product.quantityPerPack <= 0) return remaining;
+    return remaining ~/ product.quantityPerPack;
   }
 
   static bool allowsLineQuantity({
