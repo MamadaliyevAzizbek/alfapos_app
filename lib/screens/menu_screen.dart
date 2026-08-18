@@ -16,6 +16,7 @@ import 'inventarizatsiya_screen.dart';
 import 'kirimlar_screen.dart';
 import 'mijozlar_screen.dart';
 import 'sozlamalar_screen.dart';
+import 'taminotchilar_screen.dart';
 import 'xarajatlar_screen.dart';
 
 /// Foydalanuvchi kartasi uchun ism va telefon.
@@ -132,7 +133,8 @@ class _MenuScreenState extends State<MenuScreen> {
         AppNotify.error(context, 'Ochib bo‘lmadi: ${uri.toString()}');
       }
     } catch (_) {
-      if (mounted) AppNotify.error(context, 'Ochib bo‘lmadi: ${uri.toString()}');
+      if (mounted)
+        AppNotify.error(context, 'Ochib bo‘lmadi: ${uri.toString()}');
     }
   }
 
@@ -205,6 +207,12 @@ class _MenuScreenState extends State<MenuScreen> {
                 onTap: () => _open(const MijozlarScreen(), rootNavigator: true),
               ),
               _MenuRow(
+                icon: LucideIcons.truck,
+                label: Strings.taminotchilar,
+                onTap: () =>
+                    _open(const TaminotchilarScreen(), rootNavigator: true),
+              ),
+              _MenuRow(
                 icon: LucideIcons.wallet,
                 label: Strings.xarajatlar,
                 onTap: () => _open(const XarajatlarScreen()),
@@ -239,8 +247,7 @@ class _MenuScreenState extends State<MenuScreen> {
           ),
           const SizedBox(height: 16),
           _ContactBar(
-            onPhone: () =>
-                _launch(Uri(scheme: 'tel', path: AppContacts.phone)),
+            onPhone: () => _launch(Uri(scheme: 'tel', path: AppContacts.phone)),
             onInstagram: () => _launch(Uri.parse(AppContacts.instagram)),
             onTelegram: () => _launch(Uri.parse(AppContacts.telegram)),
             onYoutube: () => _launch(Uri.parse(AppContacts.youtube)),
@@ -300,7 +307,9 @@ class _ProfileCard extends StatelessWidget {
                   children: [
                     _ProfileField(
                       label: 'Ism',
-                      value: loading && name.isEmpty ? '…' : (name.isEmpty ? '—' : name),
+                      value: loading && name.isEmpty
+                          ? '…'
+                          : (name.isEmpty ? '—' : name),
                     ),
                     const SizedBox(height: 8),
                     _ProfileField(

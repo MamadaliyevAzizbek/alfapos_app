@@ -90,6 +90,8 @@ class Strings {
   static const qaytaBaholash = "Qayta baholash";
   static const hisobdanOchirish = "Hisobdan o'chirish";
   static const yetkazibBeruvchilar = "Yetkazib beruvchilar";
+  static const taminotchilar = 'Taminotchilar';
+  static const yangiTaminotchi = 'Yangi taminotchi';
   static const sotuvlar = 'Sotuvlar';
   static const mijozlar = 'Mijozlar';
   static const sotuvchiIsmFamiliya = "Sotuvchi (ism, familiya)";

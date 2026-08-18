@@ -30,4 +30,19 @@ void main() {
     );
     expect(filterProductsByBarcodeQuery(catalog, 'not-a-barcode-xyz'), isEmpty);
   });
+
+  test('qisman kod avtomatik qo\'shish uchun yetarli emas', () {
+    const product = Product(
+      id: 'pipe',
+      name: 'Truba',
+      barcode: '4780151102501',
+      sku: '102501',
+      priceUzs: 1094,
+    );
+    expect(filterProductsByBarcodeQuery([product], '1025'), isEmpty);
+    expect(filterProductsByBarcodeQuery([product], '102501'), [product]);
+    expect(filterProductsByBarcodeQuery([product], '4780151102501'), [product]);
+    expect(productMatchesAutoAddQuery(product, '1025'), isFalse);
+    expect(productMatchesAutoAddQuery(product, '102501'), isTrue);
+  });
 }

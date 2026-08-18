@@ -866,7 +866,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   /// Nom/SKU — mahalliy + server qidiruv; shtrix/PLU/tarozi — alohida.
-  Future<void> _searchProductsByQuery(String query) async {
+  /// [autoAdd] — faqat Enter/skaner: qisman SKU (`1025`) yozishda ro'yxat filtri.
+  Future<void> _searchProductsByQuery(String query, {bool autoAdd = false}) async {
     final q = query.trim();
     if (q.isEmpty) {
       if (_sales.lastSearch.isNotEmpty) {
@@ -876,7 +877,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (mounted) setState(() {});
       return;
     }
-    if (product_search.looksLikeBarcodeOrPluInput(q)) {
+    if (autoAdd && product_search.looksLikeBarcodeOrPluInput(q)) {
       if (isDesktopPosLayout) {
         await _desktopBarcodeSearchAndAdd(q);
       } else {
@@ -2038,7 +2039,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   Future<void> _desktopSearchSubmit(String q) async {
     _barcodeSearchDebounce?.cancel();
     _catalogSearchDebounce?.cancel();
-    await _searchProductsByQuery(q);
+    await _searchProductsByQuery(q, autoAdd: true);
   }
 
   Future<void> _holdCart(BuildContext context) async {

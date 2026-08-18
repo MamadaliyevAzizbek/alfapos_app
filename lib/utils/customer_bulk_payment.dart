@@ -30,7 +30,8 @@ class CustomerBulkPayment {
   }
 
   /// API javobidan to'lov turlari ro'yxati.
-  static List<Map<String, dynamic>> parsePaymentTypesResponse(Map<String, dynamic> res) {
+  static List<Map<String, dynamic>> parsePaymentTypesResponse(
+      Map<String, dynamic> res) {
     final raw = res['data'] ?? res['payment_types'] ?? res['paymentTypes'];
     if (raw is! List) return [];
     return raw
@@ -42,9 +43,14 @@ class CustomerBulkPayment {
 
   /// Umumiy to'lov dropdown: credit / supplier_balance chiqariladi; customer_balance alohida.
   static bool isExcludedBulkPaymentType(Map<String, dynamic> e) {
-    final type = (e['type'] ?? e['payment_type'] ?? '').toString().toLowerCase();
-    final name = (e['name'] ?? e['title'] ?? e['payment_method'] ?? '').toString().toLowerCase();
-    if (type == 'credit' || type == 'supplier_balance' || type == 'customer_balance') return true;
+    final type =
+        (e['type'] ?? e['payment_type'] ?? '').toString().toLowerCase();
+    final name = (e['name'] ?? e['title'] ?? e['payment_method'] ?? '')
+        .toString()
+        .toLowerCase();
+    if (type == 'credit' ||
+        type == 'supplier_balance' ||
+        type == 'customer_balance') return true;
     if (name.contains('qarz') && type == 'credit') return true;
     if (name.contains('supplier') && name.contains('balans')) return true;
     if (name.contains('mijoz') && name.contains('balans')) return true;
@@ -52,7 +58,8 @@ class CustomerBulkPayment {
   }
 
   static String paymentTypeLabel(Map<String, dynamic> e) {
-    return (e['name'] ?? e['title'] ?? e['payment_method'] ?? e['id']).toString();
+    return (e['name'] ?? e['title'] ?? e['payment_method'] ?? e['id'])
+        .toString();
   }
 
   static int? paymentTypeId(Map<String, dynamic> e) {
@@ -91,4 +98,14 @@ class BulkDuePaymentMethodCustomerBalance extends BulkDuePaymentMethod {
 
   @override
   String get label => 'Mijoz balansidan';
+}
+
+class BulkDuePaymentMethodSupplierBalance extends BulkDuePaymentMethod {
+  const BulkDuePaymentMethodSupplierBalance();
+
+  @override
+  Object get apiValue => 'supplier_balance';
+
+  @override
+  String get label => 'Taminotchi balansidan';
 }

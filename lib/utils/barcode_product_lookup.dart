@@ -83,9 +83,8 @@ class BarcodeProductLookup {
 
       final direct = SalesProducts.fromBarcodeResult(res);
       if (direct != null &&
-          (direct.matchesBarcode(q) ||
-              looksLikePossibleScaleBarcode(q) ||
-              looksLikePluCode(q))) {
+          (productMatchesAutoAddQuery(direct, q) ||
+              looksLikePossibleScaleBarcode(q))) {
         final qty = looksLikePossibleScaleBarcode(q)
             ? (extractScaleWeightKg(q) ?? 1)
             : 1;
@@ -97,9 +96,8 @@ class BarcodeProductLookup {
       }
       final picked = SalesProducts.pickAutoAddBarcode(res, allowSingleResult: true);
       if (picked != null &&
-          (picked.matchesBarcode(q) ||
-              looksLikePossibleScaleBarcode(q) ||
-              looksLikePluCode(q))) {
+          (productMatchesAutoAddQuery(picked, q) ||
+              looksLikePossibleScaleBarcode(q))) {
         final qty = looksLikePossibleScaleBarcode(q)
             ? (extractScaleWeightKg(q) ?? 1)
             : 1;

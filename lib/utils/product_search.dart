@@ -215,17 +215,24 @@ bool looksLikeBarcodeSuffixInput(String query) {
   return trimmed.length >= 4 && trimmed.length < 8;
 }
 
+/// Savatchaga avtomatik qo'shish: to'liq kod (SKU/shtrix/PLU) yoki shtrix oxirgi qismi.
+/// Qisman moslik (`478…102501` ichida `1025`) avtomatik qo'shish uchun yetarli emas.
+bool productMatchesAutoAddQuery(Product product, String query) {
+  final raw = query.trim();
+  if (raw.isEmpty) return false;
+  if (product.matchesCodeExact(raw)) return true;
+  if (looksLikeBarcodeSuffixInput(raw) && product.matchesBarcodeSuffix(raw)) {
+    return true;
+  }
+  return false;
+}
+
 /// Faqat shtrix kod / SKU (nom bo'yicha emas) — savatchaga avtomatik qo'shish uchun.
 List<Product> filterProductsByBarcodeQuery(List<Product> products, String query) {
   final raw = query.trim();
   if (raw.isEmpty) return [];
-  final q = raw.toLowerCase();
-  return products.where((p) {
-    if (p.matchesBarcode(raw)) return true;
-    if (looksLikeBarcodeSuffixInput(raw) && p.matchesBarcodeSuffix(raw)) return true;
-    if (p.sku != null && p.sku!.toLowerCase() == q) return true;
-    if (p.matchesPlu(raw)) return true;
-    return false;
-  }).toList();
+  return products
+      .where((p) => productMatchesAutoAddQuery(p, raw))
+      .toList();
 }
 

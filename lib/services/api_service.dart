@@ -25,7 +25,8 @@ class DashboardApi {
 
 /// Login
 class AuthApi {
-  static Future<Map<String, dynamic>> login(String email, String password, String companyId) async {
+  static Future<Map<String, dynamic>> login(
+      String email, String password, String companyId) async {
     return ApiClient.login(email, password, companyId);
   }
 
@@ -44,11 +45,13 @@ class ContactsApi {
     return ApiClient.get('/contacts/customers-list');
   }
 
-  static Future<Map<String, dynamic>> getCustomers({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getCustomers(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/contacts/customers', body: body ?? {});
   }
 
-  static Future<Map<String, dynamic>> storeCustomer(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> storeCustomer(
+      Map<String, dynamic> data) async {
     return ApiClient.post('/contacts/customers/store', body: data);
   }
 
@@ -56,7 +59,8 @@ class ContactsApi {
     return ApiClient.get('/contacts/customers/$id');
   }
 
-  static Future<Map<String, dynamic>> updateCustomer(int id, Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateCustomer(
+      int id, Map<String, dynamic> data) async {
     return ApiClient.post('/contacts/customers/$id', body: data);
   }
 
@@ -64,25 +68,168 @@ class ContactsApi {
     await ApiClient.delete('/contacts/customers/$id');
   }
 
-  /// POST /contacts/suppliers — kirim uchun yetkazib beruvchilar.
-  static Future<Map<String, dynamic>> getSuppliers({Map<String, dynamic>? body}) async {
-    return ApiClient.post('/contacts/suppliers', body: body ?? {
-      'rowLimit': 5000,
-      'rowOffset': 0,
-      'columnKey': 'id',
-      'columnSortedBy': 'DESC',
+  /// POST /contacts/suppliers — taminotchilar ro‘yxati (kirim picker ham).
+  static Future<Map<String, dynamic>> getSuppliers(
+      {Map<String, dynamic>? body}) async {
+    return ApiClient.post('/contacts/suppliers',
+        body: body ??
+            {
+              'rowLimit': 5000,
+              'rowOffset': 0,
+              'columnKey': 'id',
+              'columnSortedBy': 'DESC',
+              'searchValue': '',
+              'filtersData': <dynamic>[],
+              'reqType': '',
+            });
+  }
+
+  static Future<Map<String, dynamic>> storeSupplier(
+      Map<String, dynamic> data) async {
+    return ApiClient.post('/contacts/suppliers/store', body: data);
+  }
+
+  static Future<Map<String, dynamic>> getSupplier(int id) async {
+    return ApiClient.get('/contacts/suppliers/$id');
+  }
+
+  static Future<Map<String, dynamic>> updateSupplier(
+    int id,
+    Map<String, dynamic> data,
+  ) async {
+    return ApiClient.post('/contacts/suppliers/$id', body: data);
+  }
+
+  static Future<void> deleteSupplier(int id) async {
+    await ApiClient.delete('/contacts/suppliers/$id');
+  }
+
+  static Future<Map<String, dynamic>> updateSupplierBalance(
+    int id, {
+    required num amount,
+    required String type, // add | subtract | set
+    String description = '',
+  }) async {
+    return ApiClient.post('/contacts/suppliers/$id/balance', body: {
+      'amount': amount,
+      'type': type,
+      'description': description,
     });
   }
 
-  static Future<Map<String, dynamic>> storeSupplier(Map<String, dynamic> data) async {
-    return ApiClient.post('/contacts/suppliers/store', body: data);
+  static Future<Map<String, dynamic>> getSupplierBalanceTransactions(
+    int id, {
+    Map<String, dynamic>? body,
+  }) async {
+    return ApiClient.post(
+      '/contacts/suppliers/$id/balance-transactions',
+      body: body ??
+          {
+            'columnKey': 'id',
+            'columnSortedBy': 'DESC',
+            'rowOffset': 0,
+            'rowLimit': 100,
+            'searchValue': '',
+            'filtersData': <dynamic>[],
+          },
+    );
+  }
+
+  static Future<void> deleteSupplierBalanceTransaction(
+      int transactionId) async {
+    await ApiClient.delete(
+      '/contacts/suppliers/balance-transactions/$transactionId',
+    );
+  }
+
+  static Future<Map<String, dynamic>> getSupplierDeliveryReport(
+    int id, {
+    Map<String, dynamic>? body,
+  }) async {
+    return ApiClient.post(
+      '/contacts/suppliers/$id/delivery-report',
+      body: body ??
+          {
+            'columnKey': 'id',
+            'columnSortedBy': 'DESC',
+            'rowOffset': 0,
+            'rowLimit': 50,
+            'searchValue': '',
+            'filtersData': <dynamic>[],
+            'reqType': '',
+            'merge_supplier_debts': true,
+          },
+    );
+  }
+
+  /// GET /contacts/suppliers/{id}/profile — qarz breakdown.
+  static Future<Map<String, dynamic>> getSupplierProfile(int id) async {
+    return ApiClient.get('/contacts/suppliers/$id/profile');
+  }
+
+  static Future<Map<String, dynamic>> storeSupplierDebt(
+    int id,
+    Map<String, dynamic> data,
+  ) async {
+    return ApiClient.post('/contacts/suppliers/$id/debt/store', body: data);
+  }
+
+  static Future<void> deleteSupplierDebt(int debtId) async {
+    await ApiClient.delete('/contacts/suppliers/debt/$debtId');
+  }
+
+  static Future<Map<String, dynamic>> getSupplierDueOrders(int id) async {
+    return ApiClient.get('/contacts/suppliers/$id/due-orders');
+  }
+
+  static Future<Map<String, dynamic>> supplierBulkDuePayment(
+    int id, {
+    required num amount,
+    required Object paymentMethod,
+  }) async {
+    return ApiClient.post('/contacts/suppliers/$id/bulk-due-payment', body: {
+      'amount': amount,
+      'payment_method': paymentMethod,
+    });
+  }
+
+  static Future<Map<String, dynamic>> deleteSupplierBulkDuePayment(
+    int supplierId, {
+    required String bulkGroupId,
+  }) async {
+    return ApiClient.post(
+      '/contacts/suppliers/$supplierId/bulk-due-payment/delete',
+      body: {'bulk_group_id': bulkGroupId},
+    );
+  }
+
+  static Future<Map<String, dynamic>> saveSupplierOrderDuePayment(
+    Map<String, dynamic> body,
+  ) async {
+    return ApiClient.post(
+      '/contacts/suppliers/save-order-due-payment',
+      body: body,
+    );
+  }
+
+  /// Kirim invoice JSON — GET, 405 bo‘lsa POST.
+  static Future<Map<String, dynamic>> getSupplierReceiving(int orderId) async {
+    try {
+      return await ApiClient.get('/contacts/suppliers/receiving/$orderId');
+    } catch (_) {
+      return ApiClient.post(
+        '/contacts/suppliers/receiving/$orderId',
+        body: {},
+      );
+    }
   }
 
   static Future<Map<String, dynamic>> getCustomerDebts(int id) async {
     return ApiClient.post('/contacts/customers/$id/debts', body: {});
   }
 
-  static Future<Map<String, dynamic>> getCustomerOrders(int id, {Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getCustomerOrders(int id,
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/contacts/customers/$id/orders', body: body ?? {});
   }
 
@@ -96,7 +243,8 @@ class ContactsApi {
     return ApiClient.post('/contacts/customers/$id/debt/store', body: body);
   }
 
-  static Future<Map<String, dynamic>> updateCustomerDebt(int debtId, Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateCustomerDebt(
+      int debtId, Map<String, dynamic> data) async {
     return ApiClient.post('/contacts/customers/debt/$debtId', body: data);
   }
 
@@ -104,8 +252,10 @@ class ContactsApi {
     await ApiClient.delete('/contacts/customers/debt/$debtId');
   }
 
-  static Future<Map<String, dynamic>> getCustomerBalanceTransactions(int id) async {
-    return ApiClient.post('/contacts/customers/$id/balance-transactions', body: {});
+  static Future<Map<String, dynamic>> getCustomerBalanceTransactions(
+      int id) async {
+    return ApiClient.post('/contacts/customers/$id/balance-transactions',
+        body: {});
   }
 
   static Future<Map<String, dynamic>> updateCustomerBalance(
@@ -121,8 +271,10 @@ class ContactsApi {
     });
   }
 
-  static Future<void> deleteCustomerBalanceTransaction(int transactionId) async {
-    await ApiClient.delete('/contacts/customers/balance-transactions/$transactionId');
+  static Future<void> deleteCustomerBalanceTransaction(
+      int transactionId) async {
+    await ApiClient.delete(
+        '/contacts/customers/balance-transactions/$transactionId');
   }
 
   static Future<Map<String, dynamic>> getCustomerDueOrders(int id) async {
@@ -228,22 +380,32 @@ class ContactsApi {
     return ApiClient.delete('/contacts/groups/$id');
   }
 
-  static Future<Map<String, dynamic>> saveOrderDuePayment(Map<String, dynamic> body) async {
-    return ApiClient.post('/contacts/customers/save-order-due-payment', body: body);
+  static Future<Map<String, dynamic>> saveOrderDuePayment(
+      Map<String, dynamic> body) async {
+    return ApiClient.post('/contacts/customers/save-order-due-payment',
+        body: body);
   }
 
-  static Future<Map<String, dynamic>> sendTelegramReceipt(Map<String, dynamic> body) async {
-    return ApiClient.post('/contacts/customers/send-telegram-receipt', body: body);
+  static Future<Map<String, dynamic>> sendTelegramReceipt(
+      Map<String, dynamic> body) async {
+    return ApiClient.post('/contacts/customers/send-telegram-receipt',
+        body: body);
   }
 
-  static Future<Map<String, dynamic>> sendTelegramDebtBalance(int customerId) async {
-    return ApiClient.post('/contacts/customers/$customerId/send-telegram-debt-balance', body: {});
+  static Future<Map<String, dynamic>> sendTelegramDebtBalance(
+      int customerId) async {
+    return ApiClient.post(
+        '/contacts/customers/$customerId/send-telegram-debt-balance',
+        body: {});
   }
 
-  static Future<Map<String, dynamic>> setAutoTelegramCustomerReceipt(int customerId, bool enabled) async {
-    return ApiClient.post('/contacts/customers/$customerId/auto-telegram-customer-receipt', body: {
-      'auto_telegram_customer_receipt': enabled ? 1 : 0,
-    });
+  static Future<Map<String, dynamic>> setAutoTelegramCustomerReceipt(
+      int customerId, bool enabled) async {
+    return ApiClient.post(
+        '/contacts/customers/$customerId/auto-telegram-customer-receipt',
+        body: {
+          'auto_telegram_customer_receipt': enabled ? 1 : 0,
+        });
   }
 
   static Future<Map<String, dynamic>> getWordDocuments(int customerId) async {
@@ -251,11 +413,14 @@ class ContactsApi {
   }
 
   static Future<Map<String, dynamic>> addToBlacklist(int customerId) async {
-    return ApiClient.post('/contacts/customers/blacklist/add', body: {'customer_id': customerId});
+    return ApiClient.post('/contacts/customers/blacklist/add',
+        body: {'customer_id': customerId});
   }
 
-  static Future<Map<String, dynamic>> removeFromBlacklist(int customerId) async {
-    return ApiClient.post('/contacts/customers/blacklist/remove/$customerId', body: {});
+  static Future<Map<String, dynamic>> removeFromBlacklist(
+      int customerId) async {
+    return ApiClient.post('/contacts/customers/blacklist/remove/$customerId',
+        body: {});
   }
 }
 
@@ -266,7 +431,8 @@ class ProductsApi {
     if (l.endsWith('.png')) return MediaType('image', 'png');
     if (l.endsWith('.webp')) return MediaType('image', 'webp');
     if (l.endsWith('.gif')) return MediaType('image', 'gif');
-    if (l.endsWith('.heic') || l.endsWith('.heif')) return MediaType('image', 'jpeg');
+    if (l.endsWith('.heic') || l.endsWith('.heif'))
+      return MediaType('image', 'jpeg');
     return MediaType('image', 'jpeg');
   }
 
@@ -317,7 +483,8 @@ class ProductsApi {
     final bytes = await f.readAsBytes();
     if (bytes.isEmpty) return null;
     if (bytes.length > 6 * 1024 * 1024) {
-      throw ApiException('Rasm hajmi juda katta (6 MB dan oshmasligi kerak)', 400);
+      throw ApiException(
+          'Rasm hajmi juda katta (6 MB dan oshmasligi kerak)', 400);
     }
     return base64Encode(bytes);
   }
@@ -332,7 +499,8 @@ class ProductsApi {
     return 'data:$mime;base64,$base64';
   }
 
-  static Future<Map<String, dynamic>> getProducts({int? limit, int? offset, String? search}) async {
+  static Future<Map<String, dynamic>> getProducts(
+      {int? limit, int? offset, String? search}) async {
     final q = <String, String>{};
     if (limit != null) q['limit'] = limit.toString();
     if (offset != null) q['offset'] = offset.toString();
@@ -340,7 +508,8 @@ class ProductsApi {
     return ApiClient.get('/products', queryParams: q.isEmpty ? null : q);
   }
 
-  static Future<Map<String, dynamic>> getProductsList({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getProductsList(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/products/list', body: body ?? {});
   }
 
@@ -399,7 +568,9 @@ class ProductsApi {
   ) async {
     final fields = dataToMultipartFields(data);
     final file = File(localImagePath);
-    final name = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'image.jpg';
+    final name = file.uri.pathSegments.isNotEmpty
+        ? file.uri.pathSegments.last
+        : 'image.jpg';
     final contentType = _imageMediaTypeForPath(localImagePath);
     final multipartFile = await http.MultipartFile.fromPath(
       fieldName,
@@ -411,7 +582,8 @@ class ProductsApi {
   }
 
   /// `/products/store` ga faqat bir marta POST — keyin rasm uchun `/products/{id}/edit`.
-  static String? _switchStorePathToEditAfterCreate(String path, Map<String, dynamic> res) {
+  static String? _switchStorePathToEditAfterCreate(
+      String path, Map<String, dynamic> res) {
     if (!_isProductStorePath(path)) return null;
     final id = _productIdFromResponse(res);
     if (id == null || id <= 0) return null;
@@ -431,12 +603,15 @@ class ProductsApi {
 
     ApiException? lastError;
     try {
-      final res = await _postMultipartWithImageField(path, data, localImagePath, 'image');
-      if (_responseHasProductImage(res) || !_isProductStorePath(path)) return res;
+      final res = await _postMultipartWithImageField(
+          path, data, localImagePath, 'image');
+      if (_responseHasProductImage(res) || !_isProductStorePath(path))
+        return res;
       final editPath = _switchStorePathToEditAfterCreate(path, res);
       if (editPath != null) {
         try {
-          final editRes = await _postMultipartWithImageField(editPath, data, localImagePath, 'image');
+          final editRes = await _postMultipartWithImageField(
+              editPath, data, localImagePath, 'image');
           if (_responseHasProductImage(editRes)) return editRes;
         } on ApiException catch (e) {
           lastError = e;
@@ -469,7 +644,8 @@ class ProductsApi {
       return ApiClient.post('/products/store', body: data);
     }
 
-    return _postProductWithImageFallback('/products/store', data, localImagePath);
+    return _postProductWithImageFallback(
+        '/products/store', data, localImagePath);
   }
 
   /// Eski V1 — cheklangan maydonlar; faqat fallback.
@@ -478,7 +654,8 @@ class ProductsApi {
     String? localImagePath,
     Product? imageHintProduct,
   }) async =>
-      storeProduct(data, localImagePath: localImagePath, imageHintProduct: imageHintProduct);
+      storeProduct(data,
+          localImagePath: localImagePath, imageHintProduct: imageHintProduct);
 
   static Future<Map<String, dynamic>> updateProduct(
     int id,
@@ -486,7 +663,8 @@ class ProductsApi {
     String? localImagePath,
   }) async {
     if (localImagePath != null && localImagePath.isNotEmpty) {
-      return _postProductWithImageFallback('/products/$id/edit', data, localImagePath);
+      return _postProductWithImageFallback(
+          '/products/$id/edit', data, localImagePath);
     }
     return ApiClient.post('/products/$id/edit', body: data);
   }
@@ -507,7 +685,8 @@ class ProductsApi {
       };
 
   static Future<Map<String, dynamic>> postCategoriesList() async {
-    return ApiClient.post('/products/categories/list', body: _referenceListBody);
+    return ApiClient.post('/products/categories/list',
+        body: _referenceListBody);
   }
 
   static Future<Map<String, dynamic>> postBrandsList() async {
@@ -538,7 +717,8 @@ class CategoriesApi {
     return ApiClient.post('/products/categories', body: {'name': name});
   }
 
-  static Future<Map<String, dynamic>> updateCategory(int id, String name) async {
+  static Future<Map<String, dynamic>> updateCategory(
+      int id, String name) async {
     return ApiClient.post('/products/categories/$id', body: {'name': name});
   }
 
@@ -549,14 +729,16 @@ class CategoriesApi {
 
 /// Xarajatlar
 class ExpensesApi {
-  static Future<Map<String, dynamic>> getExpenses({String? from, String? to}) async {
+  static Future<Map<String, dynamic>> getExpenses(
+      {String? from, String? to}) async {
     final q = <String, String>{};
     if (from != null) q['from'] = from;
     if (to != null) q['to'] = to;
     return ApiClient.get('/expenses', queryParams: q.isEmpty ? null : q);
   }
 
-  static Future<Map<String, dynamic>> createExpense(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> createExpense(
+      Map<String, dynamic> data) async {
     return ApiClient.post('/expenses', body: data);
   }
 
@@ -567,14 +749,16 @@ class ExpensesApi {
 
 /// Kassaga kirim (tezkor kirim forma)
 class IncomesApi {
-  static Future<Map<String, dynamic>> getIncomes({String? from, String? to}) async {
+  static Future<Map<String, dynamic>> getIncomes(
+      {String? from, String? to}) async {
     final q = <String, String>{};
     if (from != null) q['from'] = from;
     if (to != null) q['to'] = to;
     return ApiClient.get('/incomes', queryParams: q.isEmpty ? null : q);
   }
 
-  static Future<Map<String, dynamic>> createIncome(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> createIncome(
+      Map<String, dynamic> data) async {
     return ApiClient.post('/incomes', body: data);
   }
 
@@ -585,8 +769,10 @@ class IncomesApi {
 
 /// Sotuv (Savatcha) — MOBILE_SALES_API_UZ.md
 class SalesApi {
-  static Future<Map<String, dynamic>> getSalesProducts({Map<String, dynamic>? body}) async {
-    return ApiClient.post('/sales/products', body: body ?? {'rowLimit': 40, 'offset': 0, 'orderType': 'sales'});
+  static Future<Map<String, dynamic>> getSalesProducts(
+      {Map<String, dynamic>? body}) async {
+    return ApiClient.post('/sales/products',
+        body: body ?? {'rowLimit': 40, 'offset': 0, 'orderType': 'sales'});
   }
 
   static Future<Map<String, dynamic>> barcodeSearch({
@@ -634,7 +820,8 @@ class SalesApi {
   }
 
   /// POST /support/sales-settings — sotuv sozlamalarini saqlash (admin).
-  static Future<Map<String, dynamic>> postSalesSettings(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> postSalesSettings(
+      Map<String, dynamic> body) async {
     return ApiClient.post('/support/sales-settings', body: body);
   }
 
@@ -646,8 +833,10 @@ class SalesApi {
     return ApiClient.get('/sales/currencies');
   }
 
-  static Future<Map<String, dynamic>> setBranch({required int branchID, String orderType = 'sales'}) async {
-    return ApiClient.post('/sales/set-branch', body: {'branchID': branchID, 'orderType': orderType});
+  static Future<Map<String, dynamic>> setBranch(
+      {required int branchID, String orderType = 'sales'}) async {
+    return ApiClient.post('/sales/set-branch',
+        body: {'branchID': branchID, 'orderType': orderType});
   }
 
   static Future<Map<String, dynamic>> getCashRegisters() async {
@@ -658,11 +847,13 @@ class SalesApi {
     return ApiClient.get('/sales/cash-registers/$id/balance');
   }
 
-  static Future<Map<String, dynamic>> openCloseCashRegister(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> openCloseCashRegister(
+      Map<String, dynamic> body) async {
     return ApiClient.post('/sales/cash-registers/open-close', body: body);
   }
 
-  static Future<Map<String, dynamic>> getRegisterExpectedAmount(int cashRegisterId) async {
+  static Future<Map<String, dynamic>> getRegisterExpectedAmount(
+      int cashRegisterId) async {
     return ApiClient.get('/sales/register-amount/$cashRegisterId');
   }
 
@@ -674,20 +865,24 @@ class SalesApi {
     return ApiClient.get('/sales/cash-register-shifts/$logId/analytics');
   }
 
-  static Future<Map<String, dynamic>> closeShift(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> closeShift(
+      Map<String, dynamic> body) async {
     return ApiClient.post('/sales/cash-register-shifts/close', body: body);
   }
 
   /// Barcha pauza (hold) buyurtmalar — filtrlash klientda (API kassa id qaytarmasligi mumkin).
-  static Future<Map<String, dynamic>> getHoldOrders({int? cashRegisterId}) async {
+  static Future<Map<String, dynamic>> getHoldOrders(
+      {int? cashRegisterId}) async {
     final q = <String, String>{};
     if (cashRegisterId != null && cashRegisterId > 0) {
       q['cash_register_id'] = '$cashRegisterId';
     }
-    return ApiClient.get('/sales/hold-orders', queryParams: q.isEmpty ? null : q);
+    return ApiClient.get('/sales/hold-orders',
+        queryParams: q.isEmpty ? null : q);
   }
 
-  static Future<Map<String, dynamic>> updateHoldStatus(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> updateHoldStatus(
+      Map<String, dynamic> body) async {
     return ApiClient.post('/sales/hold-orders/update-status', body: body);
   }
 
@@ -732,7 +927,8 @@ class SalesApi {
 
   static bool _doneStoreSaleInFlight = false;
 
-  static Future<Map<String, dynamic>> storeSale(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> storeSale(
+      Map<String, dynamic> data) async {
     final isDone = data['status']?.toString() == 'done';
     if (isDone) {
       if (_doneStoreSaleInFlight) {
@@ -768,8 +964,10 @@ class SalesApi {
     return ApiClient.post('/sales/send-telegram-daily-summary', body: {});
   }
 
-  static Future<Map<String, dynamic>> getVariantQuantity(int variantId, {required int branchId}) async {
-    return ApiClient.get('/sales/variant-available-quantity/$variantId?branchId=$branchId');
+  static Future<Map<String, dynamic>> getVariantQuantity(int variantId,
+      {required int branchId}) async {
+    return ApiClient.get(
+        '/sales/variant-available-quantity/$variantId?branchId=$branchId');
   }
 
   /// GET /sales/editable-order/{id} — chekni tahrirlash uchun savat.
@@ -788,7 +986,8 @@ class SalesApi {
   }) async {
     return ApiClient.post('/sales/date/update/$orderId', body: {
       'editedSalesDate': editedSalesDate,
-      if (shippingStatus != null && shippingStatus.isNotEmpty) 'shippingStatus': shippingStatus,
+      if (shippingStatus != null && shippingStatus.isNotEmpty)
+        'shippingStatus': shippingStatus,
     });
   }
 
@@ -801,7 +1000,8 @@ class SalesApi {
   }
 
   /// POST /sales/returns-type-set — server qaytarish rejimini yoqish.
-  static Future<Map<String, dynamic>> setReturnsType({String salesOrReturnType = 'returns'}) async {
+  static Future<Map<String, dynamic>> setReturnsType(
+      {String salesOrReturnType = 'returns'}) async {
     return ApiClient.post('/sales/returns-type-set', body: {
       'salesOrReturnType': salesOrReturnType,
     });
@@ -819,7 +1019,8 @@ class SalesApi {
   }
 
   /// POST /sales/order-items-for-return — qisman/to'liq qaytarish UI uchun mahsulotlar.
-  static Future<Map<String, dynamic>> getOrderItemsForReturn({required int orderId}) async {
+  static Future<Map<String, dynamic>> getOrderItemsForReturn(
+      {required int orderId}) async {
     return ApiClient.post('/sales/order-items-for-return', body: {
       'orderId': orderId,
     });
@@ -859,8 +1060,10 @@ class SalesApi {
 /// Kirim (receives) — yetkazib beruvchidan mahsulot kirimi, hisobotda yig'iladi
 class ReceivesApi {
   /// POST /receives/products — body: rowLimit (500), orderType: 'receiving'. Javob: products[], variants[].
-  static Future<Map<String, dynamic>> getReceivesProducts({Map<String, dynamic>? body}) async {
-    return ApiClient.post('/receives/products', body: body ?? {'rowLimit': 500, 'orderType': 'receiving'});
+  static Future<Map<String, dynamic>> getReceivesProducts(
+      {Map<String, dynamic>? body}) async {
+    return ApiClient.post('/receives/products',
+        body: body ?? {'rowLimit': 500, 'orderType': 'receiving'});
   }
 
   /// POST /receives/barcode-search
@@ -889,7 +1092,8 @@ class ReceivesApi {
     });
   }
 
-  static Future<Map<String, dynamic>> storeReceive(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> storeReceive(
+      Map<String, dynamic> data) async {
     return ApiClient.post('/receives/store', body: data);
   }
 
@@ -905,15 +1109,18 @@ class ReceivesApi {
     return ApiClient.get('/receives/currencies');
   }
 
-  static Future<Map<String, dynamic>> setBranch({required int branchId, String orderType = 'receiving'}) async {
+  static Future<Map<String, dynamic>> setBranch(
+      {required int branchId, String orderType = 'receiving'}) async {
     return ApiClient.post('/receives/set-branch', body: {
       'branchID': branchId,
       'orderType': orderType,
     });
   }
 
-  static Future<Map<String, dynamic>> getEditableOrder(int orderId, {String orderType = 'receiving'}) async {
-    return ApiClient.get('/receives/editable-order/$orderId?orderType=$orderType');
+  static Future<Map<String, dynamic>> getEditableOrder(int orderId,
+      {String orderType = 'receiving'}) async {
+    return ApiClient.get(
+        '/receives/editable-order/$orderId?orderType=$orderType');
   }
 
   /// GET /receives/drafts — filial bo‘yicha saqlangan qoralamalar.
@@ -922,7 +1129,8 @@ class ReceivesApi {
   }
 
   /// POST /receives/drafts — yangi qoralama.
-  static Future<Map<String, dynamic>> saveDraft(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> saveDraft(
+      Map<String, dynamic> body) async {
     return ApiClient.post('/receives/drafts', body: body);
   }
 
@@ -1123,7 +1331,10 @@ class ReportsApi {
           },
         ],
       },
-      {'key': 'date', 'value': {'from': from, 'to': to}},
+      {
+        'key': 'date',
+        'value': {'from': from, 'to': to}
+      },
       {'key': 'start_date', 'value': from},
       {'key': 'end_date', 'value': to},
       {'key': 'from', 'value': from},
@@ -1187,7 +1398,10 @@ class ReportsApi {
             },
           ],
         },
-        {'key': 'date', 'value': {'from': from, 'to': to}},
+        {
+          'key': 'date',
+          'value': {'from': from, 'to': to}
+        },
         {'key': 'start_date', 'value': from},
         {'key': 'end_date', 'value': to},
         {'key': 'from', 'value': from},
@@ -1217,7 +1431,8 @@ class ReportsApi {
     );
   }
 
-  static Future<Map<String, dynamic>> getSales({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getSales(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/reports/sales', body: body ?? {});
   }
 
@@ -1226,12 +1441,14 @@ class ReportsApi {
   }
 
   /// POST /reports/sales/all-details
-  static Future<Map<String, dynamic>> getSalesAllDetails({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getSalesAllDetails(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/reports/sales/all-details', body: body ?? {});
   }
 
   /// POST /reports/sales/summary
-  static Future<Map<String, dynamic>> getSalesSummary({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getSalesSummary(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/reports/sales/summary', body: body ?? {});
   }
 
@@ -1240,7 +1457,8 @@ class ReportsApi {
   }
 
   /// POST /reports/receiving — kirim tarixi.
-  static Future<Map<String, dynamic>> getReceivingReport({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getReceivingReport(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/reports/receiving', body: body ?? {});
   }
 
@@ -1311,7 +1529,8 @@ class RegisterLogsApi {
   }
 
   static Future<Map<String, dynamic>> getSalesFilter(int logId) async {
-    return ApiClient.get('/reports/sales/filter', queryParams: {'register_log_id': '$logId'});
+    return ApiClient.get('/reports/sales/filter',
+        queryParams: {'register_log_id': '$logId'});
   }
 
   static Map<String, dynamic> salesListBody({
@@ -1337,22 +1556,29 @@ class RegisterLogsApi {
     };
   }
 
-  static Future<Map<String, dynamic>> getSales(int logId, {Map<String, dynamic>? body}) async {
-    return ApiClient.post('/reports/register-logs/$logId/sales', body: body ?? salesListBody(logId: logId));
+  static Future<Map<String, dynamic>> getSales(int logId,
+      {Map<String, dynamic>? body}) async {
+    return ApiClient.post('/reports/register-logs/$logId/sales',
+        body: body ?? salesListBody(logId: logId));
   }
 
-  static Future<Map<String, dynamic>> getAnalyticsCards({String? from, String? to}) async {
+  static Future<Map<String, dynamic>> getAnalyticsCards(
+      {String? from, String? to}) async {
     final q = <String, String>{};
     if (from != null) q['from'] = from;
     if (to != null) q['to'] = to;
-    return ApiClient.get('/reports/register-logs/analytics-cards', queryParams: q.isEmpty ? null : q);
+    return ApiClient.get('/reports/register-logs/analytics-cards',
+        queryParams: q.isEmpty ? null : q);
   }
 
-  static Future<Map<String, dynamic>> customerGroupSummary(Map<String, dynamic> body) async {
-    return ApiClient.post('/reports/register-logs/customer-group-summary', body: body);
+  static Future<Map<String, dynamic>> customerGroupSummary(
+      Map<String, dynamic> body) async {
+    return ApiClient.post('/reports/register-logs/customer-group-summary',
+        body: body);
   }
 
-  static Future<Map<String, dynamic>> close(int logId, Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> close(
+      int logId, Map<String, dynamic> body) async {
     return ApiClient.post('/reports/register-logs/$logId/close', body: body);
   }
 }
@@ -1360,7 +1586,8 @@ class RegisterLogsApi {
 /// To'lov hisobotlari (MOBILE_API_DOCS.md)
 class ReportsPaymentApi {
   /// POST /reports/payment
-  static Future<Map<String, dynamic>> getPayments({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getPayments(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/reports/payment', body: body ?? {});
   }
 
@@ -1370,7 +1597,8 @@ class ReportsPaymentApi {
   }
 
   /// POST /reports/payment/summary
-  static Future<Map<String, dynamic>> getPaymentSummary({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> getPaymentSummary(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post('/reports/payment/summary', body: body ?? {});
   }
 
@@ -1393,7 +1621,8 @@ class ExpenseCategoriesApi {
   }
 
   /// POST /support/expense-categories/expense-categories/list
-  static Future<Map<String, dynamic>> listExpenseCategories({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> listExpenseCategories(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post(
       '/support/expense-categories/expense-categories/list',
       body: body ??
@@ -1410,13 +1639,17 @@ class ExpenseCategoriesApi {
   }
 
   /// POST /support/expense-categories/expense-categories
-  static Future<Map<String, dynamic>> createExpenseCategory(Map<String, dynamic> data) async {
-    return ApiClient.post('/support/expense-categories/expense-categories', body: data);
+  static Future<Map<String, dynamic>> createExpenseCategory(
+      Map<String, dynamic> data) async {
+    return ApiClient.post('/support/expense-categories/expense-categories',
+        body: data);
   }
 
   /// POST /support/expense-categories/expense-categories/{id}
-  static Future<Map<String, dynamic>> updateExpenseCategory(int id, Map<String, dynamic> data) async {
-    return ApiClient.post('/support/expense-categories/expense-categories/$id', body: data);
+  static Future<Map<String, dynamic>> updateExpenseCategory(
+      int id, Map<String, dynamic> data) async {
+    return ApiClient.post('/support/expense-categories/expense-categories/$id',
+        body: data);
   }
 
   /// GET /support/expense-categories/expense-categories/{id}
@@ -1426,7 +1659,8 @@ class ExpenseCategoriesApi {
 
   /// DELETE /support/expense-categories/expense-categories/{id}
   static Future<void> deleteExpenseCategory(int id) async {
-    await ApiClient.delete('/support/expense-categories/expense-categories/$id');
+    await ApiClient.delete(
+        '/support/expense-categories/expense-categories/$id');
   }
 }
 
@@ -1436,7 +1670,8 @@ class IncomeCategoriesApi {
     return ApiClient.get('/support/income-categories/income-categories');
   }
 
-  static Future<Map<String, dynamic>> listIncomeCategories({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> listIncomeCategories(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post(
       '/support/income-categories/income-categories/list',
       body: body ??
@@ -1452,12 +1687,16 @@ class IncomeCategoriesApi {
     );
   }
 
-  static Future<Map<String, dynamic>> createIncomeCategory(Map<String, dynamic> data) async {
-    return ApiClient.post('/support/income-categories/income-categories', body: data);
+  static Future<Map<String, dynamic>> createIncomeCategory(
+      Map<String, dynamic> data) async {
+    return ApiClient.post('/support/income-categories/income-categories',
+        body: data);
   }
 
-  static Future<Map<String, dynamic>> updateIncomeCategory(int id, Map<String, dynamic> data) async {
-    return ApiClient.post('/support/income-categories/income-categories/$id', body: data);
+  static Future<Map<String, dynamic>> updateIncomeCategory(
+      int id, Map<String, dynamic> data) async {
+    return ApiClient.post('/support/income-categories/income-categories/$id',
+        body: data);
   }
 
   static Future<Map<String, dynamic>> getIncomeCategory(int id) async {
@@ -1472,7 +1711,8 @@ class IncomeCategoriesApi {
 /// Valyutalar (MOBILE_API_DOCS.md)
 class CurrenciesApi {
   /// POST /support/currencies/list
-  static Future<Map<String, dynamic>> listCurrencies({Map<String, dynamic>? body}) async {
+  static Future<Map<String, dynamic>> listCurrencies(
+      {Map<String, dynamic>? body}) async {
     return ApiClient.post(
       '/support/currencies/list',
       body: body ??
@@ -1504,7 +1744,8 @@ class CurrenciesApi {
   }
 
   /// POST /support/currencies
-  static Future<Map<String, dynamic>> createCurrency(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> createCurrency(
+      Map<String, dynamic> data) async {
     return ApiClient.post('/support/currencies', body: data);
   }
 
@@ -1514,7 +1755,8 @@ class CurrenciesApi {
   }
 
   /// POST /support/currencies/{id}
-  static Future<Map<String, dynamic>> updateCurrency(int id, Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateCurrency(
+      int id, Map<String, dynamic> data) async {
     return ApiClient.post('/support/currencies/$id', body: data);
   }
 
@@ -1524,8 +1766,10 @@ class CurrenciesApi {
   }
 
   /// POST /support/currencies/{id}/exchange-rate
-  static Future<Map<String, dynamic>> updateExchangeRate(int id, num exchangeRate) async {
-    return ApiClient.post('/support/currencies/$id/exchange-rate', body: {'exchange_rate': exchangeRate});
+  static Future<Map<String, dynamic>> updateExchangeRate(
+      int id, num exchangeRate) async {
+    return ApiClient.post('/support/currencies/$id/exchange-rate',
+        body: {'exchange_rate': exchangeRate});
   }
 
   /// POST /support/currencies/primary
@@ -1565,11 +1809,13 @@ class UserApi {
     return ApiClient.get('/user');
   }
 
-  static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateProfile(
+      Map<String, dynamic> data) async {
     return ApiClient.post('/user/profile', body: data);
   }
 
-  static Future<void> changePassword(String password, String passwordConfirmation) async {
+  static Future<void> changePassword(
+      String password, String passwordConfirmation) async {
     await ApiClient.post('/user/password', body: {
       'password': password,
       'password_confirmation': passwordConfirmation,
