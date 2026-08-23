@@ -269,6 +269,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void initState() {
     super.initState();
     ProductDisplaySettings.showSkuInTitle.addListener(_onProductDisplayChanged);
+    ProductDisplaySettings.catalogGridColumns.addListener(_onProductDisplayChanged);
     ProductCatalogSortSettings.sortMode.addListener(_onProductCatalogSortChanged);
     unawaited(ProductDisplaySettings.load());
     unawaited(ProductCatalogSortSettings.load());
@@ -415,6 +416,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   @override
   void dispose() {
     ProductDisplaySettings.showSkuInTitle.removeListener(_onProductDisplayChanged);
+    ProductDisplaySettings.catalogGridColumns.removeListener(_onProductDisplayChanged);
     ProductCatalogSortSettings.sortMode.removeListener(_onProductCatalogSortChanged);
     _cartSub?.cancel();
     _productsSub?.cancel();

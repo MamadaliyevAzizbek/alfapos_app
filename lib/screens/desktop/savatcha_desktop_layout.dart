@@ -13,6 +13,7 @@ import '../../widgets/sales_shortcut_key_badge.dart';
 import '../../widgets/sales_pos_search_field.dart';
 import '../../services/app_data_sync.dart';
 import '../../services/desktop_sales_layout_settings.dart';
+import '../../services/product_display_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
 import '../../services/sales_ui_scale_settings.dart';
 import 'sales_nav_filters.dart';
@@ -573,7 +574,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
     final initialLoading = productsLoading && catalogProducts.isEmpty;
     final loadingMore = productsLoading && catalogProducts.isNotEmpty;
     final isRestaurant = _isRestaurantMode;
-    final crossAxisCount = SalesUiScaleSettings.catalogCrossAxisCount(4);
+    final crossAxisCount = SalesUiScaleSettings.catalogCrossAxisCount(
+      ProductDisplaySettings.catalogGridColumns.value,
+    );
     final spacing = SalesUiScaleSettings.scaled(isRestaurant ? 8.0 : 12.0);
     final edgePad = SalesUiScaleSettings.scaled(12.0);
     final gap = _toolGap;

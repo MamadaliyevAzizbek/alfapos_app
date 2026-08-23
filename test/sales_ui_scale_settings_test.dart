@@ -31,6 +31,8 @@ void main() {
     expect(SalesUiScaleSettings.catalogCrossAxisCount(4, 1.0), 4);
     expect(SalesUiScaleSettings.catalogCrossAxisCount(4, 0.75), 5);
     expect(SalesUiScaleSettings.catalogCrossAxisCount(4, 1.5), 3);
+    expect(SalesUiScaleSettings.catalogCrossAxisCount(6, 1.0), 6);
+    expect(SalesUiScaleSettings.catalogCrossAxisCount(3, 1.0), 3);
   });
 
   test('scale level persists', () async {

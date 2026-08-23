@@ -7,18 +7,23 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    ProductDisplaySettings.showSkuInTitle.value = false;
-  });
-
-  test('SKU in title is off by default', () async {
-    expect(await ProductDisplaySettings.getShowSkuInTitle(), isFalse);
-  });
-
-  test('SKU setting persists', () async {
-    await ProductDisplaySettings.setShowSkuInTitle(true);
-    expect(await ProductDisplaySettings.getShowSkuInTitle(), isTrue);
-    expect(ProductDisplaySettings.showSkuInTitle.value, isTrue);
     await ProductDisplaySettings.load();
-    expect(ProductDisplaySettings.showSkuInTitle.value, isTrue);
+  });
+
+  test('default catalog grid columns is 4', () async {
+    expect(await ProductDisplaySettings.getCatalogGridColumns(), 4);
+    expect(ProductDisplaySettings.catalogGridColumns.value, 4);
+  });
+
+  test('catalog grid columns persists and clamps', () async {
+    await ProductDisplaySettings.setCatalogGridColumns(6);
+    expect(await ProductDisplaySettings.getCatalogGridColumns(), 6);
+    expect(ProductDisplaySettings.catalogGridColumns.value, 6);
+
+    await ProductDisplaySettings.setCatalogGridColumns(1);
+    expect(ProductDisplaySettings.catalogGridColumns.value, 2);
+
+    await ProductDisplaySettings.setCatalogGridColumns(20);
+    expect(ProductDisplaySettings.catalogGridColumns.value, 8);
   });
 }

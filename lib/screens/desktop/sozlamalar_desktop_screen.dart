@@ -57,6 +57,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   bool _previewLoading = false;
   DesktopSalesLayoutMode _salesLayoutMode = DesktopSalesLayoutMode.standard;
   bool _showSkuInProductTitle = false;
+  int _catalogGridColumns = ProductDisplaySettings.defaultCatalogGridColumns;
   ProductCatalogSortMode _productCatalogSortMode = ProductCatalogSortMode.defaultOrder;
   Map<SalesShortcutAction, String> _shortcutKeys =
       Map.of(SalesKeyboardShortcutsSettings.defaults);
@@ -84,6 +85,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final drawerPrinterTarget = await PrinterSettings.cashDrawerPrinterTarget();
       final salesMode = await DesktopSalesLayoutSettings.getMode();
       final showSku = await ProductDisplaySettings.getShowSkuInTitle();
+      final gridCols = await ProductDisplaySettings.getCatalogGridColumns();
       final productSort = await ProductCatalogSortSettings.getMode();
       final shortcutKeys = await SalesKeyboardShortcutsSettings.loadAll();
       if (!mounted) return;
@@ -103,6 +105,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _cashDrawerPrinterTarget = drawerPrinterTarget;
         _salesLayoutMode = salesMode;
         _showSkuInProductTitle = showSku;
+        _catalogGridColumns = gridCols;
         _productCatalogSortMode = productSort;
         _shortcutKeys = shortcutKeys;
         _loading = false;
@@ -167,11 +170,13 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
 
   Future<void> _saveProductDisplay() async {
     await ProductDisplaySettings.setShowSkuInTitle(_showSkuInProductTitle);
+    await ProductDisplaySettings.setCatalogGridColumns(_catalogGridColumns);
     await ProductCatalogSortSettings.setMode(_productCatalogSortMode);
     if (!mounted) return;
     AppNotify.success(
       context,
       'Mahsulot sozlamalari saqlandi — '
+      '$_catalogGridColumns ta ustun, '
       '${ProductCatalogSortSettings.modeLabel(_productCatalogSortMode)}',
     );
   }
@@ -731,6 +736,66 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 value: _showSkuInProductTitle,
                 activeColor: AppTheme.primary,
                 onChanged: (v) => setState(() => _showSkuInProductTitle = v),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Qatorda nechta mahsulot',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Desktop sotuv bo‘limida bir qatorda nechta kartochka turishi. '
+                'Masshtab (zoom) o‘zgartirilganda ham shu tartib saqlanadi.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  IconButton.filledTonal(
+                    tooltip: 'Kamaytirish',
+                    onPressed: _catalogGridColumns <= ProductDisplaySettings.minCatalogGridColumns
+                        ? null
+                        : () => setState(() => _catalogGridColumns--),
+                    icon: const Icon(Icons.remove_rounded),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 120,
+                    child: AppDropdownField<int>(
+                      label: 'Ustunlar',
+                      value: _catalogGridColumns,
+                      variant: AppDropdownVariant.compact,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      items: [
+                        for (var i = ProductDisplaySettings.minCatalogGridColumns;
+                            i <= ProductDisplaySettings.maxCatalogGridColumns;
+                            i++)
+                          appDropdownItem(value: i, label: '$i ta'),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _catalogGridColumns = v);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'Ko‘paytirish',
+                    onPressed: _catalogGridColumns >= ProductDisplaySettings.maxCatalogGridColumns
+                        ? null
+                        : () => setState(() => _catalogGridColumns++),
+                    icon: const Icon(Icons.add_rounded),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    '$_catalogGridColumns ta / qator',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
               const Text(
