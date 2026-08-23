@@ -5,6 +5,7 @@ import '../core/input_formatters.dart';
 import '../providers/sales_session_provider.dart';
 import '../services/api_service.dart';
 import '../services/app_data_sync.dart';
+import '../services/sales_list_refresh.dart';
 import 'tolovsiz_payment.dart';
 
 /// Chek orqali qaytarish — [SALES_RETURNS_API.md] (web = desktop).
@@ -172,6 +173,7 @@ class SalesReturnFlow {
 
     final res = await SalesApi.storeSale(body);
     unawaited(AppDataSync.afterStockChangingWrite());
+    SalesListRefresh.notifyChanged();
     return res;
   }
 

@@ -9,6 +9,7 @@ import '../providers/sales_session_provider.dart';
 import '../services/api_service.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/reports_repository.dart';
+import '../services/sales_list_refresh.dart';
 import '../utils/current_employee_sales_filter.dart';
 import '../utils/hold_orders_response.dart';
 import '../utils/invoice_edit_flow.dart';
@@ -50,6 +51,10 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   String _employeeFilterName = '';
   bool _isRestaurantDesktop = false;
   int? _statusBusyOrderId;
+  int _seenSalesListRevision = 0;
+
+  /// Tab/panel ochilganda qayta so‘rov — 429 dan himoya (2 daqiqa emas).
+  static const _visibleRefreshMinInterval = Duration(seconds: 8);
 
   bool get _filterByEmployee =>
       widget.filterByCurrentEmployee || isDesktopPosLayout;
@@ -58,23 +63,49 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
 
   bool get _showKitchenQueue => _desktop && _isRestaurantDesktop;
 
+  bool get _isVisible => widget.currentIndex == widget.tabIndex;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _seenSalesListRevision = SalesListRefresh.revision.value;
+    SalesListRefresh.revision.addListener(_onSalesListRevision);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isVisible) {
+        _load(force: true);
+      } else {
+        _load(force: false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    SalesListRefresh.revision.removeListener(_onSalesListRevision);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSalesListRevision() {
+    if (!mounted) return;
+    final rev = SalesListRefresh.revision.value;
+    if (rev == _seenSalesListRevision) return;
+    _seenSalesListRevision = rev;
+    if (_isVisible) {
+      _load(force: true);
+    } else {
+      // Keyingi ochilishda majburiy yangilash.
+      ApiSyncThrottle.invalidate(SalesListRefresh.throttleKey);
+    }
   }
 
   @override
   void didUpdateWidget(covariant TranzaksiyalarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentIndex != widget.tabIndex && widget.currentIndex == widget.tabIndex) {
-      _load(force: false);
+    final becameVisible =
+        oldWidget.currentIndex != widget.tabIndex && widget.currentIndex == widget.tabIndex;
+    if (becameVisible) {
+      _load(force: true);
     }
   }
 
@@ -97,27 +128,42 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   }
 
   Future<void>? _loadInFlight;
+  bool _loadInFlightForced = false;
 
   Future<void> _load({bool force = false}) async {
-    if (_loadInFlight != null) return _loadInFlight;
-    if (!force &&
-        !ApiSyncThrottle.shouldRun('transactions_sales_list', const Duration(minutes: 2))) {
+    if (_loadInFlight != null) {
+      // Kuchliroq so‘rov (to‘lov / tab ochilishi) kutayotgan yumshoq so‘rovni almashtirmaydi —
+      // tugagach qayta chaqiramiz.
+      if (force && !_loadInFlightForced) {
+        await _loadInFlight;
+        if (!mounted) return;
+        return _load(force: true);
+      }
+      return _loadInFlight;
+    }
+
+    final minInterval = force ? _visibleRefreshMinInterval : const Duration(minutes: 2);
+    if (!ApiSyncThrottle.shouldRun(SalesListRefresh.throttleKey, minInterval)) {
       return;
     }
-    if (!force) ApiSyncThrottle.markRan('transactions_sales_list');
+
     final future = _loadApiSales();
     _loadInFlight = future;
+    _loadInFlightForced = force;
     try {
       await future;
     } finally {
-      if (identical(_loadInFlight, future)) _loadInFlight = null;
+      if (identical(_loadInFlight, future)) {
+        _loadInFlight = null;
+        _loadInFlightForced = false;
+      }
     }
     if (!mounted) return;
     setState(() {});
   }
 
   @override
-  Future<void> onDesktopShellSync() => _load(force: false);
+  Future<void> onDesktopShellSync() => _load(force: true);
 
   /// POST /api/v1/reports/sales — so'nggi 30 kun yoki searchValue bo'lsa qidiruv
   Future<void> _loadApiSales({String? searchValue}) async {
@@ -187,8 +233,9 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       }
       _apiSales = mapped;
       _apiError = null;
+      ApiSyncThrottle.markRan(SalesListRefresh.throttleKey);
     }
-    // 429 / tarmoq: avvalgi ro‘yxatni o‘chirmaymiz.
+    // 429 / tarmoq: avvalgi ro‘yxatni o‘chirmaymiz va throttle belgilamaymiz.
     if (_desktop) {
       final mode = await DesktopSalesLayoutSettings.getMode();
       _isRestaurantDesktop = mode == DesktopSalesLayoutMode.restaurant;
@@ -670,23 +717,19 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
         builder: (_) => ApiChekDetailScreen(sale: sale, invoiceDetail: detail, invoiceLoadError: loadError),
       ),
     );
-    if (returned == true && mounted) _loadApiSales();
+    if (returned == true && mounted) {
+      SalesListRefresh.notifyChanged();
+    }
   }
 
   Future<void> _startEditSale(BuildContext context, Map<String, dynamic> sale) async {
     final ok = await InvoiceEditFlow.startFullEdit(context, sale);
-    if (ok && mounted) {
-      ApiSyncThrottle.invalidate('transactions_sales_list');
-    }
+    if (ok) SalesListRefresh.notifyChanged();
   }
 
   Future<void> _editSaleDate(BuildContext context, Map<String, dynamic> sale) async {
     final ok = await InvoiceEditFlow.editSaleDate(context, sale);
-    if (ok && mounted) {
-      ApiSyncThrottle.invalidate('transactions_sales_list');
-      await _loadApiSales();
-      if (mounted) setState(() {});
-    }
+    if (ok) SalesListRefresh.notifyChanged();
   }
 }
 

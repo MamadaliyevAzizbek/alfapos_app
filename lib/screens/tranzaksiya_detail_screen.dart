@@ -23,7 +23,6 @@ import '../utils/sale_store_due_amount.dart';
 import '../services/api_service.dart';
 import '../services/app_data_sync.dart';
 import '../core/api_client.dart';
-import '../core/api_sync_throttle.dart';
 import '../utils/receipt_row_builder.dart';
 import '../widgets/receipt_widget.dart';
 import '../widgets/ios_style_modals.dart';
@@ -38,6 +37,8 @@ import '../utils/thermal_receipt_capture.dart';
 import '../utils/thermal_receipt_layout_metrics.dart';
 import '../services/printer_settings.dart';
 import '../services/desktop_sales_layout_settings.dart';
+import '../services/restaurant_queue_number.dart';
+import '../services/sales_list_refresh.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/tolovsiz_payment.dart';
 import '../utils/hold_cart_action.dart';
@@ -2011,7 +2012,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
   /// Sotuvdan keyin: katalog yangilash. Balans va qarz /sales/store + payments orqali serverda.
   Future<void> _postSaleSideEffects() async {
-    ApiSyncThrottle.invalidate('transactions_sales_list');
+    SalesListRefresh.notifyChanged();
     final saleClient = _client;
     try {
       await AppDataSync.afterStockChangingWrite();
