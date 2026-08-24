@@ -1986,15 +1986,17 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
         });
       }
     }
+    final autoPrint = await PrinterSettings.isAutoPrintEnabled();
+    if (!autoPrint || !mounted) return;
+    final ready = await PrinterSettings.isPrinterReady();
+    if (!ready || !mounted) return;
     if (widget.useDesktopFullscreenLayout) {
-      final autoPrint = await PrinterSettings.isAutoPrintEnabled();
-      if (!autoPrint || !mounted) return;
-      final ready = await PrinterSettings.isPrinterReady();
-      if (!ready || !mounted) return;
       final printed = await _printThermalReceipt(silent: true);
       if (printed && mounted) {
         _finishDesktopPaymentFlow();
       }
+    } else {
+      await _printThermalReceipt(silent: true);
     }
   }
 

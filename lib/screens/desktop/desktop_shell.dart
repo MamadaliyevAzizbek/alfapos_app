@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/user_permissions.dart';
 import '../../services/api_service.dart';
 import '../../services/app_data_sync.dart';
+import '../../services/mobile_printer_relay.dart';
 import '../../widgets/auth_network_image.dart';
 import '../../utils/pos_navigation.dart';
 import 'desktop_shell_scope.dart';
@@ -13,11 +14,11 @@ import 'asosiy_desktop_screen.dart';
 import '../savatcha_screen.dart';
 import '../tranzaksiyalar_screen.dart';
 import '../xarajatlar_screen.dart';
+import '../katalog_screen.dart';
 import 'sozlamalar_desktop_screen.dart';
 
 /// Desktop: chap sidebar + asosiy kontent.
-/// Faqat sotuv uchun: Statistika, Sotuv, Xarajatlar, Tranzaksiyalar, Sozlamalar.
-/// Mijozlar / Mahsulotlar / Kirimlar / Hisobotlar — web orqali.
+/// Statistika, Sotuv, Mahsulotlar, Xarajatlar, Tranzaksiyalar, Sozlamalar.
 class DesktopShell extends StatefulWidget {
   final VoidCallback? onLogout;
 
@@ -36,14 +37,15 @@ class _DesktopShellState extends State<DesktopShell> {
   static const _sectionTitles = [
     'Statistika',
     "Sotuv bo'limi",
+    'Mahsulotlar',
     'Xarajatlar',
     'Tranzaksiyalar',
     'Sozlamalar',
   ];
 
   static const int salesSectionIndex = 1;
-  static const int transactionsSectionIndex = 3;
-  static const int _sectionCount = 5;
+  static const int transactionsSectionIndex = 4;
+  static const int _sectionCount = 6;
 
   @override
   void initState() {
@@ -59,6 +61,7 @@ class _DesktopShellState extends State<DesktopShell> {
 
   @override
   void dispose() {
+    MobilePrinterRelay.stop();
     if (PosNavigation.openSalesSection != null) {
       PosNavigation.openSalesSection = null;
     }
@@ -101,14 +104,16 @@ class _DesktopShellState extends State<DesktopShell> {
           onGlobalSync: _onGlobalSync,
         );
       case 2:
-        return const XarajatlarScreen();
+        return const KatalogScreen();
       case 3:
+        return const XarajatlarScreen();
+      case 4:
         return TranzaksiyalarScreen(
           tabIndex: transactionsSectionIndex,
           currentIndex: _index,
           filterByCurrentEmployee: true,
         );
-      case 4:
+      case 5:
         return const SozlamalarDesktopScreen();
       default:
         return const SizedBox.shrink();
@@ -286,6 +291,7 @@ class _DesktopSidebar extends StatelessWidget {
   static const _items = [
     (LucideIcons.layout_dashboard, 'Statistika'),
     (LucideIcons.shopping_cart, "Sotuv bo'limi"),
+    (LucideIcons.package, 'Mahsulotlar'),
     (LucideIcons.wallet, 'Xarajatlar'),
     (LucideIcons.arrow_left_right, 'Tranzaksiyalar'),
     (LucideIcons.settings, 'Sozlamalar'),

@@ -12,11 +12,13 @@ import '../services/api_service.dart';
 import '../services/app_data_sync.dart';
 import '../utils/platform_layout.dart';
 import '../widgets/social_icons.dart';
+import 'barcode_print_queue_screen.dart';
 import 'inventarizatsiya_screen.dart';
 import 'kirimlar_screen.dart';
 import 'mijozlar_screen.dart';
 import 'sozlamalar_screen.dart';
 import 'taminotchilar_screen.dart';
+import 'mobile_printer_settings_screen.dart';
 import 'xarajatlar_screen.dart';
 
 /// Foydalanuvchi kartasi uchun ism va telefon.
@@ -222,13 +224,27 @@ class _MenuScreenState extends State<MenuScreen> {
                 label: Strings.kirimlar,
                 onTap: () => _open(const KirimlarScreen()),
               ),
+              if (!isDesktopPosLayout)
+                _MenuRow(
+                  icon: LucideIcons.barcode,
+                  label: Strings.barcodeChopEtish,
+                  onTap: () => _open(const BarcodePrintQueueScreen()),
+                ),
               if (UserPermissionsStore.instance.canAccessInventory)
                 _MenuRow(
                   icon: LucideIcons.clipboard_check,
                   label: Strings.inventarizatsiya,
                   onTap: () => _open(const InventarizatsiyaScreen()),
                 ),
-              // Sozlamalar faqat desktop POS da — mobilda printer/klaviatura sozlamalari kerak emas.
+              if (!isDesktopPosLayout)
+                _MenuRow(
+                  icon: LucideIcons.printer,
+                  label: 'Printer sozlamalari',
+                  onTap: () => _open(
+                    const MobilePrinterSettingsScreen(),
+                    rootNavigator: true,
+                  ),
+                ),
               if (isDesktopPosLayout)
                 _MenuRow(
                   icon: LucideIcons.settings,

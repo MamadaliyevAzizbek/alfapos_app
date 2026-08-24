@@ -97,6 +97,7 @@ class Strings {
   static const sotuvchiIsmFamiliya = "Sotuvchi (ism, familiya)";
   static const sotuvchiIsmFamiliyaHint = "Masalan: Azizbek Mamadaliyev";
   static const kirimlar = "Kirimlar";
+  static const barcodeChopEtish = "Shtrix kod chop etish";
   static const xarajatlar = "Xarajatlar";
   static const yangiXarajat = "Yangi xarajat";
   static const xarajatNomi = "Xarajat nomi";

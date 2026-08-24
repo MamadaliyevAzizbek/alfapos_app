@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
-import 'thermal_receipt_printer.dart';
+import 'thermal_print_result.dart';
 
 /// ESC/POS baytlarini tizim printeriga RAW rejimda yuborish.
 class RawPrinterSend {

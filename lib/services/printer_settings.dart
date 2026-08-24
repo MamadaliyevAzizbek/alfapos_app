@@ -1,5 +1,12 @@
+import 'dart:io';
+
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'escpos_receipt_builder.dart';
+import 'network_printer_send.dart';
+import 'network_printer_settings.dart';
 import 'thermal_receipt_printer.dart';
 
 /// Naqd pul yig‘ish qutisi (cash drawer) ulangan port.
@@ -24,6 +31,8 @@ class PrinterSettings {
   static const _secondaryPrinterEnabledKey = 'thermal_secondary_printer_enabled_v1';
   static const _secondaryPrinterNameKey = 'thermal_secondary_printer_name_v1';
   static const _cashDrawerPrinterTargetKey = 'thermal_cash_drawer_printer_target_v1';
+  /// Desktop: shtrix yorliq printeri (sotuv cheki printeridan alohida).
+  static const _barcodeLabelPrinterNameKey = 'barcode_label_printer_name_v1';
   static bool? _autoPrintCache;
   static bool? _cashDrawerCache;
   static CashDrawerPin? _cashDrawerPinCache;
@@ -31,6 +40,7 @@ class PrinterSettings {
   static String? _printerNameCache;
   static bool? _secondaryPrinterEnabledCache;
   static String? _secondaryPrinterNameCache;
+  static String? _barcodeLabelPrinterNameCache;
 
   /// To'lov oynasi ochilganda — keyingi chop etish SharedPreferences kutmaydi.
   static Future<void> preload() async {
@@ -48,6 +58,15 @@ class PrinterSettings {
     _secondaryPrinterNameCache = prefs.getString(_secondaryPrinterNameKey)?.trim();
     if (_secondaryPrinterNameCache != null && _secondaryPrinterNameCache!.isEmpty) {
       _secondaryPrinterNameCache = null;
+    }
+    _barcodeLabelPrinterNameCache = prefs.getString(_barcodeLabelPrinterNameKey)?.trim();
+    if (_barcodeLabelPrinterNameCache != null && _barcodeLabelPrinterNameCache!.isEmpty) {
+      _barcodeLabelPrinterNameCache = null;
+    }
+    await NetworkPrinterSettings.load();
+    // Mobil: ESC/POS profil yuklamasdan — faqat relay/TSPL; tezroq ochiladi.
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      return;
     }
     await ThermalReceiptPrinter.warmup();
   }
@@ -96,6 +115,29 @@ class PrinterSettings {
       _secondaryPrinterNameCache = name.trim();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_secondaryPrinterNameKey, name.trim());
+    }
+  }
+
+  /// Shtrix kod yorlig‘i uchun alohida printer (chek printeriga aralashmaydi).
+  static Future<String?> barcodeLabelPrinterName() async {
+    final cached = _barcodeLabelPrinterNameCache?.trim();
+    if (cached != null && cached.isNotEmpty) return cached;
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_barcodeLabelPrinterNameKey)?.trim();
+    if (name == null || name.isEmpty) return null;
+    _barcodeLabelPrinterNameCache = name;
+    return name;
+  }
+
+  static Future<void> setBarcodeLabelPrinterName(String? name) async {
+    if (name == null || name.trim().isEmpty) {
+      _barcodeLabelPrinterNameCache = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_barcodeLabelPrinterNameKey);
+    } else {
+      _barcodeLabelPrinterNameCache = name.trim();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_barcodeLabelPrinterNameKey, name.trim());
     }
   }
 
@@ -198,6 +240,9 @@ class PrinterSettings {
   }
 
   static Future<bool> isPrinterReady() async {
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      return NetworkPrinterSettings.isConfigured();
+    }
     final cached = _printerNameCache?.trim();
     if (cached != null && cached.isNotEmpty) return true;
     final name = await selectedPrinterName();
@@ -208,4 +253,26 @@ class PrinterSettings {
   static Future<List<String>> discoverPrinters() => ThermalReceiptPrinter.discoverPrinterNames();
 
   static Future<ThermalPrintResult> testPrint() => ThermalReceiptPrinter.printTestReceipt();
+
+  /// WiFi printer orqali naqd qutisini ochish (mobil sozlamalar).
+  static Future<ThermalPrintResult> openCashDrawerViaNetwork() async {
+    final endpoint = await NetworkPrinterSettings.activeEndpoint();
+    if (endpoint == null) {
+      return ThermalPrintResult.fail('WiFi printer sozlanmagan');
+    }
+    final pin = await cashDrawerPin();
+    final posPin = pin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
+    final pulse = await EscPosReceiptBuilder.buildCashDrawerPulse(cashDrawerPin: posPin);
+    return NetworkPrinterSend.send(
+      pulse,
+      host: endpoint.host,
+      port: endpoint.port,
+    );
+  }
+
+  static Future<ThermalPrintResult> testNetworkConnection({
+    required String host,
+    required int port,
+  }) =>
+      NetworkPrinterSend.testConnection(host: host, port: port);
 }

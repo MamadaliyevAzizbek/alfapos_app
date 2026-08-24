@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/app_notify.dart';
 import '../../core/theme.dart';
 import 'dart:io' show Platform;
@@ -6,6 +7,8 @@ import 'dart:io' show Platform;
 import '../../core/desktop_runtime.dart';
 import '../../models/receipt_design_config.dart';
 import '../../services/local_receipt_sample.dart';
+import '../../services/mobile_printer_relay.dart';
+import '../../services/mobile_printer_relay_settings.dart';
 import '../../services/printer_settings.dart';
 import '../../services/product_catalog_sort_settings.dart';
 import '../../services/product_display_settings.dart';
@@ -14,6 +17,7 @@ import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
 import '../../widgets/app_dropdown.dart';
 import '../../widgets/receipt_lines_preview.dart';
+import '../../utils/local_network_ip.dart';
 import 'desktop_shell_scope.dart';
 import 'receipt_design_editor_panel.dart';
 import 'restaurant_tv_screen.dart';
@@ -43,12 +47,16 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   String? _selected;
   bool _secondaryPrinterEnabled = false;
   String? _secondarySelected;
+  String? _barcodeLabelSelected;
   bool _autoPrint = true;
   bool _openCashDrawerOnPrint = true;
   CashDrawerPin _cashDrawerPin = CashDrawerPin.pin2;
   CashDrawerPrinterTarget _cashDrawerPrinterTarget = CashDrawerPrinterTarget.primary;
   bool _loading = true;
   bool _testing = false;
+  bool _mobileRelayEnabled = true;
+  int _mobileRelayPort = MobilePrinterRelaySettings.defaultPort;
+  String? _localIp;
 
   List<String> _sampleLines = [];
   List<String> _restaurantSampleLines = [];
@@ -79,6 +87,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final selected = await PrinterSettings.selectedPrinterName();
       final secondaryEnabled = await PrinterSettings.isSecondaryPrinterEnabled();
       final secondarySelected = await PrinterSettings.secondaryPrinterName();
+      final barcodeLabelSelected = await PrinterSettings.barcodeLabelPrinterName();
       final auto = await PrinterSettings.isAutoPrintEnabled();
       final cashDrawer = await PrinterSettings.isCashDrawerOpenOnPrintEnabled();
       final drawerPin = await PrinterSettings.cashDrawerPin();
@@ -88,6 +97,9 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final gridCols = await ProductDisplaySettings.getCatalogGridColumns();
       final productSort = await ProductCatalogSortSettings.getMode();
       final shortcutKeys = await SalesKeyboardShortcutsSettings.loadAll();
+      final relayEnabled = await MobilePrinterRelaySettings.isEnabled();
+      final relayPort = await MobilePrinterRelaySettings.getPort();
+      final localIp = await primaryLocalIpv4();
       if (!mounted) return;
       setState(() {
         _printers = names;
@@ -99,6 +111,10 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         if (_secondarySelected != null && _secondarySelected == _selected) {
           _secondarySelected = null;
         }
+        _barcodeLabelSelected =
+            barcodeLabelSelected != null && names.contains(barcodeLabelSelected)
+                ? barcodeLabelSelected
+                : null;
         _autoPrint = auto;
         _openCashDrawerOnPrint = cashDrawer;
         _cashDrawerPin = drawerPin;
@@ -108,6 +124,9 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _catalogGridColumns = gridCols;
         _productCatalogSortMode = productSort;
         _shortcutKeys = shortcutKeys;
+        _mobileRelayEnabled = relayEnabled;
+        _mobileRelayPort = relayPort;
+        _localIp = localIp;
         _loading = false;
       });
     } catch (e) {
@@ -118,11 +137,25 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
     }
   }
 
+  Future<void> _refreshLocalIp() async {
+    final localIp = await primaryLocalIpv4();
+    if (!mounted) return;
+    setState(() => _localIp = localIp);
+  }
+
+  Future<void> _onMobileRelayToggled(bool enabled) async {
+    setState(() => _mobileRelayEnabled = enabled);
+    if (enabled) {
+      await _refreshLocalIp();
+    }
+  }
+
   Future<void> _savePrinter() async {
     await PrinterSettings.setSelectedPrinterName(_selected);
     await PrinterSettings.setSecondaryPrinterEnabled(_secondaryPrinterEnabled);
     if (_secondaryPrinterEnabled) {
       if (_secondarySelected == null || _secondarySelected == _selected) {
+        if (!mounted) return;
         AppNotify.info(
           context,
           'Qo‘shimcha printer tanlang — asosiy printerdan farq qilishi kerak',
@@ -133,11 +166,19 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
     } else {
       await PrinterSettings.setSecondaryPrinterName(null);
     }
+    await PrinterSettings.setBarcodeLabelPrinterName(_barcodeLabelSelected);
     await PrinterSettings.setAutoPrintEnabled(_autoPrint);
     await PrinterSettings.setCashDrawerOpenOnPrintEnabled(_openCashDrawerOnPrint);
     await PrinterSettings.setCashDrawerPin(_cashDrawerPin);
     await PrinterSettings.setCashDrawerPrinterTarget(_cashDrawerPrinterTarget);
+    await MobilePrinterRelaySettings.setEnabled(_mobileRelayEnabled);
+    await MobilePrinterRelaySettings.setPort(_mobileRelayPort);
+    await MobilePrinterRelay.sync();
+    if (_mobileRelayEnabled) {
+      await _refreshLocalIp();
+    }
     if (!mounted) return;
+    setState(() {});
     AppNotify.success(context, 'Printer sozlamalari saqlandi');
   }
 
@@ -344,13 +385,24 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       children: [
         _sectionHeader(
           'Termal printer',
-          'Xprinter 80mm yoki boshqa termal printerni tizimga ulang, ro\'yxatdan tanlang va saqlang.',
+          'Sotuv cheki uchun Xprinter 80mm (yoki boshqa ESC/POS) printerni tanlang. '
+          'Shtrix kod yorliqlari alohida printerga chiqadi — pastdagi bo‘limda sozlang.',
         ),
         const SizedBox(height: 20),
         _card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Text(
+                'Sotuv cheki printeri',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'To‘lovdan keyin cheklar shu printerdan chiqadi.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   TextButton.icon(
@@ -385,7 +437,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
               else
                 AppDropdownField<String>(
                   label: 'Asosiy printer',
-                  hint: 'Printerni tanlang',
+                  hint: 'Chek printerini tanlang',
                   value: _selected,
                   items: _printers
                       .map((n) => appDropdownItem(value: n, label: n))
@@ -565,6 +617,197 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Shtrix kod (yorliq) printeri',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Xprinter XP-365B kabi yorliq printerini tanlang. '
+                'Shtrix kodlar faqat shu printerga chiqadi — sotuv cheki printeriga yuborilmaydi.',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.35),
+              ),
+              const SizedBox(height: 16),
+              if (_loading)
+                const SizedBox.shrink()
+              else if (_printers.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFDBA74)),
+                  ),
+                  child: const Text(
+                    'Yorliq printeri uchun avval printerni tizimga ulang, '
+                    'keyin «Printerlarni yangilash»ni bosing.',
+                    style: TextStyle(color: Color(0xFF9A3412), fontSize: 13),
+                  ),
+                )
+              else
+                AppDropdownField<String>(
+                  label: 'Shtrix kod printeri',
+                  hint: 'Yorliq printerini tanlang',
+                  value: _barcodeLabelSelected,
+                  items: _printers
+                      .map((n) => appDropdownItem(value: n, label: n))
+                      .toList(),
+                  onChanged: (v) => setState(() => _barcodeLabelSelected = v),
+                ),
+              if (_barcodeLabelSelected != null &&
+                  _selected != null &&
+                  _barcodeLabelSelected == _selected) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFDBA74)),
+                  ),
+                  child: const Text(
+                    'Diqqat: shtrix kod va sotuv cheki bir xil printerga yo‘naltirilgan. '
+                    'Alohida yorliq printeri bo‘lsa, boshqasini tanlang.',
+                    style: TextStyle(color: Color(0xFF9A3412), fontSize: 13, height: 1.35),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _savePrinter,
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('Saqlash'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Mobil telefon orqali chop etish',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Printer USB orqali shu kompyuterga ulangan bo‘lsa, telefon to‘g‘ridan-to‘g‘ri printerni emas — '
+                'shu kompyuter IP manziliga ulanadi. ALFAPOS ochiq turishi kerak.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Mobil relay (WiFi)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  MobilePrinterRelay.isRunning
+                      ? 'Faol — port $_mobileRelayPort'
+                      : MobilePrinterRelay.lastError != null
+                          ? 'Port band yoki xato: ${MobilePrinterRelay.lastError}'
+                          : 'O‘chirilgan',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                ),
+                value: _mobileRelayEnabled,
+                activeColor: AppTheme.primary,
+                onChanged: _onMobileRelayToggled,
+              ),
+              if (_mobileRelayEnabled) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: TextFormField(
+                        key: ValueKey('relay_port_$_mobileRelayPort'),
+                        initialValue: '$_mobileRelayPort',
+                        decoration: const InputDecoration(
+                          labelText: 'Port',
+                          hintText: '9100',
+                          isDense: true,
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) {
+                          final n = int.tryParse(v.trim());
+                          if (n != null) {
+                            setState(() {
+                              _mobileRelayPort = MobilePrinterRelaySettings.clampPort(n);
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Kompyuter IP (avtomatik)',
+                          isDense: true,
+                          helperText: 'WiFi/LAN manzili avtomatik topiladi — telefonga nusxalang',
+                        ),
+                        child: Text(
+                          _localIp ?? 'WiFi IP qidirilmoqda…',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: _localIp != null
+                                ? AppTheme.textPrimary
+                                : AppTheme.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'IP ni yangilash',
+                      onPressed: _refreshLocalIp,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                    if (_localIp != null)
+                      IconButton(
+                        tooltip: 'IP nusxalash',
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: _localIp!));
+                          AppNotify.success(context, 'IP nusxalandi: $_localIp');
+                        },
+                        icon: const Icon(Icons.copy_rounded),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _selected == null
+                      ? 'Avval yuqorida termal printerni tanlang — relay USB printerga yuboradi.'
+                      : _localIp == null
+                          ? 'WiFi IP topilmadi. Kompyuter WiFi/LAN ga ulanganligini tekshiring, keyin yangilash tugmasini bosing.'
+                          : 'Telefon: Menyu → Printer sozlamalari → IP: $_localIp, port: $_mobileRelayPort',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

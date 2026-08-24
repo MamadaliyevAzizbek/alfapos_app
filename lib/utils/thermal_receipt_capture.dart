@@ -10,6 +10,7 @@ Future<Uint8List> captureReceiptWidget(
   required double targetHeight,
   double targetWidth = 360,
   int lineCount = 0,
+  double pixelRatio = 3,
 }) async {
   final controller = ScreenshotController();
   final delayMs = (200 + lineCount * 3).clamp(200, 2000);
@@ -26,7 +27,7 @@ Future<Uint8List> captureReceiptWidget(
   final png = await controller.captureFromWidget(
     wrapped,
     context: context,
-    pixelRatio: 3,
+    pixelRatio: pixelRatio,
     targetSize: Size(targetWidth, targetHeight),
     delay: Duration(milliseconds: delayMs),
   );

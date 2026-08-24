@@ -137,6 +137,17 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
     }
   }
 
+  Future<void> _startEditSale(Map<String, dynamic>? invoiceDetail) async {
+    final ok = await InvoiceEditFlow.startFullEdit(
+      context,
+      widget.sale,
+      invoiceDetail: invoiceDetail,
+    );
+    if (ok && mounted && Navigator.canPop(context)) {
+      Navigator.pop(context, true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_catalogReady && !ProductsProvider.instance.isLoaded) {
@@ -379,12 +390,7 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => InvoiceEditFlow.startFullEdit(
-                    context,
-                    widget.sale,
-                    invoiceDetail: inv,
-                    popCurrentRoute: true,
-                  ),
+                  onPressed: () => _startEditSale(inv),
                   icon: const Icon(Icons.edit_rounded, size: 22),
                   label: const Text('Chekni tahrirlash'),
                   style: OutlinedButton.styleFrom(

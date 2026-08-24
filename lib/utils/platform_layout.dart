@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
-import 'package:flutter/material.dart';
 
 /// Testlar mobil va desktop ko‘rinishlarini alohida tekshirishi uchun.
 /// Testlar host (macOS) da ishlagani sabab mobil tarmoq odatda tushib qolardi.
@@ -12,7 +12,13 @@ bool? debugIsDesktopPosLayoutOverride;
 bool get isDesktopPosLayout {
   final override = debugIsDesktopPosLayoutOverride;
   if (override != null) return override;
-  if (kIsWeb) return false;
+  if (kIsWeb) {
+    // Flutter Web’da katta kenglik bo‘lsa — desktop layoutni ishlatamiz.
+    // (Aks holda mobile UI cho‘zilib va juda kichik bo‘lib qoladi.)
+    final view = ui.PlatformDispatcher.instance.views.first;
+    final logicalW = view.physicalSize.width / view.devicePixelRatio;
+    return logicalW >= 1100;
+  }
   return Platform.isWindows || Platform.isMacOS;
 }
 

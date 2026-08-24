@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 12 va past: galereyadan tanlash (Photo Picker API 33+ da ruxsatsiz) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- Play policy: bir martalik rasm tanlash uchun READ_MEDIA_* kerak emas -->

@@ -7,7 +7,7 @@ import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
 import '../../utils/customer_group_discount.dart';
-import '../../widgets/product_tile.dart';
+import '../../widgets/desktop_catalog_product_card.dart';
 import '../../widgets/restaurant_category_chips.dart';
 import '../../widgets/sales_shortcut_key_badge.dart';
 import '../../widgets/sales_pos_search_field.dart';
@@ -658,7 +658,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
                               childAspectRatio: isRestaurant ? 0.76 : 0.82,
                             ),
                             itemCount: catalogProducts.length,
-                            itemBuilder: (context, i) => _DesktopProductCard(
+                            itemBuilder: (context, i) => DesktopCatalogProductCard(
                               key: ValueKey(catalogProducts[i].id),
                               product: catalogProducts[i],
                               usdRate: usdExchangeRate,
@@ -1051,149 +1051,6 @@ class SavatchaDesktopLayout extends StatelessWidget {
       child: tooltip != null ? Tooltip(message: tooltip, child: content) : content,
     );
   }
-}
-
-class _DesktopProductCard extends StatelessWidget {
-  final Product product;
-  final double usdRate;
-  final String? catalogSellPriceType;
-  final bool showPurchasePrice;
-  final bool showUsdEquivalent;
-  final bool showSkuInTitle;
-  final bool compact;
-  final VoidCallback onTap;
-
-  const _DesktopProductCard({
-    super.key,
-    required this.product,
-    required this.usdRate,
-    this.catalogSellPriceType,
-    this.showPurchasePrice = false,
-    this.showUsdEquivalent = false,
-    this.showSkuInTitle = false,
-    this.compact = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final qty = product.availableStockQuantity;
-    final primary = CatalogProductPriceLabel.primary(
-      product,
-      sellType: catalogSellPriceType,
-      usdRate: usdRate,
-      showUsdEquivalent: showUsdEquivalent,
-    );
-    final purchase = showPurchasePrice ? CatalogProductPriceLabel.purchaseLine(product) : null;
-
-    return Material(
-      color: Colors.white,
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: SavatchaDesktopLayout._sharp,
-        side: BorderSide(color: AppTheme.divider),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return ProductTile.buildProductImageCover(
-                    product,
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                compact ? 6 : 8,
-                compact ? 4 : 6,
-                compact ? 6 : 8,
-                compact ? 6 : 8,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.inventory_2_outlined,
-                        size: compact ? 12 : 14,
-                        color: AppTheme.textSecondary,
-                      ),
-                      SizedBox(width: compact ? 3 : 4),
-                      Expanded(
-                        child: Text(
-                          showSkuInTitle ? product.nameWithSku : product.name,
-                          maxLines: compact ? 1 : 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: compact ? 10 : 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                            height: 1.15,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: compact ? 4 : 6),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CatalogProductPriceLabel.text(
-                              primary,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: compact ? 11 : 14,
-                                fontWeight: FontWeight.w700,
-                                color: SavatchaDesktopLayout._priceGreen,
-                              ),
-                            ),
-                            if (purchase != null)
-                              Text(
-                                purchase,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: compact ? 9 : 10,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '$qty',
-                        style: TextStyle(
-                          fontSize: compact ? 10 : 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
 }
 
 class _DesktopCartLine extends StatefulWidget {

@@ -12,11 +12,15 @@ import '../models/receipt_design_config.dart';
 import '../utils/api_receipt_html_parser.dart';
 import '../utils/thermal_bitmap.dart';
 import 'api_service.dart';
-import '../utils/thermal_receipt_formatter.dart';
 import 'escpos_receipt_builder.dart';
+import 'network_printer_send.dart';
+import 'network_printer_settings.dart';
+import 'network_receipt_png_renderer.dart';
 import 'printer_settings.dart';
 import 'receipt_design_storage.dart';
 import 'raw_printer_send.dart';
+import 'thermal_print_result.dart';
+export 'thermal_print_result.dart';
 
 /// Termal printer (Xprinter 80mm va h.k.) orqali chek chop etish.
 class ThermalReceiptPrinter {
@@ -60,9 +64,17 @@ class ThermalReceiptPrinter {
     if (lines.isEmpty) {
       return ThermalPrintResult.fail('Chek matni bo\'sh');
     }
+    if (_supportsNetworkPrint && await NetworkPrinterSettings.isConfigured()) {
+      return _printEscPosLines(
+        lines,
+        directOnly: directOnly,
+        openCashDrawer: openCashDrawer,
+        design: design,
+      );
+    }
     if (!Platform.isWindows && !Platform.isMacOS) {
       return ThermalPrintResult.fail(
-        'Termal chop etish faqat Windows yoki macOS desktop ilovasida',
+        'Printer sozlanmagan. Menyu → Printer sozlamalari.',
       );
     }
     return _printEscPosLines(
@@ -126,12 +138,23 @@ class ThermalReceiptPrinter {
     ]);
   }
 
+  static bool get _supportsNetworkPrint =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
   static Future<ThermalPrintResult> _printEscPosLines(
     List<String> lines, {
     bool directOnly = false,
     bool? openCashDrawer,
     ReceiptDesignConfig? design,
   }) async {
+    if (_supportsNetworkPrint && await NetworkPrinterSettings.isConfigured()) {
+      return _printEscPosLinesViaNetwork(
+        lines,
+        openCashDrawer: openCashDrawer,
+        design: design,
+      );
+    }
+
     final totalSw = Stopwatch()..start();
     final printer =
         await savedPrinterName() ?? await _resolveSystemPrinterName();
@@ -200,6 +223,64 @@ class ThermalReceiptPrinter {
       );
     }
     return result;
+  }
+
+  static Future<ThermalPrintResult> _printEscPosLinesViaNetwork(
+    List<String> lines, {
+    bool? openCashDrawer,
+    ReceiptDesignConfig? design,
+  }) async {
+    final endpoint = await NetworkPrinterSettings.activeEndpoint();
+    if (endpoint == null) {
+      return ThermalPrintResult.fail(
+        'WiFi printer sozlanmagan. Menyu → Printer sozlamalari.',
+      );
+    }
+
+    final drawerSettings = await Future.wait([
+      openCashDrawer != null
+          ? Future<bool>.value(openCashDrawer)
+          : PrinterSettings.isCashDrawerOpenOnPrintEnabled(),
+      PrinterSettings.cashDrawerPin(),
+    ]);
+    final drawerEnabled = drawerSettings[0] as bool;
+    final drawerPin = drawerSettings[1] as CashDrawerPin;
+    final posPin =
+        drawerPin == CashDrawerPin.pin5 ? PosDrawer.pin5 : PosDrawer.pin2;
+
+    final useRelay = await NetworkPrinterSettings.usesComputerRelay();
+
+    if (drawerEnabled && !useRelay) {
+      final pulse = await EscPosReceiptBuilder.buildCashDrawerPulse(
+        cashDrawerPin: posPin,
+      );
+      await NetworkPrinterSend.send(
+        pulse,
+        host: endpoint.host,
+        port: endpoint.port,
+      );
+    }
+
+    if (useRelay) {
+      final png = await NetworkReceiptPngRenderer.render(lines, design: design);
+      return NetworkPrinterSend.send(
+        png,
+        host: endpoint.host,
+        port: endpoint.port,
+      );
+    }
+
+    final receiptBytes = await _buildEscPosBytes(
+      lines,
+      openCashDrawer: false,
+      design: design,
+    );
+
+    return NetworkPrinterSend.send(
+      receiptBytes,
+      host: endpoint.host,
+      port: endpoint.port,
+    );
   }
 
   static ThermalPrintResult _combinePrintResults(
@@ -617,12 +698,3 @@ class ThermalHtmlExtract {
   const ThermalHtmlExtract({required this.html, required this.source});
 }
 
-class ThermalPrintResult {
-  final bool ok;
-  final String message;
-
-  const ThermalPrintResult._(this.ok, this.message);
-
-  factory ThermalPrintResult.ok(String message) => ThermalPrintResult._(true, message);
-  factory ThermalPrintResult.fail(String message) => ThermalPrintResult._(false, message);
-}

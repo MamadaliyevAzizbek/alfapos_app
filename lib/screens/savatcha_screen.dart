@@ -23,6 +23,7 @@ import '../widgets/product_tile.dart';
 import 'tranzaksiya_detail_screen.dart';
 import 'scanner_screen.dart' show showCompactScanner;
 import '../utils/barcode_product_lookup.dart';
+import '../utils/barcode_label_print_flow.dart' deferred as barcode_print;
 import '../utils/product_catalog_filter.dart';
 import '../utils/product_search.dart' as product_search;
 import '../utils/platform_layout.dart';
@@ -1178,6 +1179,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                                     _searchController.clear();
                                     setState(() => _query = '');
                                   },
+                                  onLongPress: p.hasBarcodeForPrint
+                                      ? () => _runBarcodeLabelPrint(p)
+                                      : null,
                                   showBarcode: false,
                                   showMenu: false,
                                 );
@@ -1409,6 +1413,12 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       return 'Dona — ${product.priceFormatted}';
     }
     return 'Dona — ${formatThousands(product.pieceSellPriceNum.round())} so\'m';
+  }
+
+  Future<void> _runBarcodeLabelPrint(Product product) async {
+    await barcode_print.loadLibrary();
+    if (!mounted) return;
+    await barcode_print.runBarcodeLabelPrintFlow(context, product);
   }
 
   void _addProductToCart(Product product, {num quantity = 1}) {

@@ -34,6 +34,13 @@
 	<string>Mahsulot rasmini galereyadan tanlash uchun Fotolar ilovasiga kirish kerak</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Sotuv chekini Fotolar ilovasiga saqlash uchun ruxsat kerak</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>WiFi termal printerga chek yuborish uchun mahalliy tarmoqga ulanish kerak</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ipp._tcp</string>
+		<string>_printer._tcp</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

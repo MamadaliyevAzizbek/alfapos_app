@@ -93,6 +93,17 @@ class Product {
 
   bool get hasStock => availableStockQuantity > 0;
 
+  /// Yorliq chop etish uchun haqiqiy shtrix kod borligi (SKU/PLU emas).
+  bool get hasBarcodeForPrint {
+    if ((barcode ?? '').trim().isNotEmpty) return true;
+    final extra = additionalBarcodes;
+    if (extra == null) return false;
+    for (final code in extra) {
+      if (code.trim().isNotEmpty) return true;
+    }
+    return false;
+  }
+
   /// Sotuv katalog kartochkasi: «Nomi - SKU» (SKU bo‘lmasa faqat nom).
   String get nameWithSku {
     final s = (sku ?? '').trim();

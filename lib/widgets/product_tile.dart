@@ -11,6 +11,7 @@ import 'auth_network_image.dart';
 class ProductTile extends StatelessWidget {
   final Product product;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final VoidCallback? onMenu;
   final bool showBarcode;
   final bool showMenu;
@@ -24,6 +25,7 @@ class ProductTile extends StatelessWidget {
     super.key,
     required this.product,
     this.onTap,
+    this.onLongPress,
     this.onMenu,
     this.showBarcode = true,
     this.showMenu = true,
@@ -133,6 +135,7 @@ class ProductTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(8),

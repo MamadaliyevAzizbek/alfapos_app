@@ -944,6 +944,13 @@ class _DesktopSaleRow extends StatelessWidget {
                   child: (showEditButton || showDateEditButton)
                       ? PopupMenuButton<String>(
                           tooltip: 'Amallar',
+                          color: Colors.white,
+                          elevation: 8,
+                          surfaceTintColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: AppTheme.divider),
+                          ),
                           icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 22),
                           onSelected: (value) {
                             if (value == 'edit') onEdit?.call();

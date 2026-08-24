@@ -10,6 +10,7 @@ void main() {
     await PrinterSettings.setSelectedPrinterName(null);
     await PrinterSettings.setSecondaryPrinterEnabled(false);
     await PrinterSettings.setSecondaryPrinterName(null);
+    await PrinterSettings.setBarcodeLabelPrinterName(null);
   });
 
   test('cash drawer opens on print by default', () async {
@@ -63,5 +64,18 @@ void main() {
       await PrinterSettings.activePrinterNames(),
       ['Kassa XP-80'],
     );
+  });
+
+  test('barcode label printer is separate from receipt printer', () async {
+    await PrinterSettings.setSelectedPrinterName('Kassa XP-80');
+    expect(await PrinterSettings.barcodeLabelPrinterName(), isNull);
+
+    await PrinterSettings.setBarcodeLabelPrinterName('Xprinter_XP_365B');
+    expect(await PrinterSettings.barcodeLabelPrinterName(), 'Xprinter_XP_365B');
+    expect(await PrinterSettings.selectedPrinterName(), 'Kassa XP-80');
+
+    await PrinterSettings.setBarcodeLabelPrinterName(null);
+    expect(await PrinterSettings.barcodeLabelPrinterName(), isNull);
+    expect(await PrinterSettings.selectedPrinterName(), 'Kassa XP-80');
   });
 }
