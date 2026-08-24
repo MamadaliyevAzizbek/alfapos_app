@@ -14,8 +14,9 @@ String windowsNetworkHelpText({String? detail}) {
     ..writeln('Windows tarmoq yordami:')
     ..writeln('1. «Boshqaruv paneli» → «Windows Defender Firewall» → «Ilova ruxsatlari»')
     ..writeln('2. «Alfapos» yoki «alfapos_app» uchun «Private» va «Public» tarmoqni yoqing')
-    ..writeln('3. Antivirus / VPN / korporativ proksi vaqtincha o‘chirib sinab ko‘ring')
-    ..writeln('4. Kompyuter vaqti to‘g‘ri ekanligini tekshiring (SSL uchun muhim)');
+    ..writeln('3. Mobil relay: kirish (inbound) TCP 9100 ruxsat berilgan bo‘lishi kerak')
+    ..writeln('4. Antivirus / VPN / korporativ proksi vaqtincha o‘chirib sinab ko‘ring')
+    ..writeln('5. Kompyuter vaqti to‘g‘ri ekanligini tekshiring (SSL uchun muhim)');
   if (detail != null && detail.trim().isNotEmpty) {
     buf.writeln('\nTexnik: $detail');
   }

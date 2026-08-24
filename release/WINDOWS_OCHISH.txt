@@ -18,4 +18,12 @@ Agar tarmoq xatosi chiqsa:
 - VPN/proksini o'chiring
 - windows\scripts\allow_alfapos_firewall.ps1 ni administrator sifatida ishga tushiring
 
+Telefon orqali chop etish (Mobil relay):
+1. AlfaPOS ochiq, Sozlamalar → Termal printer → «Mobil relay» Faol (port 9100).
+2. Firewall skripti inbound TCP 9100 ni ham ochadi (telefon → kompyuter).
+3. Telefon va kompyuter BIR XIL WiFi da.
+4. Telefonda: Printer sozlamalari → WiFi yoqilgan → «Kompyuter relay» →
+   desktopdagi IP + port 9100 → Saqlash → Ulanishni tekshirish.
+5. Agar «Printer topilmadi» chiqsa — firewall inbound 9100 yoki WiFi izolatsiyasi.
+
 Versiya: pubspec.yaml dagi version maydoni.

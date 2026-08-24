@@ -705,10 +705,15 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Printer USB orqali shu kompyuterga ulangan bo‘lsa, telefon to‘g‘ridan-to‘g‘ri printerni emas — '
-                'shu kompyuter IP manziliga ulanadi. ALFAPOS ochiq turishi kerak.',
-                style: TextStyle(
+              Text(
+                Platform.isWindows
+                    ? 'Printer USB orqali shu kompyuterga ulangan bo‘lsa, telefon shu IP ga ulanadi. '
+                        'ALFAPOS ochiq va «Mobil relay» Faol bo‘lishi kerak. '
+                        'Agar telefon «topilmadi» desa — Windows Firewall da inbound TCP 9100 '
+                        '(allow_alfapos_firewall.ps1) ni ishga tushiring.'
+                    : 'Printer USB orqali shu kompyuterga ulangan bo‘lsa, telefon to‘g‘ridan-to‘g‘ri printerni emas — '
+                        'shu kompyuter IP manziliga ulanadi. ALFAPOS ochiq turishi kerak.',
+                style: const TextStyle(
                   fontSize: 13,
                   color: AppTheme.textSecondary,
                   height: 1.4,

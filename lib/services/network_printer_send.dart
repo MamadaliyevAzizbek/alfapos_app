@@ -77,16 +77,20 @@ class NetworkPrinterSend {
     if (msg.contains('network is unreachable') ||
         msg.contains('no route to host') ||
         msg.contains('host is down')) {
-      return 'Printer topilmadi ($host:$port). '
-          'Telefon va printer bir xil WiFi tarmog‘ida ekanini tekshiring.';
+      return 'Ulanib bo‘lmadi ($host:$port). '
+          'Telefon va kompyuter bir xil WiFi da ekanini tekshiring. '
+          'Kompyuterda AlfaPOS ochiq va «Mobil relay» Faol bo‘lsin.';
     }
     if (msg.contains('connection refused')) {
-      return 'Printer porti yopiq ($host:$port). '
-          'Port odatda 9100 bo‘ladi — printer sozlamalarini tekshiring.';
+      return 'Port yopiq ($host:$port). '
+          'Kompyuterda AlfaPOS ochiqmi? «Mobil relay» Faolmi? '
+          'Windows firewall inbound TCP $port ruxsat berilganmi?';
     }
-    if (msg.contains('connection timed out')) {
-      return 'Ulanish vaqti tugadi ($host:$port). IP manzil to‘g‘riligini tekshiring.';
+    if (msg.contains('connection timed out') || msg.contains('timed out')) {
+      return 'Ulanish vaqti tugadi ($host:$port). '
+          'IP to‘g‘riligini, bir xil WiFi ni va Windows firewall '
+          '(inbound TCP $port) ni tekshiring.';
     }
-    return 'Printerga ulanib bo\'lmadi ($host:$port): ${e.message}';
+    return 'Ulanib bo‘lmadi ($host:$port): ${e.message}';
   }
 }
