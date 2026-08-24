@@ -15,6 +15,7 @@ import '../../services/product_display_settings.dart';
 import '../../services/receipt_design_storage.dart';
 import '../../services/desktop_sales_layout_settings.dart';
 import '../../services/sales_keyboard_shortcuts_settings.dart';
+import '../../services/windows_mobile_relay_firewall.dart';
 import '../../widgets/app_dropdown.dart';
 import '../../widgets/receipt_lines_preview.dart';
 import '../../utils/local_network_ip.dart';
@@ -57,6 +58,8 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   bool _mobileRelayEnabled = true;
   int _mobileRelayPort = MobilePrinterRelaySettings.defaultPort;
   String? _localIp;
+  List<LocalIpv4Candidate> _localIpCandidates = const [];
+  bool _openingFirewall = false;
 
   List<String> _sampleLines = [];
   List<String> _restaurantSampleLines = [];
@@ -99,7 +102,11 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
       final shortcutKeys = await SalesKeyboardShortcutsSettings.loadAll();
       final relayEnabled = await MobilePrinterRelaySettings.isEnabled();
       final relayPort = await MobilePrinterRelaySettings.getPort();
-      final localIp = await primaryLocalIpv4();
+      final ipCandidates = await LocalNetworkIp.listCandidates();
+      String? localIp;
+      if (ipCandidates.isNotEmpty) {
+        localIp = ipCandidates.first.ip;
+      }
       if (!mounted) return;
       setState(() {
         _printers = names;
@@ -126,6 +133,7 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
         _shortcutKeys = shortcutKeys;
         _mobileRelayEnabled = relayEnabled;
         _mobileRelayPort = relayPort;
+        _localIpCandidates = ipCandidates;
         _localIp = localIp;
         _loading = false;
       });
@@ -138,15 +146,37 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
   }
 
   Future<void> _refreshLocalIp() async {
-    final localIp = await primaryLocalIpv4();
+    final candidates = await LocalNetworkIp.listCandidates();
     if (!mounted) return;
-    setState(() => _localIp = localIp);
+    String? selected = _localIp;
+    if (selected == null || !candidates.any((c) => c.ip == selected)) {
+      selected = candidates.isEmpty ? null : candidates.first.ip;
+    }
+    setState(() {
+      _localIpCandidates = candidates;
+      _localIp = selected;
+    });
   }
 
   Future<void> _onMobileRelayToggled(bool enabled) async {
     setState(() => _mobileRelayEnabled = enabled);
     if (enabled) {
       await _refreshLocalIp();
+    }
+  }
+
+  Future<void> _openWindowsFirewall() async {
+    if (_openingFirewall) return;
+    setState(() => _openingFirewall = true);
+    final result = await WindowsMobileRelayFirewall.openInboundRelay(
+      port: _mobileRelayPort,
+    );
+    if (!mounted) return;
+    setState(() => _openingFirewall = false);
+    if (result.ok) {
+      AppNotify.success(context, result.message);
+    } else {
+      AppNotify.error(context, result.message);
     }
   }
 
@@ -766,22 +796,35 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Kompyuter IP (avtomatik)',
-                          isDense: true,
-                          helperText: 'WiFi/LAN manzili avtomatik topiladi — telefonga nusxalang',
-                        ),
-                        child: Text(
-                          _localIp ?? 'WiFi IP qidirilmoqda…',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: _localIp != null
-                                ? AppTheme.textPrimary
-                                : AppTheme.textSecondary,
-                          ),
-                        ),
-                      ),
+                      child: _localIpCandidates.isEmpty
+                          ? InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Kompyuter IP',
+                                isDense: true,
+                                helperText: 'WiFi/LAN topilmadi — yangilang',
+                              ),
+                              child: Text(
+                                _localIp ?? 'WiFi IP topilmadi',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                            )
+                          : AppDropdownField<String>(
+                              label: 'Kompyuter IP (telefonga)',
+                              hint: 'WiFi/LAN manzilini tanlang',
+                              value: _localIp,
+                              items: _localIpCandidates
+                                  .map(
+                                    (c) => appDropdownItem(
+                                      value: c.ip,
+                                      label: c.label,
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(() => _localIp = v),
+                            ),
                     ),
                     IconButton(
                       tooltip: 'IP ni yangilash',
@@ -799,6 +842,48 @@ class _SozlamalarDesktopScreenState extends State<SozlamalarDesktopScreen>
                       ),
                   ],
                 ),
+                if (_localIpCandidates.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFDBA74)),
+                    ),
+                    child: const Text(
+                      'Bir nechta IP topildi. Telefonda WiFi bilan bir xil tarmoqni tanlang '
+                      '(odatda Wi-Fi / Ethernet). VPN yoki virtual adapter IP si ishlamaydi.',
+                      style: TextStyle(color: Color(0xFF9A3412), fontSize: 13, height: 1.35),
+                    ),
+                  ),
+                ],
+                if (Platform.isWindows) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _openingFirewall ? null : _openWindowsFirewall,
+                    icon: _openingFirewall
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.security_rounded),
+                    label: Text(
+                      _openingFirewall
+                          ? 'Firewall ochilmoqda...'
+                          : 'Windows Firewall (telefon ulanishi) ni ochish',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'UAC so‘rovida «Ha» bosing. Bu telefonning 9100-portga ulanishiga ruxsat beradi.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.35),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   _selected == null

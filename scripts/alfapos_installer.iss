@@ -40,7 +40,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Ish stolida yorliq yaratish"; GroupDescription: "Qo'shimcha:"
-Name: "firewall"; Description: "Windows Firewall: AlfaPOS uchun tarmoq ruxsati (tavsiya)"; GroupDescription: "Qo'shimcha:"; Flags: checkedonce
+Name: "firewall"; Description: "Windows Firewall: internet + telefon Mobil relay (TCP 9100) ruxsati — tavsiya"; GroupDescription: "Qo'shimcha:"; Flags: checkedonce
 
 [Files]
 ; Release papkasidagi HAMMA fayl (exe, dll, data\, va h.k.)
