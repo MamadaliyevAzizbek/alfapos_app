@@ -1099,8 +1099,10 @@ class _DesktopCartLine extends StatefulWidget {
 class _DesktopCartLineState extends State<_DesktopCartLine> {
   late final TextEditingController _qtyController;
   late final TextEditingController _priceController;
+  late final TextEditingController _sumController;
   late final FocusNode _qtyFocusNode;
   late final FocusNode _priceFocusNode;
+  late final FocusNode _sumFocusNode;
   bool _inlineQtyEditing = false;
   bool _inlinePriceEditing = false;
   bool _qtyToPriceFocusTransition = false;
@@ -1110,19 +1112,26 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     super.initState();
     _qtyController = TextEditingController(text: _qtyText(widget.item.quantity));
     _priceController = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
+    _sumController = TextEditingController(text: formatThousands(widget.item.total));
     _qtyFocusNode = FocusNode();
     _priceFocusNode = FocusNode();
+    _sumFocusNode = FocusNode();
     _qtyFocusNode.addListener(_onEditFocusChange);
     _priceFocusNode.addListener(_onEditFocusChange);
+    _sumFocusNode.addListener(_onEditFocusChange);
   }
 
   void _onEditFocusChange() {
     if (_qtyToPriceFocusTransition) return;
-    if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
+    if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus || _sumFocusNode.hasFocus) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_qtyToPriceFocusTransition) return;
-      if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus) return;
+      if (_qtyFocusNode.hasFocus || _priceFocusNode.hasFocus || _sumFocusNode.hasFocus) {
+        return;
+      }
       if (_inlineQtyEditing) _closeInlineQtyEdit();
       if (_inlinePriceEditing) _closeInlinePriceEdit();
       if (!widget.expanded) return;
@@ -1187,16 +1196,23 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       final p = formatThousands(widget.item.unitPriceDisplay);
       if (_priceController.text != p) _priceController.text = p;
     }
+    if (!_sumFocusNode.hasFocus) {
+      final s = formatThousands(widget.item.total);
+      if (_sumController.text != s) _sumController.text = s;
+    }
   }
 
   @override
   void dispose() {
     _qtyFocusNode.removeListener(_onEditFocusChange);
     _priceFocusNode.removeListener(_onEditFocusChange);
+    _sumFocusNode.removeListener(_onEditFocusChange);
     _qtyController.dispose();
     _priceController.dispose();
+    _sumController.dispose();
     _qtyFocusNode.dispose();
     _priceFocusNode.dispose();
+    _sumFocusNode.dispose();
     super.dispose();
   }
 
@@ -1231,6 +1247,29 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   }
 
   void _commitQuantity() => _applyQuantityInput(_qtyController.text, resetIfInvalid: true);
+
+  /// Mijoz berayotgan summadan miqdorni hisoblash: miqdor = summa / birlik narxi.
+  void _applySumToQuantity(String raw) {
+    final sum = parseFormattedSum(raw);
+    if (sum == null || sum <= 0) return;
+    final unit = widget.item.unitPriceDisplay;
+    if (unit <= 0) return;
+    final qty = double.parse((sum / unit).toStringAsFixed(3));
+    if (qty <= 0) return;
+    if ((qty - widget.item.quantity).abs() < 1e-9) return;
+    widget.onQuantityChanged(qty);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final applied = _qtyText(widget.item.quantity);
+      if (_qtyController.text != applied) {
+        _qtyController.text = applied;
+      }
+      if (!_sumFocusNode.hasFocus) {
+        final s = formatThousands(widget.item.total);
+        if (_sumController.text != s) _sumController.text = s;
+      }
+    });
+  }
 
   void _moveFromQuantityToPrice() {
     _qtyToPriceFocusTransition = true;
@@ -1448,6 +1487,43 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     return CustomerGroupDiscount.catalogUnitPriceForItem(_probeSellByPack(sellByPack), type);
   }
 
+  Widget _buildTargetSumField() {
+    return TextField(
+      controller: _sumController,
+      focusNode: _sumFocusNode,
+      keyboardType: TextInputType.number,
+      inputFormatters: [ThousandsInputFormatter()],
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: 'Kerakli summa',
+        hintText: '50 000',
+        suffixText: "so'm",
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: const OutlineInputBorder(
+          borderRadius: SavatchaDesktopLayout._sharp,
+          borderSide: BorderSide(color: AppTheme.divider),
+        ),
+        enabledBorder: const OutlineInputBorder(
+          borderRadius: SavatchaDesktopLayout._sharp,
+          borderSide: BorderSide(color: AppTheme.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: SavatchaDesktopLayout._sharp,
+          borderSide: BorderSide(color: widget.accent, width: 1.5),
+        ),
+      ),
+      onTap: () => widget.onSuspendCatalogSearchRefocus?.call(),
+      onChanged: _applySumToQuantity,
+      onSubmitted: (_) {
+        _applySumToQuantity(_sumController.text);
+        _sumFocusNode.unfocus();
+      },
+    );
+  }
+
   Widget _buildSellUnitPicker() {
     final p = widget.item.product;
     if (!p.canSellByPack) return const SizedBox.shrink();
@@ -1638,6 +1714,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                       const SizedBox(height: 8),
                     ],
                     _buildCatalogPriceTypePicker(),
+                    const SizedBox(height: 8),
+                    _buildTargetSumField(),
                   ],
                 ),
               ),

@@ -16,6 +16,7 @@ import '../utils/sale_return_utils.dart';
 import '../utils/sales_return_flow.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/invoice_edit_flow.dart';
+import '../utils/product_weight.dart';
 
 /// API dan kelgan chek batafsil — to'liq chek ko'rinishi (Hisobotlar, Tranzaksiyalar, Mijoz detali).
 class ApiChekDetailScreen extends StatefulWidget {
@@ -636,40 +637,6 @@ class _CartItemRow extends StatelessWidget {
 
   static int _amount(dynamic v) => parseAmountFromApi(v);
 
-  static bool _isKgUnit(String u) {
-    final s = u.trim().toLowerCase();
-    return s == 'kg' || s == 'кг' || s.contains('kilo') || s.contains('кил');
-  }
-
-  static bool _isPieceUnit(String u) {
-    final s = u.trim().toLowerCase();
-    return s.contains('dona') || s.contains('sht') || s.contains('шт') || s.contains('piece') || s.contains('ta');
-  }
-
-  static String _fmtQtyByUnit(String rawQty, String rawUnit) {
-    final q = num.tryParse(rawQty.replaceAll(',', '.').trim());
-    if (q == null) return rawQty.trim();
-    final unit = rawUnit.trim();
-    if (unit.isEmpty) {
-      // API ba'zan birlikni yubormaydi; bunday holatda:
-      // - agar ".000" bo'lsa (butun) => dona kabi ko'rsatamiz
-      // - aks holda (1.500) => kg kabi kasrni saqlaymiz
-      if (q == q.roundToDouble()) return q.toInt().toString();
-      return rawQty.replaceAll(',', '.').trim();
-    }
-    if (_isKgUnit(unit)) {
-      // kg uchun .000 lar ko‘rinsin
-      return q.toStringAsFixed(3);
-    }
-    if (_isPieceUnit(unit)) {
-      // dona/sht uchun .000 lar bo‘lmasin
-      return q.round().toString();
-    }
-    // boshqa birliklar: butun bo‘lsa butun, bo‘lmasa asl ko‘rinish
-    if (q == q.roundToDouble()) return q.toInt().toString();
-    return rawQty.trim();
-  }
-
   static Map<String, dynamic>? _mapOrNull(dynamic v) => v is Map ? Map<String, dynamic>.from(v as Map) : null;
 
   static String _barcodeLike(Map<String, dynamic> r) {
@@ -910,30 +877,15 @@ class _CartItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = (row['title'] ?? row['product_title'] ?? row['productTitle'] ?? row['name'] ?? '—').toString();
-    final qty = row['quantity'] ?? row['qty'] ?? '';
-    final qtyStrRaw = qty.toString().trim();
-    final unitRaw = (row['unit_name'] ?? row['unit'] ?? row['unitName'] ?? row['measure'] ?? '').toString().trim();
-
-    String qtyStr = '—';
-    if (qtyStrRaw.isNotEmpty) {
-      // Agar API allaqachon birlik bilan yuborsa: "6.000 шт" / "1.250 kg"
-      final parts = qtyStrRaw.split(RegExp(r'\s+'));
-      if (parts.length >= 2) {
-        final qPart = parts.first;
-        final uPart = parts.sublist(1).join(' ');
-        final qFmt = _fmtQtyByUnit(qPart, uPart);
-        qtyStr = '$qFmt $uPart'.trim();
-      } else if (unitRaw.isNotEmpty) {
-        final qFmt = _fmtQtyByUnit(qtyStrRaw, unitRaw);
-        qtyStr = '$qFmt $unitRaw'.trim();
-      } else {
-        // birlik topilmasa ham: 1.000 -> 1 (dona), 1.500 -> 1.500 (kg kabi)
-        qtyStr = _fmtQtyByUnit(qtyStrRaw, '');
-      }
-    }
+    final catalogProduct = _resolvedProduct(row);
+    final qtyStr = ProductWeight.invoiceRowQuantityLabel(
+      row,
+      catalogProduct: catalogProduct,
+    );
 
     final price = _amount(row['price'] ?? row['unit_price'] ?? 0);
-    final sum = _amount(row['total'] ?? row['calculatedPrice'] ?? row['sum'] ?? (price * (int.tryParse(qtyStrRaw) ?? 1)));
+    final qtyNum = ProductWeight.parseInvoiceQtyNum(row);
+    final sum = _amount(row['total'] ?? row['calculatedPrice'] ?? row['sum'] ?? (price * qtyNum.round()));
 
     final codeLine = _displayCodeLine(row);
     final barcodeShown = codeLine.isNotEmpty ? codeLine : '—';

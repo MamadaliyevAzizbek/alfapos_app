@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import '../../core/input_formatters.dart';
 import '../../core/theme.dart';
 import '../../models/cart_item.dart';
-import '../../models/product.dart';
 import '../../providers/clients_provider.dart';
+import '../../utils/product_weight.dart';
 import '../tranzaksiya_detail_screen.dart';
 import '../../widgets/mixed_payment_inline_card.dart';
 
@@ -329,13 +329,10 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
               _headerCells(['Mahsulot nomi', 'Miqdori', 'Narxi', 'Umumiy']),
         ),
         ...widget.items.map((item) {
-          final p = item.product;
-          final unit =
-              item.sellByPack ? 'pachka' : Product.unitDisplayShort(p.unit);
           return TableRow(
             children: [
               _cell(item.product.name),
-              _cell('${item.quantity} $unit'),
+              _cell(ProductWeight.cartItemQuantityLabel(item)),
               _cell(formatThousands(item.unitPriceDisplay)),
               _cell(formatThousands(item.total)),
             ],

@@ -285,6 +285,9 @@ class Product {
   /// Ro'yxat API ulgurji bermasa — lokal/saqlangan qiymatni saqlash.
   Product mergePreservingPrices(Product fallback) => mergeWithLocalFallback(fallback);
 
+  /// O'lchov birligi qop (yoki paket) ekanini tekshirish.
+  static bool isQopUnit(String? unit) => unitDisplayShort(unit) == 'qop';
+
   /// Chek va boshqa joylarda birlikni qisqartmada ko'rsatish (API chekdagiga mos: sht, kg, ...)
   static String unitDisplayShort(String? unit) {
     final clean = sanitizeUnitLabel(unit);

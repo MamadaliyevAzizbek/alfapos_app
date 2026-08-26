@@ -37,6 +37,37 @@ void main() {
     });
   });
 
+  group('ProductWeight qop receipt quantity', () {
+    test('formatQopReceiptQuantity converts kg to qop labels', () {
+      expect(ProductWeight.formatQopReceiptQuantity(40, 40), '1 qop');
+      expect(ProductWeight.formatQopReceiptQuantity(35, 40), '35 kg');
+      expect(ProductWeight.formatQopReceiptQuantity(85, 40), '2 qop 5 kg');
+      expect(ProductWeight.formatQopReceiptQuantity(80, 40), '2 qop');
+    });
+
+    test('cartItemQuantityLabel uses default 40 kg when weight empty', () {
+      final qopProduct = Product(
+        id: '1',
+        name: 'Un',
+        priceUzs: 1000,
+        unit: 'qop',
+      );
+      final kgProduct = Product(id: '2', name: 'Olma', priceUzs: 500, unit: 'kg');
+      expect(
+        ProductWeight.cartItemQuantityLabel(CartItem(product: qopProduct, quantity: 85)),
+        '2 qop 5 kg',
+      );
+      expect(
+        ProductWeight.cartItemQuantityLabel(CartItem(product: qopProduct, quantity: 40)),
+        '1 qop',
+      );
+      expect(
+        ProductWeight.cartItemQuantityLabel(CartItem(product: kgProduct, quantity: 2.5)),
+        '2.5 kg',
+      );
+    });
+  });
+
   test('receipt shows per-line and total weight', () {
     final lines = ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
