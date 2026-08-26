@@ -3,7 +3,7 @@ import 'package:alfapos_app/utils/receipt_store_title.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('API branch name is used when toggle is on', () {
+  test('API branch name is never printed when toggle is on', () {
     final design = ReceiptDesignConfig.defaults.copyWith(
       storeTitle: 'ssssss',
       useBranchNameAsTitle: true,
@@ -13,7 +13,7 @@ void main() {
         design: design,
         branchName: 'GULISTON YEMLARI - Asosiy filial',
       ),
-      'GULISTON YEMLARI - Asosiy filial',
+      isEmpty,
     );
   });
 
@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  test('empty title when no custom or branch — no Alfa market fallback', () {
+  test('empty title when no custom — no Alfa market fallback', () {
     final design = ReceiptDesignConfig.defaults.copyWith(
       storeTitle: '',
       useBranchNameAsTitle: false,

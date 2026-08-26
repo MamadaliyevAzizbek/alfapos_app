@@ -368,32 +368,38 @@ class ThermalReceiptFormatter {
       _appendLeftLine(
           lines, '${config.receiptNumberLabel}: ${d.receiptNumber}');
     }
+    lines.add('');
     _appendLeftLine(lines, '${config.sellerLabel}: ${d.sellerName}');
     if (config.showSellerPhone &&
         d.sellerPhone != null &&
         d.sellerPhone!.trim().isNotEmpty) {
+      lines.add('');
       _appendLeftLine(
           lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
     }
     if (config.showClientLine &&
         d.clientName != null &&
         d.clientName!.trim().isNotEmpty) {
+      lines.add('');
       _appendLeftLine(lines, '${config.clientLabel}: ${d.clientName!.trim()}');
     }
     if (config.showClientPhone &&
         d.clientPhone != null &&
         d.clientPhone!.trim().isNotEmpty) {
+      lines.add('');
       _appendLeftLine(
           lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
     }
     if (config.showClientAddress &&
         d.clientAddress != null &&
         d.clientAddress!.trim().isNotEmpty) {
+      lines.add('');
       _appendLeftLine(
           lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
     }
     final note = d.description?.trim() ?? '';
     if (note.isNotEmpty) {
+      lines.add('');
       for (final part in ThermalReceiptLineWrap.wrapLine(
         'Izoh: $note',
         maxWidth: maxWidth,
@@ -419,34 +425,49 @@ class ThermalReceiptFormatter {
     }
 
     const summarySep = ' - ';
-    final summaryRows = <({String label, String value})>[];
+    final paymentRows = <({String label, String value})>[];
+    final discountRows = <({String label, String value})>[];
 
     if (!d.isPrecheck) {
       for (final pay in d.payments) {
-        summaryRows.add((label: pay.method, value: amountLabel(pay.amount)));
+        paymentRows.add((label: pay.method, value: amountLabel(pay.amount)));
       }
     }
 
     final discountValue = formatAmountForReceipt(d.discountAmount);
     if (discountValue != '0' && discountValue.isNotEmpty) {
-      summaryRows.add(
+      discountRows.add(
           (label: config.discountLabel, value: amountLabel(d.discountAmount)));
     }
 
+    final summaryRows = [...paymentRows, ...discountRows];
     if (summaryRows.isNotEmpty) {
       final totalRows = <({String label, String value})>[
         (label: config.totalLabel, value: amountLabel(d.totalAmount)),
       ];
       final cols = ThermalReceiptLineWrap.equalsColumnWidths(
           [...summaryRows, ...totalRows]);
-      lines.addAll(
-        ThermalReceiptLineWrap.formatEqualsRows(
-          summaryRows,
-          separator: summarySep,
-          labelWidth: cols.labelWidth,
-          valueWidth: cols.valueWidth,
-        ),
-      );
+      if (paymentRows.isNotEmpty) {
+        lines.addAll(
+          ThermalReceiptLineWrap.formatEqualsRows(
+            paymentRows,
+            separator: summarySep,
+            labelWidth: cols.labelWidth,
+            valueWidth: cols.valueWidth,
+          ),
+        );
+      }
+      if (discountRows.isNotEmpty) {
+        if (paymentRows.isNotEmpty) lines.add('');
+        lines.addAll(
+          ThermalReceiptLineWrap.formatEqualsRows(
+            discountRows,
+            separator: summarySep,
+            labelWidth: cols.labelWidth,
+            valueWidth: cols.valueWidth,
+          ),
+        );
+      }
 
       if (config.showItemSeparator) {
         lines.add(sep);

@@ -196,7 +196,7 @@ void main() {
     }
 
     expect(feedBeforeCut(restaurantBytes), feedBeforeCut(shopBytes));
-    expect(feedBeforeCut(restaurantBytes), 2);
+    expect(feedBeforeCut(restaurantBytes), 0);
     // GS ! — navbat raqami va umumiy summa (balandlik 2×).
     expect(restaurantBytes.contains(29), isTrue);
   });
@@ -249,10 +249,10 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 2);
+    expect(bytes[feedIndex + 1], 0);
   });
 
-  test('XP-80C uses 8-line feed and compact spacing, not g.cut waste',
+  test('XP-80C uses 6-line feed and compact spacing, not g.cut waste',
       () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
@@ -261,7 +261,7 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 8);
+    expect(bytes[feedIndex + 1], 6);
     expect(bytes[feedIndex + 2], 0x1D); // GS
     expect(bytes[feedIndex + 3], 0x56); // V
     expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed

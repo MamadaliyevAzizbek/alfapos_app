@@ -286,32 +286,32 @@ class ReceiptWidget extends StatelessWidget {
                 : '${design.receiptNumberLabel}: $receiptNumber',
             style: textStyle,
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 8),
           Text('${design.sellerLabel}: $sellerName', style: textStyle),
           if (design.showSellerPhone &&
               sellerPhone != null &&
               sellerPhone!.trim().isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 8),
             Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}',
                 style: textStyle),
           ],
           if ((clientName ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 8),
             Text('${design.clientLabel}: ${clientName!.trim()}',
                 style: textStyle),
             if ((clientPhone ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 2),
+              const SizedBox(height: 8),
               Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}',
                   style: textStyle),
             ],
             if ((clientAddress ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 2),
+              const SizedBox(height: 8),
               Text('${design.clientAddressLabel}: ${clientAddress!.trim()}',
                   style: textStyle),
             ],
           ],
           if ((description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               'Izoh: ${description!.trim()}',
               style: textStyle.copyWith(
@@ -450,19 +450,22 @@ class ReceiptWidget extends StatelessWidget {
     required TextStyle textStyle,
     required TextStyle headerStyle,
   }) {
-    final summaryRows = <({String label, String value})>[
+    final paymentSummary = <({String label, String value})>[
       if (!isPrecheck)
         for (final row in paymentRows)
           (
             label: row.methodName,
             value: _amountText(row.sum, som, isRestaurantLayout),
           ),
+    ];
+    final discountSummary = <({String label, String value})>[
       if (discount > 0)
         (
           label: design.discountLabel,
           value: _amountText(discount, som, isRestaurantLayout),
         ),
     ];
+    final summaryRows = [...paymentSummary, ...discountSummary];
     final totalRow = (
       label: design.totalLabel,
       value: _amountText(totalSum, som, isRestaurantLayout),
@@ -472,13 +475,22 @@ class ReceiptWidget extends StatelessWidget {
         : ThermalReceiptLineWrap.equalsColumnWidths([...summaryRows, totalRow]);
 
     return [
-      if (summaryRows.isNotEmpty)
+      if (paymentSummary.isNotEmpty)
         ..._buildSummaryLines(
-          summaryRows,
+          paymentSummary,
           textStyle,
           labelWidth: cols.labelWidth,
           valueWidth: cols.valueWidth,
         ),
+      if (discountSummary.isNotEmpty) ...[
+        if (paymentSummary.isNotEmpty) const SizedBox(height: 8),
+        ..._buildSummaryLines(
+          discountSummary,
+          textStyle,
+          labelWidth: cols.labelWidth,
+          valueWidth: cols.valueWidth,
+        ),
+      ],
       if (design.showItemSeparator) ...[
         const SizedBox(height: 4),
         Text(
@@ -489,10 +501,11 @@ class ReceiptWidget extends StatelessWidget {
           overflow: TextOverflow.clip,
         ),
       ],
+      const SizedBox(height: 4),
       ..._buildSummaryLines(
         [totalRow],
         headerStyle.copyWith(
-            fontSize: 16, fontWeight: FontWeight.w800, height: 1.2),
+            fontSize: 16, fontWeight: FontWeight.w800, height: 1.35),
         labelWidth: cols.labelWidth,
         valueWidth: cols.valueWidth,
         bold: true,

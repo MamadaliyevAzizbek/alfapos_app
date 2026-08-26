@@ -29,10 +29,10 @@ abstract class PrinterPaperProfile {
     return _compactPatterns.any(n.contains);
   }
 
-  /// XP-80C pichoq ~15–18 mm: 6 qator — oxirgi qatorlar kesilmasin.
+  /// XP-80C pichoq ~15–18 mm; ortiqcha pastki bo'shliq kamaytirildi (−2 qator).
   static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 8;
-    return 2;
+    if (isXprinter80(printerName)) return 6;
+    return 0;
   }
 
   /// ESC 3 n — 32 zich; 52 meta/mahsulot qatorlarini aniq ajratadi.
