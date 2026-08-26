@@ -139,10 +139,14 @@ InvoiceEditResume? invoiceEditResumeFromApi(
 
   final discount = m['discount'];
   int? discountPct;
-  if (discount is int) {
-    discountPct = discount;
-  } else if (discount is num && discount > 0 && discount <= 100) {
-    discountPct = discount.round();
+  if (discount is num) {
+    final d = discount.round();
+    // Hold/done da `discount` so‘m bo‘lishi mumkin — faqat ±100 ni foiz deb olamiz.
+    if (d != 0 && d.abs() <= 100) {
+      discountPct = d;
+    } else {
+      discountPct = 0;
+    }
   }
 
   final payments = <Map<String, dynamic>>[];

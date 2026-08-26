@@ -11,12 +11,16 @@ class CartItem {
   /// «Foiz qo'shish» qo'llanishidan oldingi birlik narxi (mijoz chegirmasi keyin).
   double? unitPriceBaseForCartPercent;
 
+  /// Qo‘lda / pauza-tahrirlashdan tiklangan narx — mijoz guruhi qayta yozmasin.
+  bool priceLocked;
+
   CartItem({
     required this.product,
     this.quantity = 1,
     this.sellByPack = false,
     this.salePriceOverride,
     this.unitPriceBaseForCartPercent,
+    this.priceLocked = false,
   });
 
   CartItem copy() => CartItem(
@@ -25,6 +29,7 @@ class CartItem {
         sellByPack: sellByPack,
         salePriceOverride: salePriceOverride,
         unitPriceBaseForCartPercent: unitPriceBaseForCartPercent,
+        priceLocked: priceLocked,
       );
 
   /// Katalog bo'yicha 1 dona yoki 1 pachka narxi (override siz)

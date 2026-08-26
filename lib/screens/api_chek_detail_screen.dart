@@ -143,10 +143,10 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
       context,
       widget.sale,
       invoiceDetail: invoiceDetail,
+      popCurrentRoute: true,
     );
-    if (ok && mounted && Navigator.canPop(context)) {
-      Navigator.pop(context, true);
-    }
+    // startFullEdit o‘zi pop + sotuv bo‘limiga o‘tadi.
+    if (!ok && mounted) return;
   }
 
   @override

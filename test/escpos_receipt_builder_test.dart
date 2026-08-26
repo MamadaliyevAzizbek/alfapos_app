@@ -43,6 +43,8 @@ void main() {
     final bytes = await EscPosReceiptBuilder.buildReceipt(lines: lines);
     expect(bytes, isNotEmpty);
     expect(bytes.length, greaterThan(20));
+    // Ustidan chizish: ESC $ (absolyut pozitsiya), yoniga emas.
+    expect(bytes, containsAllInOrder([27, 36]));
   });
 
   test('restaurant queue receipt builds with readable large number', () async {
@@ -252,7 +254,7 @@ void main() {
     expect(bytes[feedIndex + 1], 0);
   });
 
-  test('XP-80C uses 6-line feed and compact spacing, not g.cut waste',
+  test('XP-80C uses 4-line feed and compact spacing, not g.cut waste',
       () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
@@ -261,7 +263,7 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 6);
+    expect(bytes[feedIndex + 1], 4);
     expect(bytes[feedIndex + 2], 0x1D); // GS
     expect(bytes[feedIndex + 3], 0x56); // V
     expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed

@@ -1,5 +1,4 @@
 import '../models/cart_item.dart';
-import '../models/product.dart';
 
 /// POST /sales/store body — hold va done (web POS bilan mos).
 class SalesStoreBody {
@@ -10,6 +9,7 @@ class SalesStoreBody {
       final p = item.product;
       final isPack = item.sellByPack && p.canSellByPack;
       final linePricing = item.salesStoreLinePricing;
+      final soldUnit = item.unitPriceForLine;
       return {
         'productID': int.tryParse(p.id) ?? 0,
         'variantID': p.variantId ?? 1,
@@ -21,11 +21,29 @@ class SalesStoreBody {
         'discount': linePricing.lineDiscount,
         'taxID': null,
         'calculatedPrice': linePricing.lineTotal,
-        if (includeCartItemNote) 'cartItemNote': '',
+        // Backend markup (katalogdan qimmat) ni saqlamaydi — hold/done uchun zaxira.
+        'soldUnitPrice': soldUnit.round(),
+        // Holdda majburiy; done da ham yozamiz — tahrirlashda markup tiklansin.
+        'cartItemNote': includeCartItemNote ||
+                (soldUnit - item.defaultLineUnitPrice).abs() > 0.5
+            ? soldUnitNote(soldUnit)
+            : '',
         if (isPack) 'isPackage': true,
         if (isPack) 'unitsPerPackage': p.quantityPerPack,
       };
     }).toList();
+  }
+
+  /// Hold `cartItemNote` — davom ettirishda chegirmali birlik narxini tiklash.
+  static String soldUnitNote(num soldUnit) =>
+      'alfapos_sold_unit=${soldUnit.round()}';
+
+  static double? parseSoldUnitNote(String? note) {
+    if (note == null || note.trim().isEmpty) return null;
+    final match =
+        RegExp(r'alfapos_sold_unit=(-?\d+(?:[.,]\d+)?)').firstMatch(note);
+    if (match == null) return null;
+    return double.tryParse(match.group(1)!.replaceAll(',', '.'));
   }
 
   static int estimateCostUzs(List<CartItem> items) {

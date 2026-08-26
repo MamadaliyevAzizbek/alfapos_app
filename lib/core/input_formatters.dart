@@ -70,26 +70,57 @@ int? parseFormattedSum(String? s) {
   return int.tryParse(t);
 }
 
-/// API dan kelgan total (int, num, "20000.00", "21 000", "21,000") ni butun songa aylantiradi.
+/// API dan kelgan total (int, num, "20000.00", "21 000", "21,000", "10.000") ni butun songa aylantiradi.
 int parseAmountFromApi(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
   if (v is num) return v.round();
+  final d = parseAmountFromApiDouble(v);
+  return d != null ? d.round() : 0;
+}
+
+/// API summalarini `double` ga — minglik ajratuvchi (`,`, `.`) chalkashmasin.
+///
+/// - `"10,000"` / `"10.000"` → 10000 (minglik)
+/// - `"10.50"` / `"10,5"` → 10.5 (kasr)
+/// - `"1.234,56"` → 1234.56 (EU)
+/// - `"1,234.56"` → 1234.56 (US)
+double? parseAmountFromApiDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
   var s = v.toString().trim();
-  if (s.isEmpty) return 0;
-  s = s.replaceAll(RegExp(r'\s+'), '');
-  if (s.contains(',') && !s.contains('.')) {
-    final parts = s.split(',');
-    if (parts.length == 2 && parts[1].length <= 2) {
-      s = '${parts[0]}.${parts[1]}';
+  if (s.isEmpty) return null;
+  s = s.replaceAll(RegExp(r'[\s\u00A0]'), '');
+  if (s.isEmpty) return null;
+
+  final lastComma = s.lastIndexOf(',');
+  final lastDot = s.lastIndexOf('.');
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastDot > lastComma) {
+      // 1,234.56
+      s = s.replaceAll(',', '');
+    } else {
+      // 1.234,56
+      s = s.replaceAll('.', '').replaceAll(',', '.');
+    }
+  } else if (lastComma >= 0) {
+    final after = s.length - lastComma - 1;
+    if (after <= 2) {
+      s = s.replaceAll(',', '.');
     } else {
       s = s.replaceAll(',', '');
     }
-  } else {
-    s = s.replaceAll(',', '');
+  } else if (lastDot >= 0) {
+    final after = s.length - lastDot - 1;
+    final dotCount = RegExp(r'\.').allMatches(s).length;
+    // POS: "10.000" = 10000 so'm (3 xona = minglik), "10.50" = kasr.
+    if (dotCount > 1 || after == 3) {
+      s = s.replaceAll('.', '');
+    }
   }
-  final d = double.tryParse(s);
-  return d != null ? d.round() : 0;
+
+  return double.tryParse(s);
 }
 
 /// invoice_id "POS10076" yoki 10076 dan orderId (int) olish — invoice-details/{id} uchun.

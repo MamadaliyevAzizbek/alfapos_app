@@ -41,13 +41,11 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    PosNavigation.openSalesSection = () {
-      if (!mounted) return;
-      setState(() {
-        _builtTabs.add(2);
-        _currentIndex = 2;
-      });
-    };
+    // Desktopda DesktopShell listener ishlatadi.
+    if (!isDesktopPosLayout) {
+      PosNavigation.openSalesRequest.addListener(_onOpenSalesRequest);
+      PosNavigation.openSalesSection = _onOpenSalesRequest;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UserPermissionsStore.instance.loadFromDisk();
       syncSellerNameFromApi();
@@ -55,10 +53,21 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  void _onOpenSalesRequest() {
+    if (!mounted || isDesktopPosLayout) return;
+    setState(() {
+      _builtTabs.add(2);
+      _currentIndex = 2;
+    });
+  }
+
   @override
   void dispose() {
-    if (PosNavigation.openSalesSection != null) {
-      PosNavigation.openSalesSection = null;
+    if (!isDesktopPosLayout) {
+      PosNavigation.openSalesRequest.removeListener(_onOpenSalesRequest);
+      if (identical(PosNavigation.openSalesSection, _onOpenSalesRequest)) {
+        PosNavigation.openSalesSection = null;
+      }
     }
     super.dispose();
   }
@@ -102,7 +111,10 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     if (isDesktopPosLayout) {
-      return DesktopShell(onLogout: widget.onLogout);
+      return DesktopShell(
+        key: const ValueKey('desktop_shell'),
+        onLogout: widget.onLogout,
+      );
     }
 
     final screenWidth = MediaQuery.sizeOf(context).width;

@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import '../models/receipt_design_config.dart';
 import '../utils/escpos_text_codec.dart';
 import '../utils/receipt_strikethrough_text.dart';
+import '../utils/thermal_receipt_bold_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_total_text.dart';
@@ -104,6 +105,43 @@ class EscPosReceiptBuilder {
         continue;
       }
       contentStarted = true;
+
+      if (ThermalReceiptHalfGap.isHalfGap(line)) {
+        // ESC J n — n nuqta feed (~0.5 qator).
+        final dots = (PrinterPaperProfile.lineSpacingDots / 2).round().clamp(8, 40);
+        bytes.addAll([27, 74, dots]);
+        continue;
+      }
+
+      if (ThermalReceiptBoldText.isBoldLine(line)) {
+        final text = ThermalReceiptBoldText.unwrap(line);
+        if (ReceiptStrikethroughText.containsMarker(text)) {
+          bytes.addAll(
+            _printMarkedLine(
+              g,
+              text,
+              codeTable: codeTable,
+              codePage: codePage,
+              maxWidth: maxWidth,
+              bold: true,
+            ),
+          );
+        } else {
+          bytes.addAll(
+            g.textEncoded(
+              EscPosTextCodec.encodeSync(text, codePage: codePage),
+              styles: PosStyles(
+                codeTable: codeTable,
+                fontType: PosFontType.fontA,
+                align: PosAlign.left,
+                bold: true,
+              ),
+              maxCharsPerLine: maxWidth,
+            ),
+          );
+        }
+        continue;
+      }
 
       if (ThermalReceiptNoteText.isNoteLine(line)) {
         final text = ThermalReceiptNoteText.unwrap(line);
@@ -305,7 +343,8 @@ class EscPosReceiptBuilder {
     ];
   }
 
-  /// Chegirmali narx: matn ustidan `-` bilan chizish (underline emas).
+  /// Chegirmali narx: matnni chop etib, ESC $ bilan orqaga qaytib ustidan `-`.
+  /// `textEncoded` ishlatilmaydi — u har safar colInd=0 ga qaytarib, chiziqni yoniga suradi.
   static List<int> _printMarkedLine(
     Generator g,
     String text, {
@@ -319,59 +358,54 @@ class EscPosReceiptBuilder {
   }) {
     final segments = ReceiptStrikethroughText.parseSegments(text);
     if (segments.isEmpty) return const [];
+
     final bytes = <int>[];
     final dotsPerChar = fontType == PosFontType.fontB ? 9 : 12;
 
-    for (var i = 0; i < segments.length; i++) {
-      final seg = segments[i];
-      final isLast = i == segments.length - 1;
-      final enc = EscPosTextCodec.encodeSync(seg.text, codePage: codePage);
-      bytes.addAll(
-        g.textEncoded(
-          enc,
-          styles: PosStyles(
-            codeTable: codeTable,
-            fontType: fontType,
-            bold: bold,
-            height: height,
-            width: width,
-          ),
-          linesAfter: -1,
-          maxCharsPerLine: null,
+    bytes.addAll(
+      g.setStyles(
+        PosStyles(
+          codeTable: codeTable,
+          fontType: fontType,
+          bold: bold,
+          height: height,
+          width: width,
+          align: PosAlign.left,
+          underline: false,
         ),
+      ),
+    );
+
+    var colChars = 0;
+    for (final seg in segments) {
+      final enc = EscPosTextCodec.encodeSync(seg.text, codePage: codePage);
+      if (!seg.strike) {
+        bytes.addAll(enc);
+        colChars += seg.text.length;
+        continue;
+      }
+
+      final startCol = colChars;
+      bytes.addAll(enc);
+      colChars += seg.text.length;
+
+      // Orqaga: eski narx boshiga
+      bytes.addAll(_absoluteMoveDots(startCol * dotsPerChar));
+      bytes.addAll(
+        EscPosTextCodec.encodeSync('-' * seg.text.length, codePage: codePage),
       );
-
-      if (seg.strike && seg.text.isNotEmpty) {
-        // Kursorni chapga qaytarib, xuddi shu joyga chiziq chizamiz.
-        bytes.addAll(_relativeMoveDots(-(seg.text.length * dotsPerChar)));
-        final strike = '-' * seg.text.length;
-        bytes.addAll(
-          g.textEncoded(
-            EscPosTextCodec.encodeSync(strike, codePage: codePage),
-            styles: PosStyles(
-              codeTable: codeTable,
-              fontType: fontType,
-              bold: bold,
-              height: height,
-              width: width,
-            ),
-            linesAfter: -1,
-            maxCharsPerLine: null,
-          ),
-        );
-      }
-
-      if (isLast) {
-        bytes.addAll(g.emptyLines(1));
-      }
+      // Keyingi segmentlar uchun kursorni narx oxiriga qaytarish
+      bytes.addAll(_absoluteMoveDots(colChars * dotsPerChar));
     }
+
+    bytes.add(0x0A); // LF
     return bytes;
   }
 
-  /// ESC \ nL nH — gorizontal siljish (nuqta), manfiy = chapga.
-  static List<int> _relativeMoveDots(int dots) {
-    final n = dots & 0xFFFF;
-    return [27, 92, n & 0xFF, (n >> 8) & 0xFF];
+  /// ESC $ nL nH — absolyut gorizontal pozitsiya (nuqta).
+  static List<int> _absoluteMoveDots(int dots) {
+    final d = dots.clamp(0, 65535);
+    return [27, 36, d & 0xFF, (d >> 8) & 0xFF];
   }
 
   static PosTextSize _queueTextSize(int level) {

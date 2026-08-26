@@ -134,6 +134,15 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   bool get _isInvoiceEditMode => _invoiceEditOrderId != null;
 
+  String get _invoiceEditBannerLabel {
+    final src = (_invoiceEditSourceInvoiceId ?? '').trim();
+    if (src.isNotEmpty) {
+      return src.toUpperCase().startsWith('POS') ? src : 'POS$src';
+    }
+    final id = _invoiceEditOrderId;
+    return id == null ? '' : '#$id';
+  }
+
   /// Ekranni tortib yangilash — katalogni serverdan to‘liq o‘qiydi.
   ///
   /// Avval faqat diskdan o‘qib, API yangilanishini fonga qo‘yardik; u esa
@@ -283,6 +292,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       if (mounted) setState(() {});
     });
     _sales.addListener(_onSalesSessionChanged);
+    if (isDesktopPosLayout) {
+      PosNavigation.openSalesRequest.addListener(_onOpenSalesNavRequest);
+    }
     CashRegisterShiftProvider.instance.addListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.addListener(_onShortcutSettingsChanged);
     SalesStockLimitSettings.allowNegative.addListener(_onStockLimitSettingsChanged);
@@ -300,6 +312,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Chek tahrirlash: savatni darhol yuklash (uzun init kutmasdan).
+      if (_sales.hasPendingInvoiceEdit) {
+        await _applyPendingInvoiceEditIfAny();
+      }
       _sellerName = await getSellerName();
       if (!mounted) return;
       if (isDesktopPosLayout) {
@@ -316,6 +332,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         unawaited(_refreshSavedOrdersCount());
         unawaited(ThermalReceiptPrinter.warmup());
         unawaited(_reloadCategoryOrder());
+        // Init tugagach yana bir marta (race bo‘lsa).
+        if (_sales.hasPendingInvoiceEdit) {
+          await _applyPendingInvoiceEditIfAny();
+        }
       } else {
         final shift = CashRegisterShiftProvider.instance;
         await shift.ensureCurrentUserId();
@@ -344,6 +364,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     super.didUpdateWidget(oldWidget);
     if (isDesktopPosLayout && widget.isTabActive && !oldWidget.isTabActive) {
       unawaited(_reloadDesktopSalesLayoutMode());
+      if (_sales.hasPendingInvoiceEdit) {
+        unawaited(_applyPendingInvoiceEditIfAny());
+      }
+      _refocusCatalogSearch();
     }
   }
 
@@ -403,8 +427,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   void _onSalesSessionChanged() {
     _syncDiscountPercentField();
     unawaited(_reloadCategoryOrder());
+    // Desktop: pending editni faqat Sotuv tab ochiq bo‘lganda qo‘llaymiz —
+    // aks holda ogohlantirish Tranzaksiyalarda chiqib, tab o‘zgarmasligi mumkin.
     if (_sales.hasPendingInvoiceEdit) {
-      unawaited(_applyPendingInvoiceEditIfAny());
+      final canApplyNow = !isDesktopPosLayout || widget.isTabActive;
+      if (canApplyNow) {
+        unawaited(_applyPendingInvoiceEditIfAny());
+      }
     }
     if (mounted) setState(() {});
     if (_barcodeSearchInFlight) return;
@@ -412,6 +441,20 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (pending != null && mounted) {
       _addProductToCart(pending);
       _clearSearchField();
+    }
+  }
+
+  /// Sotuv bo‘limiga o‘tish so‘rovi: ichki «cheklar ro‘yxati»ni yopib, savatni ko‘rsatish.
+  void _onOpenSalesNavRequest() {
+    if (!mounted || !isDesktopPosLayout) return;
+    final closedList = _showDesktopSalesList;
+    if (closedList) {
+      setState(() => _showDesktopSalesList = false);
+    }
+    if (_sales.hasPendingInvoiceEdit) {
+      unawaited(_applyPendingInvoiceEditIfAny());
+    } else if (closedList) {
+      _refocusCatalogSearch();
     }
   }
 
@@ -430,6 +473,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       FocusManager.instance.removeListener(_onDesktopFocusChanged);
     }
     _sales.removeListener(_onSalesSessionChanged);
+    if (isDesktopPosLayout) {
+      PosNavigation.openSalesRequest.removeListener(_onOpenSalesNavRequest);
+    }
     CashRegisterShiftProvider.instance.removeListener(_onCashShiftChanged);
     SalesKeyboardShortcutsSettings.revision.removeListener(_onShortcutSettingsChanged);
     SalesStockLimitSettings.allowNegative.removeListener(_onStockLimitSettingsChanged);
@@ -766,6 +812,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     item.sellByPack = sellByPack;
     item.salePriceOverride = null;
     item.unitPriceBaseForCartPercent = null;
+    item.priceLocked = false;
     _applyCustomerPricingToNewItem(item);
     _cart.updateSalePriceOverride(item, item.salePriceOverride);
   }
@@ -942,6 +989,9 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   /// Mobil: «Sotuv bo'limi» / «Qaytarishlar» — desktopdagi yuqori kartochkalar muqobili.
   Widget _mobileModeSwitch(bool returnMode) {
+    if (_isInvoiceEditMode) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Container(
@@ -968,6 +1018,59 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 selected: returnMode,
                 color: AppTheme.returnAccent,
                 onTap: () => _setReturnMode(true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileInvoiceEditBanner() {
+    final label = _invoiceEditBannerLabel;
+    return Material(
+      color: const Color(0xFFFEF3C7),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFF59E0B), width: 1.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.edit_note_rounded, color: Color(0xFFB45309), size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label.isEmpty ? 'Chek tahrirlash' : 'Tahrirlash: $label',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF92400E),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'O‘zgartirib to‘lang yoki bekor qilib yangi sotuvga qayting',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFA16207), height: 1.25),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: _cancelInvoiceEdit,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF92400E),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              ),
+              child: const Text(
+                'Bekor qilish',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
             ),
           ],
@@ -1027,19 +1130,28 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     final shift = CashRegisterShiftProvider.instance;
     final showShiftDashboard = shift.requiresCashRegister && shift.isShiftOpen;
     final returnMode = _isReturnMode;
-    final accent = returnMode ? AppTheme.returnAccent : AppTheme.primary;
+    final editMode = _isInvoiceEditMode;
+    final accent = editMode
+        ? const Color(0xFFD97706)
+        : (returnMode ? AppTheme.returnAccent : AppTheme.primary);
 
     return CashRegisterShiftGate(
       child: Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
-            Text(returnMode ? 'Qaytarishlar' : Strings.savatcha),
+            Text(
+              editMode
+                  ? 'Chek tahrirlash'
+                  : (returnMode ? 'Qaytarishlar' : Strings.savatcha),
+            ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: returnMode ? AppTheme.returnSurface : AppTheme.cardBg,
+                color: editMode
+                    ? const Color(0xFFFEF3C7)
+                    : (returnMode ? AppTheme.returnSurface : AppTheme.cardBg),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -1047,14 +1159,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: returnMode ? AppTheme.returnText : AppTheme.textPrimary,
+                  color: editMode
+                      ? const Color(0xFF92400E)
+                      : (returnMode ? AppTheme.returnText : AppTheme.textPrimary),
                 ),
               ),
             ),
           ],
         ),
         actions: [
-          if (!returnMode)
+          if (!returnMode && !editMode)
             IconButton(
               tooltip: Strings.saqlanganBuyurtmalar,
               onPressed: () => _openHoldOrders(context),
@@ -1082,6 +1196,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       ),
       body: Column(
         children: [
+          if (editMode) _mobileInvoiceEditBanner(),
           _mobileModeSwitch(returnMode),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -1232,8 +1347,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
               children: [
                 Row(
                   children: [
-                    // Qaytarishda saqlangan buyurtma bo‘lmaydi (desktop bilan bir xil).
-                    if (!returnMode) ...[
+                    // Qaytarishda / tahrirlashda saqlangan buyurtma bo‘lmaydi.
+                    if (!returnMode && !editMode) ...[
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: _sales.holdCartInFlight ? null : () => _holdCart(context),
@@ -1291,8 +1406,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                   child: ElevatedButton(
                     onPressed: () => _openPayment(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: returnMode ? AppTheme.returnAccent : null,
-                      foregroundColor: returnMode ? Colors.white : null,
+                      backgroundColor: editMode
+                          ? const Color(0xFFD97706)
+                          : (returnMode ? AppTheme.returnAccent : null),
+                      foregroundColor: (editMode || returnMode) ? Colors.white : null,
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -1301,12 +1418,18 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(returnMode ? 'Qaytarish qilish' : Strings.keyingisi),
+                        Text(
+                          editMode
+                              ? 'Tahrirlab to‘lash'
+                              : (returnMode ? 'Qaytarish qilish' : Strings.keyingisi),
+                        ),
                         const SizedBox(width: 4),
                         Icon(
-                          returnMode
-                              ? Icons.assignment_return_rounded
-                              : Icons.arrow_forward_rounded,
+                          editMode
+                              ? Icons.edit_rounded
+                              : (returnMode
+                                  ? Icons.assignment_return_rounded
+                                  : Icons.arrow_forward_rounded),
                           size: 18,
                         ),
                       ],
@@ -1736,7 +1859,10 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 widget.onLogout?.call();
               },
         isReturnMode: _isReturnMode,
-        onReturnModeChanged: _setReturnMode,
+        onReturnModeChanged: _isInvoiceEditMode ? null : _setReturnMode,
+        isInvoiceEditMode: _isInvoiceEditMode,
+        invoiceEditLabel: _isInvoiceEditMode ? _invoiceEditBannerLabel : null,
+        onCancelInvoiceEdit: _isInvoiceEditMode ? _cancelInvoiceEdit : null,
         salesLayoutMode: _desktopSalesLayoutMode,
         restaurantCategories: _restaurantCategoriesWithImages,
         restaurantCategoryId: _restaurantCategoryId,
@@ -1772,6 +1898,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   /// Savat, foiz, mijoz va pauza holatini tozalash.
   void _clearCart() {
+    final wasEdit = _isInvoiceEditMode;
+    _clearInvoiceEditState();
     _cart.clear();
     _expandedCartLine = null;
     _activeHoldOrderId = null;
@@ -1780,6 +1908,65 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     _selectedClient = null;
     _setCartDiscountPercent(0);
     _captureActiveSalesWindow();
+    if (wasEdit && mounted) {
+      AppNotify.info(context, 'Chek tahrirlash bekor qilindi — yangi sotuv');
+    }
+  }
+
+  /// Tahrirlashni bekor qilish: eski chek o‘zgarmaydi, oddiy yangi sotuvga qaytadi.
+  Future<void> _cancelInvoiceEdit() async {
+    if (!_isInvoiceEditMode) return;
+    final label = _invoiceEditBannerLabel;
+    final confirm = await IosStyleModals.showSheet<bool>(
+      context: context,
+      showGrabber: true,
+      child: Builder(
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Tahrirlashni bekor qilish',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                label.isEmpty
+                    ? 'Chek o‘zgartirilmaydi. Savat tozalanib, oddiy yangi sotuv ochiladi. Davom etasizmi?'
+                    : '«$label» o‘zgartirilmaydi. Savat tozalanib, oddiy yangi sotuv ochiladi. Davom etasizmi?',
+                textAlign: TextAlign.center,
+                style: const TextStyle(height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              IosStyleModals.sheetPillCancelSaveRow(
+                cancelLabel: 'Qolish',
+                saveLabel: 'Bekor qilish',
+                onCancel: () => Navigator.pop(ctx, false),
+                onSave: () => Navigator.pop(ctx, true),
+                saveBackgroundColor: const Color(0xFFD97706),
+                saveForegroundColor: Colors.white,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    _clearInvoiceEditState();
+    _cart.clear();
+    _expandedCartLine = null;
+    _activeHoldOrderId = null;
+    _activeHoldInvoiceId = null;
+    _activeHoldQueueNumber = null;
+    _selectedClient = null;
+    _isReturnMode = false;
+    _setCartDiscountPercent(0);
+    _captureActiveSalesWindow();
+    setState(() {});
+    AppNotify.success(context, 'Tahrirlash bekor qilindi — yangi sotuv ochiq');
+    _refocusCatalogSearch();
   }
 
   void _setReturnMode(bool returnMode) {
@@ -1862,6 +2049,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       SalesFilterCartPrice.applySessionPriceToCart(_cart.items, _sales);
     } else {
       for (final item in _cart.items) {
+        if (item.priceLocked) continue;
         item.salePriceOverride = null;
         item.unitPriceBaseForCartPercent = item.defaultLineUnitPrice.toDouble();
       }
@@ -1875,37 +2063,38 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   Future<void> _resumeHoldOrder(HoldOrderResume resume) async {
-    _cart.clear();
-    for (final item in resume.items) {
-      _cart.add(CartItem(
-        product: item.product,
-        quantity: item.quantity,
-        sellByPack: item.sellByPack,
-        salePriceOverride: item.salePriceOverride,
-      ));
-    }
+    _cart.replaceAll(resume.items.map((item) => CartItem(
+          product: item.product,
+          quantity: item.quantity,
+          sellByPack: item.sellByPack,
+          salePriceOverride: item.salePriceOverride,
+          unitPriceBaseForCartPercent: item.unitPriceBaseForCartPercent,
+          priceLocked: item.priceLocked || item.hasSalePriceOverride,
+        )));
+    assert(() {
+      for (final item in _cart.items) {
+        debugPrint(
+          '[resumeHoldOrder] ${item.product.name} qty=${item.quantity} '
+          'unit=${item.unitPriceForLine} override=${item.salePriceOverride} '
+          'locked=${item.priceLocked}',
+        );
+      }
+      return true;
+    }());
     _activeHoldOrderId = resume.orderId;
     _activeHoldInvoiceId = resume.invoiceId;
     _activeHoldQueueNumber = resume.queueNumber;
     _selectedClient = resume.customer;
-    if (_activeHoldOrderId != null) {
-      try {
-        await SalesApi.continueSale(_activeHoldOrderId!);
-      } catch (_) {}
-    }
-    unawaited(ClientsProvider.instance.fetchCustomerGroups().then((groups) {
-      if (!mounted) return;
-      CustomerGroupDiscount.applyCustomerPricingToCart(
-        _cart.items,
-        resume.customer,
-        groups: groups,
-      );
-      CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
-      setState(() {});
-    }));
+    // Sotilgan (tiklangan) narxlar saqlanadi — mijoz guruhini qayta qo‘llamaymiz.
+    // continue-sale fetchResume ichida chaqirilgan; bu yerda qayta chaqirmaymiz.
     final pct = resume.discountPercent ?? 0;
     _sales.setCartDiscountPercent(pct);
     for (final item in _cart.items) {
+      if (item.priceLocked || item.hasSalePriceOverride) {
+        item.priceLocked = true;
+        item.unitPriceBaseForCartPercent ??= item.unitPriceForLine;
+        continue;
+      }
       CartDiscountPercent.syncBaseFromCurrent(item);
       if (pct != 0 && item.hasSalePriceOverride) {
         item.unitPriceBaseForCartPercent =
@@ -1939,36 +2128,36 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   Future<void> _resumeInvoiceEdit(InvoiceEditResume resume, HoldOrderResume hold) async {
-    _cart.clear();
+    // Muhim: Sotuv ichidagi «cheklar ro‘yxati» ochiq bo‘lsa — yopamiz, aks holda
+    // savat orqada qolib, foydalanuvchi hali ham Tranzaksiyalar deb o‘ylaydi.
+    if (_showDesktopSalesList) {
+      _showDesktopSalesList = false;
+    }
     _activeHoldOrderId = null;
     _activeHoldInvoiceId = null;
     _activeHoldQueueNumber = null;
     _isReturnMode = false;
-    for (final item in hold.items) {
-      _cart.add(CartItem(
-        product: item.product,
-        quantity: item.quantity,
-        sellByPack: item.sellByPack,
-        salePriceOverride: item.salePriceOverride,
-      ));
-    }
+    _cart.replaceAll(hold.items.map((item) => CartItem(
+          product: item.product,
+          quantity: item.quantity,
+          sellByPack: item.sellByPack,
+          salePriceOverride: item.salePriceOverride,
+          unitPriceBaseForCartPercent: item.unitPriceBaseForCartPercent,
+          priceLocked: item.priceLocked || item.hasSalePriceOverride,
+        )));
     _invoiceEditOrderId = resume.editOrderId;
     _invoiceEditReason = resume.editReason;
     _invoiceEditSourceInvoiceId = resume.sourceInvoiceId;
     _selectedClient = hold.customer;
-    unawaited(ClientsProvider.instance.fetchCustomerGroups().then((groups) {
-      if (!mounted) return;
-      CustomerGroupDiscount.applyCustomerPricingToCart(
-        _cart.items,
-        hold.customer,
-        groups: groups,
-      );
-      CartDiscountPercent.afterCustomerPricing(_cart.items, _sales.cartDiscountPercent);
-      setState(() {});
-    }));
+    // Chekdagi sotilgan (chegirmali) narxlar saqlanadi — mijoz guruhini qayta yozmaymiz.
     final pct = hold.discountPercent ?? resume.discountPercent ?? 0;
     _sales.setCartDiscountPercent(pct);
     for (final item in _cart.items) {
+      if (item.priceLocked || item.hasSalePriceOverride) {
+        item.priceLocked = true;
+        item.unitPriceBaseForCartPercent ??= item.unitPriceForLine;
+        continue;
+      }
       CartDiscountPercent.syncBaseFromCurrent(item);
       if (pct != 0 && item.hasSalePriceOverride) {
         item.unitPriceBaseForCartPercent = item.unitPriceForLine / ((100 + pct) / 100);

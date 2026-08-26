@@ -1,3 +1,4 @@
+import 'thermal_receipt_bold_text.dart';
 import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_note_text.dart';
@@ -24,6 +25,9 @@ class ThermalReceiptLineWrap {
     if (ThermalReceiptCompactText.isAnyCompactLine(s)) {
       s = ThermalReceiptCompactText.unwrap(s);
     }
+    if (ThermalReceiptBoldText.isBoldLine(s)) {
+      s = ThermalReceiptBoldText.unwrap(s);
+    }
     if (ThermalReceiptProductTitleText.isTitleLine(s)) {
       s = ThermalReceiptProductTitleText.unwrap(s);
     }
@@ -42,7 +46,9 @@ class ThermalReceiptLineWrap {
         out.add('');
         continue;
       }
-      if (ThermalReceiptLargeText.isLargeLine(line) ||
+      if (ThermalReceiptHalfGap.isHalfGap(line) ||
+          ThermalReceiptBoldText.isBoldLine(line) ||
+          ThermalReceiptLargeText.isLargeLine(line) ||
           ThermalReceiptNoteText.isNoteLine(line) ||
           ThermalReceiptCompactText.isAnyCompactLine(line) ||
           ThermalReceiptTotalText.isTotalLine(line) ||

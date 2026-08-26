@@ -99,6 +99,10 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final double usdExchangeRate;
   final bool isReturnMode;
   final ValueChanged<bool>? onReturnModeChanged;
+  /// Chek tahrirlash rejimi — yangi sotuvdan ajralib turadi.
+  final bool isInvoiceEditMode;
+  final String? invoiceEditLabel;
+  final VoidCallback? onCancelInvoiceEdit;
   final DesktopSalesLayoutMode salesLayoutMode;
   final List<Map<String, dynamic>> restaurantCategories;
   final String? restaurantCategoryId;
@@ -184,6 +188,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
     this.usdExchangeRate = 12600,
     this.isReturnMode = false,
     this.onReturnModeChanged,
+    this.isInvoiceEditMode = false,
+    this.invoiceEditLabel,
+    this.onCancelInvoiceEdit,
     this.salesLayoutMode = DesktopSalesLayoutMode.standard,
     this.restaurantCategories = const [],
     this.restaurantCategoryId,
@@ -258,11 +265,23 @@ class SavatchaDesktopLayout extends StatelessWidget {
   static const Color _navInactive = Color(0xFF64748B);
 
   /// Qaytarish rejimida butun POS ekrani to‘q sariq urg‘uga o‘tadi (sotuvda — ko‘k).
-  Color get _accent => isReturnMode ? AppTheme.returnAccent : _navBlue;
+  Color get _accent {
+    if (isInvoiceEditMode) return const Color(0xFFD97706);
+    if (isReturnMode) return AppTheme.returnAccent;
+    return _navBlue;
+  }
 
-  Color get _cartPanelBg => isReturnMode ? AppTheme.returnPanelBg : Colors.white;
+  Color get _cartPanelBg {
+    if (isInvoiceEditMode) return const Color(0xFFFFFBEB);
+    if (isReturnMode) return AppTheme.returnPanelBg;
+    return Colors.white;
+  }
 
-  Color get _totalBarColor => isReturnMode ? AppTheme.returnTotalBar : _totalBar;
+  Color get _totalBarColor {
+    if (isInvoiceEditMode) return const Color(0xFF92400E);
+    if (isReturnMode) return AppTheme.returnTotalBar;
+    return _totalBar;
+  }
 
   double get _navBtnHeight => SalesUiScaleSettings.navbarControlSize();
 
@@ -474,6 +493,20 @@ class SavatchaDesktopLayout extends StatelessWidget {
 
   Widget _buildPosModeNavCards({bool compact = false}) {
     final gap = SalesUiScaleSettings.navbarGap();
+    if (isInvoiceEditMode) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _navModeCard(
+            label: 'Chek tahrirlash',
+            icon: Icons.edit_note_rounded,
+            selected: true,
+            onTap: () {},
+            compact: compact,
+          ),
+        ],
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -756,6 +789,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (isInvoiceEditMode) _invoiceEditBanner(),
           // Qidiruv card ichida; dropdown ochilganda layoutda joy oladi (bosiladi).
           Padding(
             padding: EdgeInsets.fromLTRB(edgePad, edgePad, edgePad, headerBottom),
@@ -799,10 +833,12 @@ class SavatchaDesktopLayout extends StatelessWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      isReturnMode ? 'Qaytarish summasi' : 'Umumiy',
+                      isInvoiceEditMode
+                          ? 'Tahrirlash jami'
+                          : (isReturnMode ? 'Qaytarish summasi' : 'Umumiy'),
                       style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
                     ),
-                    if (!isReturnMode) ...[
+                    if (!isReturnMode && !isInvoiceEditMode) ...[
                       const SizedBox(width: 6),
                       SalesShortcutKeyBadge(
                         label: _shortcutLabel(SalesShortcutAction.toggleShowCartProfit),
@@ -865,7 +901,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!isReturnMode) ...[
+                  if (!isReturnMode && !isInvoiceEditMode) ...[
                     _footerSavedOrdersAction(),
                     _footerDivider(),
                     _footerAction(
@@ -882,7 +918,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
                     Icons.percent_rounded,
                     'Chegirma',
                     onDiscount,
-                    iconColor: isReturnMode ? AppTheme.returnAccent : null,
+                    iconColor: isInvoiceEditMode
+                        ? const Color(0xFFD97706)
+                        : (isReturnMode ? AppTheme.returnAccent : null),
                   ),
                   _footerDivider(),
                   _footerAction(
@@ -904,6 +942,59 @@ class SavatchaDesktopLayout extends StatelessWidget {
     );
   }
 
+  Widget _invoiceEditBanner() {
+    final label = (invoiceEditLabel ?? '').trim();
+    return Material(
+      color: const Color(0xFFFEF3C7),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFF59E0B), width: 1.5),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.edit_note_rounded, color: Color(0xFFB45309), size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label.isEmpty ? 'Chek tahrirlash' : 'Tahrirlash: $label',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF92400E),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'O‘zgartirib to‘lang yoki bekor qilib yangi sotuvga qayting',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFA16207), height: 1.25),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: onCancelInvoiceEdit,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF92400E),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+              child: const Text(
+                'Bekor qilish',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _footerDivider() => const ColoredBox(
         color: Color(0xFFE2E8F0),
         child: SizedBox(width: 1),
@@ -912,7 +1003,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
   Widget _footerPaymentButton() {
     final enabled = cartItems.isNotEmpty;
     final Color bg;
-    if (isReturnMode) {
+    if (isInvoiceEditMode) {
+      bg = enabled ? const Color(0xFFD97706) : const Color(0xFFFBBF24);
+    } else if (isReturnMode) {
       bg = enabled ? AppTheme.returnAccent : AppTheme.returnAccentDisabled;
     } else {
       bg = enabled ? _paymentBlueActive : _paymentBlue;
@@ -934,14 +1027,20 @@ class SavatchaDesktopLayout extends StatelessWidget {
                 border: Border.all(color: fg, width: 2),
               ),
               child: Icon(
-                isReturnMode ? Icons.assignment_return_rounded : Icons.keyboard_double_arrow_right_rounded,
+                isInvoiceEditMode
+                    ? Icons.edit_rounded
+                    : (isReturnMode
+                        ? Icons.assignment_return_rounded
+                        : Icons.keyboard_double_arrow_right_rounded),
                 size: 20,
                 color: fg,
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              isReturnMode ? 'Qaytarish qilish' : "To'lov qilish",
+              isInvoiceEditMode
+                  ? 'Tahrirlab to‘lash'
+                  : (isReturnMode ? 'Qaytarish qilish' : "To'lov qilish"),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: fg,
@@ -1284,10 +1383,44 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     });
   }
 
+  /// Matn uzunligiga qarab maydon kengligi — katta summalar kesilib ketmasin.
+  double _fieldWidthForText(
+    String text, {
+    required double fontSize,
+    required FontWeight fontWeight,
+    required double minWidth,
+    required double maxWidth,
+    double horizontalPadding = 14,
+  }) {
+    final sample = text.trim().isEmpty ? '0' : text;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: sample,
+        style: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return (painter.width + horizontalPadding).clamp(minWidth, maxWidth);
+  }
+
   Widget _buildInlineQuantityControl({bool tight = false}) {
+    final minW = tight ? 40.0 : 48.0;
+    final maxW = tight ? 100.0 : 128.0;
+    final displayText =
+        _inlineQtyEditing ? _qtyController.text : _qtyText(widget.item.quantity);
+    final fieldW = _fieldWidthForText(
+      displayText,
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      minWidth: minW,
+      maxWidth: maxW,
+      horizontalPadding: 14,
+    );
+
     if (_inlineQtyEditing) {
       return SizedBox(
-        width: tight ? 40 : 48,
+        width: fieldW,
         child: Focus(
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -1309,7 +1442,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
             decoration: InputDecoration(
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               filled: true,
               fillColor: Colors.white,
               border: const OutlineInputBorder(
@@ -1325,7 +1458,10 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
                 borderSide: BorderSide(color: widget.accent, width: 1.5),
               ),
             ),
-            onChanged: _applyQuantityInput,
+            onChanged: (raw) {
+              _applyQuantityInput(raw);
+              setState(() {});
+            },
             onSubmitted: (_) => _closeInlineQtyEdit(),
             onEditingComplete: _closeInlineQtyEdit,
           ),
@@ -1336,11 +1472,15 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     return GestureDetector(
       onTap: _startInlineQtyEdit,
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 6, vertical: 4),
-        child: Text(
-          _qtyText(widget.item.quantity),
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: tight ? 14 : 15),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: minW),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 6, vertical: 4),
+          child: Text(
+            displayText,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: tight ? 14 : 15),
+          ),
         ),
       ),
     );
@@ -1395,21 +1535,17 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       );
 
   Widget _oneLineAmount(String text, {double fontSize = 14}) {
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.centerRight,
-      child: CatalogProductPriceLabel.text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.visible,
-        softWrap: false,
-        textAlign: TextAlign.right,
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: fontSize,
-          height: 1.1,
-          color: AppTheme.textPrimary,
-        ),
+    return CatalogProductPriceLabel.text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.visible,
+      softWrap: false,
+      textAlign: TextAlign.right,
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: fontSize,
+        height: 1.1,
+        color: AppTheme.textPrimary,
       ),
     );
   }
@@ -1421,16 +1557,30 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _buildInlinePriceControl(tight: tight),
-        SizedBox(width: tight ? 6 : 8),
+        SizedBox(width: tight ? 8 : 10),
         _oneLineAmount(_displaySom(widget.item.total), fontSize: fontSize),
       ],
     );
   }
 
   Widget _buildInlinePriceControl({bool tight = false}) {
+    final minW = tight ? 88.0 : 100.0;
+    final maxW = tight ? 180.0 : 220.0;
+    final displayText = _inlinePriceEditing
+        ? _priceController.text
+        : formatThousands(widget.item.unitPriceDisplay);
+    final fieldW = _fieldWidthForText(
+      displayText,
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      minWidth: minW,
+      maxWidth: maxW,
+      horizontalPadding: 18,
+    );
+
     if (_inlinePriceEditing) {
       return SizedBox(
-        width: tight ? 84 : 96,
+        width: fieldW,
         child: TextField(
           controller: _priceController,
           focusNode: _priceFocusNode,
@@ -1440,7 +1590,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             filled: true,
             fillColor: Colors.white,
             border: const OutlineInputBorder(
@@ -1456,7 +1606,10 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
               borderSide: BorderSide(color: widget.accent, width: 1.5),
             ),
           ),
-          onChanged: _applyPriceInput,
+          onChanged: (raw) {
+            _applyPriceInput(raw);
+            setState(() {});
+          },
           onSubmitted: (_) => _closeInlinePriceEdit(),
           onEditingComplete: _closeInlinePriceEdit,
         ),
@@ -1466,11 +1619,14 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     return GestureDetector(
       onTap: _startInlinePriceEdit,
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: tight ? 2 : 4, vertical: 4),
-        child:         _oneLineAmount(
-          _displaySom(widget.item.unitPriceDisplay),
-          fontSize: tight ? 13 : 14,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: minW * 0.55),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 6, vertical: 4),
+          child: _oneLineAmount(
+            _displaySom(widget.item.unitPriceDisplay),
+            fontSize: tight ? 13 : 14,
+          ),
         ),
       ),
     );

@@ -26,9 +26,19 @@ class DesktopShell extends StatefulWidget {
 
   @override
   State<DesktopShell> createState() => _DesktopShellState();
+
+  /// Chek tahrirlashdan keyin Sotuv bo‘limiga majburiy o‘tish.
+  static bool goToSalesTab() {
+    final s = _DesktopShellState._active;
+    if (s == null || !s.mounted) return false;
+    s._go(_DesktopShellState.salesSectionIndex);
+    return true;
+  }
 }
 
 class _DesktopShellState extends State<DesktopShell> {
+  static _DesktopShellState? _active;
+
   int _index = 0;
   final Set<int> _built = {0};
   int _syncGeneration = 0;
@@ -50,8 +60,11 @@ class _DesktopShellState extends State<DesktopShell> {
   @override
   void initState() {
     super.initState();
-    PosNavigation.openSalesSection = () => _go(salesSectionIndex);
-    PosNavigation.openTransactionsSection = () => _go(transactionsSectionIndex);
+    _active = this;
+    PosNavigation.openSalesRequest.addListener(_onOpenSalesRequest);
+    PosNavigation.openTransactionsRequest.addListener(_onOpenTransactionsRequest);
+    PosNavigation.openSalesSection = _onOpenSalesRequest;
+    PosNavigation.openTransactionsSection = _onOpenTransactionsRequest;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UserPermissionsStore.instance.loadFromDisk();
       syncSellerNameFromApi();
@@ -59,22 +72,38 @@ class _DesktopShellState extends State<DesktopShell> {
     });
   }
 
+  void _onOpenSalesRequest() {
+    if (!mounted) return;
+    _go(salesSectionIndex);
+  }
+
+  void _onOpenTransactionsRequest() {
+    if (!mounted) return;
+    _go(transactionsSectionIndex);
+  }
+
   @override
   void dispose() {
-    MobilePrinterRelay.stop();
-    if (PosNavigation.openSalesSection != null) {
+    if (identical(_active, this)) _active = null;
+    PosNavigation.openSalesRequest.removeListener(_onOpenSalesRequest);
+    PosNavigation.openTransactionsRequest.removeListener(_onOpenTransactionsRequest);
+    if (identical(PosNavigation.openSalesSection, _onOpenSalesRequest)) {
       PosNavigation.openSalesSection = null;
     }
-    if (PosNavigation.openTransactionsSection != null) {
+    if (identical(PosNavigation.openTransactionsSection, _onOpenTransactionsRequest)) {
       PosNavigation.openTransactionsSection = null;
     }
+    MobilePrinterRelay.stop();
     super.dispose();
   }
 
-  void _go(int i) => setState(() {
-        _built.add(i);
-        _index = i;
-      });
+  void _go(int i) {
+    if (!mounted) return;
+    setState(() {
+      _built.add(i);
+      _index = i;
+    });
+  }
 
   Future<void> _onGlobalSync() async {
     if (_syncing || AppDataSync.isForceSyncBlocked) return;

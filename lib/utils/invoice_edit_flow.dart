@@ -11,6 +11,7 @@ import '../widgets/ios_style_modals.dart';
 import 'hold_order_cart.dart';
 import 'invoice_edit_utils.dart';
 import 'pos_navigation.dart';
+import '../screens/desktop/desktop_shell.dart';
 
 /// Chekni tahrirlash — sabab, editable-order, POS savatiga yuklash.
 class InvoiceEditFlow {
@@ -158,6 +159,7 @@ class InvoiceEditFlow {
         } catch (_) {}
       }
       final res = await SalesApi.getEditableOrder(orderId, orderType: 'sales');
+      final orderMap = Map<String, dynamic>.from(res['order'] as Map);
       final resume = invoiceEditResumeFromApi(
         res,
         editOrderId: orderId,
@@ -168,22 +170,68 @@ class InvoiceEditFlow {
         return false;
       }
 
-      final hold = HoldOrderCart.parse(Map<String, dynamic>.from(res['order'] as Map));
+      // editable-order: katalog + discount to‘g‘ri; markup yo‘qoladi.
+      // invoice-details: total=5000 to‘g‘ri, lekin price ba’zan 6/3/11 (scale) —
+      // shuning uchun katalog uchun editable-order asosiy manba.
+      var hold = HoldOrderCart.parse(orderMap);
+      if ((hold == null || hold.items.isEmpty) && invoiceDetail != null) {
+        hold = HoldOrderCart.fromInvoiceDetails(
+          Map<String, dynamic>.from(invoiceDetail),
+          metaSource: orderMap,
+        );
+      }
       if (hold == null || hold.items.isEmpty) {
         if (context.mounted) AppNotify.error(context, 'Savat bo‘sh yoki mahsulotlar topilmadi');
         return false;
       }
 
+      // Markup (katalogdan qimmat) yo‘qolgan bo‘lsa — grandTotal farqini qaytarish.
+      final grand = resume.grandTotal ?? hold.grandTotal;
+      HoldOrderCart.applyGrandTotalSoldPriceCorrection(
+        hold.items,
+        grand,
+        allowAllCatalogMarkup: true,
+      );
+      assert(() {
+        for (final item in hold!.items) {
+          // ignore: avoid_print
+          print(
+            '[invoiceEdit] ${item.product.name} unit=${item.unitPriceForLine} '
+            'catalog=${item.defaultLineUnitPrice} locked=${item.priceLocked} '
+            'total=${item.total}',
+          );
+        }
+        // ignore: avoid_print
+        print(
+          '[invoiceEdit] grand=$grand '
+          'sum=${hold.items.fold<int>(0, (s, e) => s + e.total)}',
+        );
+        return true;
+      }());
+
       sess.setPendingInvoiceEdit(resume, hold);
       if (!context.mounted) return true;
       FocusManager.instance.primaryFocus?.unfocus();
+
       final nav = Navigator.of(context);
       final shouldPop = popCurrentRoute && nav.canPop();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (shouldPop && nav.mounted) {
-          nav.pop('invoice_edit');
+      if (shouldPop) {
+        nav.pop('invoice_edit');
+      }
+
+      // 1) Sidebar → Sotuv bo‘limi
+      // 2) Savatcha ichidagi «cheklar ro‘yxati» yopiladi (PosNavigation signal)
+      void jumpToSalesCart() {
+        if (isDesktopPosLayout) {
+          DesktopShell.goToSalesTab();
         }
-        PosNavigation.openSalesSection?.call();
+        PosNavigation.goToSales();
+      }
+
+      jumpToSalesCart();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        jumpToSalesCart();
+        Future<void>.delayed(const Duration(milliseconds: 48), jumpToSalesCart);
       });
       return true;
     } on ApiException catch (e) {

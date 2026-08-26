@@ -126,6 +126,9 @@ class CustomerGroupDiscount {
     final percent = discountPercentFromClient(client, groups: resolvedGroups);
 
     for (final item in items) {
+      // Qo‘lda / tiklangan chegirmali narxni mijoz guruhi o‘chirib yubormasin.
+      if (item.priceLocked) continue;
+
       final normalizedType =
           priceType != null ? (_normalizePriceType(priceType) ?? selling) : selling;
       final base = catalogUnitPriceForItem(item, normalizedType).toDouble();
@@ -146,6 +149,7 @@ class CustomerGroupDiscount {
 
   static void clearCustomerPricingFromCart(List<CartItem> items) {
     for (final item in items) {
+      if (item.priceLocked) continue;
       item.salePriceOverride = null;
       item.unitPriceBaseForCartPercent = item.defaultLineUnitPrice.toDouble();
     }

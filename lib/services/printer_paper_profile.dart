@@ -29,9 +29,9 @@ abstract class PrinterPaperProfile {
     return _compactPatterns.any(n.contains);
   }
 
-  /// XP-80C pichoq ~15–18 mm; ortiqcha pastki bo'shliq kamaytirildi (−2 qator).
+  /// XP-80C pichoq; pastki bo'sh qog'oz kamaytirildi.
   static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 6;
+    if (isXprinter80(printerName)) return 4;
     return 0;
   }
 

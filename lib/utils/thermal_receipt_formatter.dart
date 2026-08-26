@@ -2,6 +2,8 @@ import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_store_title.dart';
 import 'receipt_strikethrough_text.dart';
+import 'thermal_receipt_bold_text.dart';
+import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_line_wrap.dart';
 import 'thermal_receipt_note_text.dart';
@@ -320,10 +322,14 @@ class ThermalReceiptFormatter {
   }
 
   static void _appendLeftLine(List<String> lines, String s,
-      {int maxWidth = kThermalChars80mm}) {
+      {int maxWidth = kThermalChars80mm, bool bold = false}) {
     for (final part in ThermalReceiptLineWrap.wrapLine(s, maxWidth: maxWidth)) {
-      lines.add(part);
+      lines.add(bold ? ThermalReceiptBoldText.line(part) : part);
     }
+  }
+
+  static void _appendHalfGap(List<String> lines) {
+    lines.add(ThermalReceiptHalfGap.line());
   }
 
   static void _appendReceiptHeaderAndMeta(
@@ -344,7 +350,6 @@ class ThermalReceiptFormatter {
     if (config.showDateTime) {
       center(_fmtDateTime(d.dateTime));
     }
-    // Sarlavha / sana bilan meta oralig‘i — yopishib ketmasin.
     lines.add('');
 
     if (!d.isPrecheck &&
@@ -368,38 +373,48 @@ class ThermalReceiptFormatter {
       _appendLeftLine(
           lines, '${config.receiptNumberLabel}: ${d.receiptNumber}');
     }
-    lines.add('');
+    _appendHalfGap(lines);
     _appendLeftLine(lines, '${config.sellerLabel}: ${d.sellerName}');
     if (config.showSellerPhone &&
         d.sellerPhone != null &&
         d.sellerPhone!.trim().isNotEmpty) {
-      lines.add('');
+      _appendHalfGap(lines);
       _appendLeftLine(
           lines, '${config.sellerPhoneLabel}: ${d.sellerPhone!.trim()}');
     }
     if (config.showClientLine &&
         d.clientName != null &&
         d.clientName!.trim().isNotEmpty) {
-      lines.add('');
-      _appendLeftLine(lines, '${config.clientLabel}: ${d.clientName!.trim()}');
+      _appendHalfGap(lines);
+      _appendLeftLine(
+        lines,
+        '${config.clientLabel}: ${d.clientName!.trim()}',
+        bold: true,
+      );
     }
     if (config.showClientPhone &&
         d.clientPhone != null &&
         d.clientPhone!.trim().isNotEmpty) {
-      lines.add('');
+      _appendHalfGap(lines);
       _appendLeftLine(
-          lines, '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}');
+        lines,
+        '${config.clientPhoneLabel}: ${d.clientPhone!.trim()}',
+        bold: true,
+      );
     }
     if (config.showClientAddress &&
         d.clientAddress != null &&
         d.clientAddress!.trim().isNotEmpty) {
-      lines.add('');
+      _appendHalfGap(lines);
       _appendLeftLine(
-          lines, '${config.clientAddressLabel}: ${d.clientAddress!.trim()}');
+        lines,
+        '${config.clientAddressLabel}: ${d.clientAddress!.trim()}',
+        bold: true,
+      );
     }
     final note = d.description?.trim() ?? '';
     if (note.isNotEmpty) {
-      lines.add('');
+      _appendHalfGap(lines);
       for (final part in ThermalReceiptLineWrap.wrapLine(
         'Izoh: $note',
         maxWidth: maxWidth,
@@ -407,7 +422,6 @@ class ThermalReceiptFormatter {
         lines.add(ThermalReceiptNoteText.line(part));
       }
     }
-    // Meta bilan mahsulotlar orasi.
     lines.add('');
   }
 
@@ -448,25 +462,31 @@ class ThermalReceiptFormatter {
       final cols = ThermalReceiptLineWrap.equalsColumnWidths(
           [...summaryRows, ...totalRows]);
       if (paymentRows.isNotEmpty) {
-        lines.addAll(
-          ThermalReceiptLineWrap.formatEqualsRows(
-            paymentRows,
-            separator: summarySep,
-            labelWidth: cols.labelWidth,
-            valueWidth: cols.valueWidth,
-          ),
-        );
+        for (final row in ThermalReceiptLineWrap.formatEqualsRows(
+          paymentRows,
+          separator: summarySep,
+          labelWidth: cols.labelWidth,
+          valueWidth: cols.valueWidth,
+        )) {
+          final plain = ThermalReceiptCompactText.isAnyCompactLine(row)
+              ? ThermalReceiptCompactText.unwrap(row)
+              : row;
+          lines.add(ThermalReceiptBoldText.line(plain));
+        }
       }
       if (discountRows.isNotEmpty) {
-        if (paymentRows.isNotEmpty) lines.add('');
-        lines.addAll(
-          ThermalReceiptLineWrap.formatEqualsRows(
-            discountRows,
-            separator: summarySep,
-            labelWidth: cols.labelWidth,
-            valueWidth: cols.valueWidth,
-          ),
-        );
+        if (paymentRows.isNotEmpty) lines.add(ThermalReceiptHalfGap.line());
+        for (final row in ThermalReceiptLineWrap.formatEqualsRows(
+          discountRows,
+          separator: summarySep,
+          labelWidth: cols.labelWidth,
+          valueWidth: cols.valueWidth,
+        )) {
+          final plain = ThermalReceiptCompactText.isAnyCompactLine(row)
+              ? ThermalReceiptCompactText.unwrap(row)
+              : row;
+          lines.add(ThermalReceiptBoldText.line(plain));
+        }
       }
 
       if (config.showItemSeparator) {

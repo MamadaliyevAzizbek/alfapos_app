@@ -7,6 +7,7 @@ class SalesFilterCartPrice {
   SalesFilterCartPrice._();
 
   static void applySessionPriceToItem(CartItem item, SalesSessionProvider sales) {
+    if (item.priceLocked) return;
     final type = sales.activeSellPriceType;
     if (type == null) {
       item.salePriceOverride = null;

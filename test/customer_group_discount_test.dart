@@ -86,4 +86,26 @@ void main() {
     CustomerGroupDiscount.applyCustomerPricingToCart([item], null);
     expect(item.salePriceOverride, isNull);
   });
+
+  test('priceLocked manual override survives customer select', () {
+    final item = CartItem(
+      product: product,
+      quantity: 1,
+      salePriceOverride: 8000,
+      unitPriceBaseForCartPercent: 8000,
+      priceLocked: true,
+    );
+    final client = Client(
+      id: '1',
+      name: 'Mijoz',
+      customerGroupDiscountPriceType: 'selling',
+      customerGroupDiscount: -10,
+    );
+    CustomerGroupDiscount.applyCustomerPricingToCart([item], client);
+    expect(item.unitPriceDisplay, 8000);
+    expect(item.priceLocked, isTrue);
+
+    CustomerGroupDiscount.applyCustomerPricingToCart([item], null);
+    expect(item.unitPriceDisplay, 8000);
+  });
 }

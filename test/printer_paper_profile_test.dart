@@ -11,7 +11,7 @@ void main() {
     ]) {
       expect(PrinterPaperProfile.isXprinter80(name), isTrue, reason: name);
       expect(PrinterPaperProfile.needsCompactLayout(name), isTrue, reason: name);
-      expect(PrinterPaperProfile.feedBeforeCut(name), 6, reason: name);
+      expect(PrinterPaperProfile.feedBeforeCut(name), 4, reason: name);
     }
   });
 

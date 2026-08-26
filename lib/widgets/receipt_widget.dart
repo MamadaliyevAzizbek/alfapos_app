@@ -286,32 +286,38 @@ class ReceiptWidget extends StatelessWidget {
                 : '${design.receiptNumberLabel}: $receiptNumber',
             style: textStyle,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text('${design.sellerLabel}: $sellerName', style: textStyle),
           if (design.showSellerPhone &&
               sellerPhone != null &&
               sellerPhone!.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}',
                 style: textStyle),
           ],
           if ((clientName ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text('${design.clientLabel}: ${clientName!.trim()}',
-                style: textStyle),
+            const SizedBox(height: 4),
+            Text(
+              '${design.clientLabel}: ${clientName!.trim()}',
+              style: textStyle.copyWith(fontWeight: FontWeight.w700),
+            ),
             if ((clientPhone ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}',
-                  style: textStyle),
+              const SizedBox(height: 4),
+              Text(
+                '${design.clientPhoneLabel}: ${clientPhone!.trim()}',
+                style: textStyle.copyWith(fontWeight: FontWeight.w700),
+              ),
             ],
             if ((clientAddress ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('${design.clientAddressLabel}: ${clientAddress!.trim()}',
-                  style: textStyle),
+              const SizedBox(height: 4),
+              Text(
+                '${design.clientAddressLabel}: ${clientAddress!.trim()}',
+                style: textStyle.copyWith(fontWeight: FontWeight.w700),
+              ),
             ],
           ],
           if ((description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Izoh: ${description!.trim()}',
               style: textStyle.copyWith(
@@ -478,17 +484,19 @@ class ReceiptWidget extends StatelessWidget {
       if (paymentSummary.isNotEmpty)
         ..._buildSummaryLines(
           paymentSummary,
-          textStyle,
+          textStyle.copyWith(fontWeight: FontWeight.w700),
           labelWidth: cols.labelWidth,
           valueWidth: cols.valueWidth,
+          bold: true,
         ),
       if (discountSummary.isNotEmpty) ...[
-        if (paymentSummary.isNotEmpty) const SizedBox(height: 8),
+        if (paymentSummary.isNotEmpty) const SizedBox(height: 4),
         ..._buildSummaryLines(
           discountSummary,
-          textStyle,
+          textStyle.copyWith(fontWeight: FontWeight.w700),
           labelWidth: cols.labelWidth,
           valueWidth: cols.valueWidth,
+          bold: true,
         ),
       ],
       if (design.showItemSeparator) ...[

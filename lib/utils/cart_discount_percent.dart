@@ -68,10 +68,12 @@ class CartDiscountPercent {
   /// Qo'lda «Chegirmali narx» o'zgartirilganda.
   static void onManualUnitPrice(CartItem item, double? override, int currentPercent) {
     if (override == null) {
+      item.priceLocked = false;
       item.unitPriceBaseForCartPercent = item.defaultLineUnitPrice.toDouble();
       applyToItem(item, currentPercent);
       return;
     }
+    item.priceLocked = true;
     if (currentPercent == 0) {
       item.unitPriceBaseForCartPercent = override;
       item.salePriceOverride = override;
