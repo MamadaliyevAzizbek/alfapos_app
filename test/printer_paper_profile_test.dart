@@ -11,15 +11,15 @@ void main() {
     ]) {
       expect(PrinterPaperProfile.isXprinter80(name), isTrue, reason: name);
       expect(PrinterPaperProfile.needsCompactLayout(name), isTrue, reason: name);
-      expect(PrinterPaperProfile.feedBeforeCut(name), 4, reason: name);
+      expect(PrinterPaperProfile.feedBeforeCut(name), 5, reason: name);
     }
   });
 
   test('unknown printer keeps short feed, no false XP match', () {
     expect(PrinterPaperProfile.isXprinter80(null), isFalse);
     expect(PrinterPaperProfile.isXprinter80('HP LaserJet'), isFalse);
-    expect(PrinterPaperProfile.feedBeforeCut(null), 0);
-    expect(PrinterPaperProfile.feedBeforeCut('Generic'), 0);
+    expect(PrinterPaperProfile.feedBeforeCut(null), 1);
+    expect(PrinterPaperProfile.feedBeforeCut('Generic'), 1);
   });
 
   test('restore spacing is ESC 3 52', () {

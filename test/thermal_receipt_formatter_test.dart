@@ -33,10 +33,10 @@ void main() {
       '8,000',
     ];
     final lines = ThermalReceiptFormatter.fromApiRawLines(raw);
-    expect(lines.any((l) => l.contains('Alfa market')), isTrue);
+    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
     expect(
         lines.any((l) =>
-            ThermalReceiptProductTitleText.unwrap(l).startsWith('1) sprite')),
+            ThermalReceiptProductTitleText.unwrap(l).startsWith('sprite')),
         isTrue);
     expect(lines.any((l) => l.contains('sprite')), isTrue);
     expect(lines.any((l) => l.contains('x') && l.contains("so'm")), isTrue);
@@ -84,7 +84,7 @@ void main() {
     final lines = ApiReceiptHtmlParser.toPrintLines(html);
     expect(
         lines.any((l) =>
-            ThermalReceiptProductTitleText.unwrap(l).startsWith('1) aaaaaa')),
+            ThermalReceiptProductTitleText.unwrap(l).startsWith('aaaaaa')),
         isTrue);
     expect(lines.any((l) => l.contains('38,000') && l.contains('so')), isTrue);
   });
@@ -148,8 +148,6 @@ void main() {
     }
 
     for (final lines in [build(restaurant: false), build(restaurant: true)]) {
-      expect(lines.any((l) => l.contains("Do'kon") || l.contains('Restoran')),
-          isTrue);
       expect(lines.any((l) => l.contains('2026-06-10')), isTrue);
       expect(lines.any(ThermalReceiptProductTitleText.isTitleLine), isTrue);
       expect(lines.any(ThermalReceiptTotalText.isTotalLine), isTrue);
@@ -315,7 +313,7 @@ void main() {
         totalAmount: '4,000',
       ),
     );
-    expect(lines.any((l) => l.contains('GULISTON')), isTrue);
+    expect(lines.any((l) => l.contains('GULISTON')), isFalse);
     expect(lines.any((l) => l.contains('2026-08-11') && l.contains('18:43')),
         isTrue);
   });

@@ -1,7 +1,6 @@
 import '../core/input_formatters.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_store_title.dart';
-import 'receipt_strikethrough_text.dart';
 import 'thermal_receipt_bold_text.dart';
 import 'thermal_receipt_compact_text.dart';
 import 'thermal_receipt_large_text.dart';
@@ -290,23 +289,25 @@ class ThermalReceiptFormatter {
       n++;
       for (final nameLine in ThermalReceiptLineWrap.formatProductNameRows(
         p.name,
-        numbered: config.numberedProducts,
+        numbered: false,
         index: n,
       )) {
         lines.add(ThermalReceiptProductTitleText.line(nameLine));
       }
       lines.add(ThermalReceiptProductTitleText.gapLine());
       if (d.isRestaurantLayout) {
-        _appendLeftLine(lines, _restaurantProductLine(p));
+        _appendLeftLine(lines, _restaurantProductLine(p), bold: true);
       } else {
         final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
         final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
         lines.addAll(
-          ThermalReceiptLineWrap.formatTwoColumnRows(
-            qtyPart,
-            sumPart,
-            totalWidth: maxWidth,
-            rightWidth: kReceiptAmountColumnWidth,
+          _boldQtyRows(
+            ThermalReceiptLineWrap.formatTwoColumnRows(
+              qtyPart,
+              sumPart,
+              totalWidth: maxWidth,
+              rightWidth: kReceiptAmountColumnWidth,
+            ),
           ),
         );
       }
@@ -702,6 +703,21 @@ class ThermalReceiptFormatter {
     return '$t $suf';
   }
 
+  static List<String> _boldQtyRows(List<String> rows) {
+    return [
+      for (final row in rows)
+        if (ThermalReceiptBoldText.isBoldLine(row) ||
+            ThermalReceiptCompactText.isCompactBoldLine(row))
+          row
+        else if (ThermalReceiptCompactText.isCompactLine(row))
+          ThermalReceiptCompactText.boldLine(
+            ThermalReceiptCompactText.unwrap(row),
+          )
+        else
+          ThermalReceiptBoldText.line(row),
+    ];
+  }
+
   static String _restaurantProductLine(ThermalReceiptProductLine p) {
     final qty = _normalizeQtyUnit(p.quantity.trim());
     final price = formatAmountForReceipt(
@@ -712,18 +728,6 @@ class ThermalReceiptFormatter {
       p.lineTotal
           .replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
     );
-    final catalog = p.catalogUnitPrice == null
-        ? null
-        : formatAmountForReceipt(
-            p.catalogUnitPrice!.replaceAll(
-                RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
-          );
-    if (catalog != null &&
-        catalog.isNotEmpty &&
-        catalog != price &&
-        _looksNumeric(catalog.replaceAll(',', ''))) {
-      return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price=$total';
-    }
     return '$qty x $price=$total';
   }
 
@@ -734,22 +738,9 @@ class ThermalReceiptFormatter {
       p.unitPrice
           .replaceAll(RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
     );
-    final catalog = p.catalogUnitPrice == null
-        ? null
-        : formatAmountForReceipt(
-            p.catalogUnitPrice!.replaceAll(
-                RegExp(r"\s*so'm\.?\s*$", caseSensitive: false), ''),
-          );
     final suf = suffix.trim().isEmpty ? "so'm" : suffix.trim();
     if (qty.contains('x') || qty.contains('×')) {
       return '${qty.replaceAll('×', 'x')} $suf.';
-    }
-    if (catalog != null &&
-        catalog.isNotEmpty &&
-        catalog != price &&
-        _looksNumeric(catalog.replaceAll(',', ''))) {
-      // Chapda so'm yo'q — o'ngdagi jami bilan bir qatorda sig'ishi uchun.
-      return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price';
     }
     if (price.isNotEmpty && _looksNumeric(price.replaceAll(',', ''))) {
       return '$qty x $price $suf';

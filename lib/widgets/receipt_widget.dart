@@ -130,8 +130,7 @@ class ReceiptWidget extends StatelessWidget {
                 quantity: r.quantityStr,
                 unitPrice: _fmt(r.price),
                 lineTotal: _fmt(r.sum),
-                catalogUnitPrice:
-                    r.hasUnitDiscount ? _fmt(r.catalogPrice!) : null,
+                catalogUnitPrice: null,
                 lineWeightKg: r.lineWeightKg,
               ),
             )
@@ -329,18 +328,14 @@ class ReceiptWidget extends StatelessWidget {
           const SizedBox(height: 6),
           for (var i = 0; i < productRows.length; i++) ...[
             Text(
-              design.numberedProducts
-                  ? '${i + 1}) ${productRows[i].productName}'
-                  : productRows[i].productName,
-              style: isRestaurantLayout
-                  ? headerStyle.copyWith(
-                      fontSize: ThermalReceiptProductTitleText.onScreenFontSize,
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
-                    )
-                  : headerStyle,
+              productRows[i].productName,
+              style: headerStyle.copyWith(
+                fontSize: ThermalReceiptProductTitleText.onScreenFontSize,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
             ),
-            if (isRestaurantLayout) const SizedBox(height: 2),
+            const SizedBox(height: 2),
             if (isRestaurantLayout)
               _restaurantProductLineWidget(productRows[i], textStyle)
             else
@@ -436,13 +431,6 @@ class ReceiptWidget extends StatelessWidget {
           .replaceAll('×', 'x'),
     );
   }
-
-  static TextStyle _strikeStyle(TextStyle base) => base.copyWith(
-        decoration: TextDecoration.lineThrough,
-        decorationThickness: 2,
-        decorationColor: Colors.grey.shade700,
-        color: Colors.grey.shade600,
-      );
 
   static List<Widget> _buildReceiptSummarySection({
     required ReceiptDesignConfig design,
@@ -565,24 +553,13 @@ class ReceiptWidget extends StatelessWidget {
   static Widget _restaurantProductLineWidget(
       ReceiptRow row, TextStyle textStyle) {
     final qty = _normalizeQty(row.quantityStr);
-    if (row.hasUnitDiscount) {
-      return Text.rich(
-        TextSpan(
-          style: textStyle,
-          children: [
-            TextSpan(text: '$qty x '),
-            TextSpan(
-                text: '${_fmt(row.catalogPrice!)}',
-                style: _strikeStyle(textStyle)),
-            TextSpan(text: ' ${_fmt(row.price)}=${_fmt(row.sum)}'),
-          ],
-        ),
-        softWrap: false,
-      );
-    }
+    final qtyStyle = textStyle.copyWith(
+      fontSize: (textStyle.fontSize ?? 13) + 1,
+      fontWeight: FontWeight.w800,
+    );
     return Text(
       '$qty x ${_fmt(row.price)}=${_fmt(row.sum)}',
-      style: textStyle,
+      style: qtyStyle,
       softWrap: false,
     );
   }
@@ -590,21 +567,11 @@ class ReceiptWidget extends StatelessWidget {
   static Widget _productPriceLine(
       ReceiptRow row, TextStyle textStyle, String som) {
     final qty = _normalizeQty(row.quantityStr);
-    if (row.hasUnitDiscount) {
-      return Text.rich(
-        TextSpan(
-          style: textStyle,
-          children: [
-            TextSpan(text: '$qty x '),
-            TextSpan(
-                text: '${_fmt(row.catalogPrice!)}',
-                style: _strikeStyle(textStyle)),
-            TextSpan(text: ' ${_fmt(row.price)} $som'),
-          ],
-        ),
-      );
-    }
-    return Text('$qty x ${_fmt(row.price)} $som', style: textStyle);
+    final qtyStyle = textStyle.copyWith(
+      fontSize: (textStyle.fontSize ?? 13) + 1,
+      fontWeight: FontWeight.w800,
+    );
+    return Text('$qty x ${_fmt(row.price)} $som', style: qtyStyle);
   }
 
   static Widget _productSumColumn(

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/receipt_design_config.dart';
 import 'receipt_logo_image.dart';
 import '../utils/receipt_strikethrough_text.dart';
+import '../utils/thermal_receipt_bold_text.dart';
 import '../utils/thermal_receipt_compact_text.dart';
 import '../utils/thermal_receipt_large_text.dart';
 import '../utils/thermal_receipt_note_text.dart';
@@ -117,6 +118,22 @@ class ThermalReceiptPreview extends StatelessWidget {
       );
     }
 
+    if (ThermalReceiptBoldText.isBoldLine(line)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Text(
+          ThermalReceiptBoldText.unwrap(line),
+          style: _previewText.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            height: 1.45,
+          ),
+          textAlign: TextAlign.start,
+          softWrap: false,
+        ),
+      );
+    }
+
     if (ThermalReceiptCompactText.isAnyCompactLine(line)) {
       final text = ThermalReceiptCompactText.unwrap(line);
       final bold = ThermalReceiptCompactText.isCompactBoldLine(line);
@@ -125,7 +142,7 @@ class ThermalReceiptPreview extends StatelessWidget {
         child: ReceiptStrikethroughText.richLine(
           text,
           style: _previewText.copyWith(
-            fontSize: 11,
+            fontSize: 13,
             fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
           ),
           textAlign: TextAlign.start,

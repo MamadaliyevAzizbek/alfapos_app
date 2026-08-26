@@ -24,10 +24,11 @@ void main() {
       description: 'Izoh matni',
     );
     final lines = w.toThermalPrintLines();
-    expect(lines.any((l) => l.contains('Alfa market')), isTrue);
+    expect(lines.any((l) => l.contains('Alfa market')), isFalse);
     expect(lines.any((l) => l.contains('2026-05-20')), isTrue);
     expect(lines, contains('Chek raqami: POS99'));
-    expect(lines.any((l) => l.contains('1) Non')), isTrue);
+    expect(lines.any((l) => l.contains('Non') && !l.contains('1)')), isTrue);
+    expect(lines.any((l) => l.contains('1) Non')), isFalse);
     expect(
         lines.any((l) => l.contains('2 dona') && l.contains("so'm")), isTrue);
     expect(lines.any((l) => l.contains('Naqd')), isTrue);

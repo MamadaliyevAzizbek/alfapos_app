@@ -31,8 +31,8 @@ abstract class PrinterPaperProfile {
 
   /// XP-80C pichoq; pastki bo'sh qog'oz kamaytirildi.
   static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 4;
-    return 0;
+    if (isXprinter80(printerName)) return 5;
+    return 1;
   }
 
   /// ESC 3 n — 32 zich; 52 meta/mahsulot qatorlarini aniq ajratadi.

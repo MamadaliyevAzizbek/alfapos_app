@@ -5,7 +5,7 @@ import 'package:alfapos_app/utils/receipt_strikethrough_text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('discount qty line keeps strikethrough price on one row with sum', () {
+  test('discount qty line shows only discounted price without original', () {
     final lines = ThermalReceiptFormatter.toPrintLines(
       ThermalReceiptPrintData(
         storeName: 'GULISTON',
@@ -28,14 +28,11 @@ void main() {
         totalAmount: '10,000',
       ),
     );
-    final marked = lines.where(ReceiptStrikethroughText.containsMarker).toList();
-    expect(marked, isNotEmpty);
-    expect(marked.first, contains('1 dona x'));
-    expect(marked.first, contains('10,000'));
-    // Chap+o'ng bir qatorda — so'm pastga tushmasin.
-    expect(marked.first.split('\n').length, 1);
+    expect(lines.any(ReceiptStrikethroughText.containsMarker), isFalse);
+    expect(lines.any((l) => l.contains('11,500')), isFalse);
+    expect(lines.any((l) => l.contains('1) ')), isFalse);
     expect(
-      ThermalReceiptLineWrap.printableLength(marked.first) <= kThermalChars80mm,
+      lines.any((l) => l.contains('1 dona x') && l.contains('10,000')),
       isTrue,
     );
   });
