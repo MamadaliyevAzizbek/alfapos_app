@@ -96,7 +96,7 @@ class ThermalReceiptPreview extends StatelessWidget {
           style: _previewText.copyWith(
             fontSize: ThermalReceiptProductTitleText.previewFontSize,
             fontWeight: FontWeight.w800,
-            height: 1.2,
+            height: 1.15,
           ),
           textAlign: TextAlign.start,
           bold: true,
@@ -126,7 +126,7 @@ class ThermalReceiptPreview extends StatelessWidget {
           style: _previewText.copyWith(
             fontSize: 13,
             fontWeight: FontWeight.w800,
-            height: 1.45,
+            height: 1.35,
           ),
           textAlign: TextAlign.start,
           softWrap: false,

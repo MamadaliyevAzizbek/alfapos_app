@@ -196,7 +196,7 @@ void main() {
     }
 
     expect(feedBeforeCut(restaurantBytes), feedBeforeCut(shopBytes));
-    expect(feedBeforeCut(restaurantBytes), 1);
+    expect(feedBeforeCut(restaurantBytes), 6);
     // GS ! — navbat raqami va umumiy summa (balandlik 2×).
     expect(restaurantBytes.contains(29), isTrue);
   });
@@ -238,8 +238,26 @@ void main() {
       printerName: 'XP-80C',
     );
     expect(bytes, isNotEmpty);
-    expect(bytes, containsAllInOrder([29, 118, 48, 0]));
-    expect(bytes, isNot(containsAllInOrder([27, 42])));
+    // ESC * 33 — logo (GS v 0 emas: XP da yozuv chiqardi).
+    expect(bytes, containsAllInOrder([27, 42, 33]));
+    expect(bytes, isNot(containsAllInOrder([29, 118, 48, 0])));
+    // Logo GS W dan OLDIN.
+    var foundEscStar = -1;
+    for (var i = 0; i < bytes.length - 2; i++) {
+      if (bytes[i] == 27 && bytes[i + 1] == 42 && bytes[i + 2] == 33) {
+        foundEscStar = i;
+        break;
+      }
+    }
+    var foundGsW = -1;
+    for (var i = 0; i < bytes.length - 1; i++) {
+      if (bytes[i] == 29 && bytes[i + 1] == 87) {
+        foundGsW = i;
+        break;
+      }
+    }
+    expect(foundEscStar, greaterThan(0));
+    expect(foundGsW, greaterThan(foundEscStar));
   });
 
   test('standard receipt uses minimal feed before cut', () async {
@@ -249,10 +267,10 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 1);
+    expect(bytes[feedIndex + 1], 6);
   });
 
-  test('XP-80C uses 5-line feed and compact spacing, not g.cut waste',
+  test('XP-80C uses 6-line feed and compact spacing, not g.cut waste',
       () async {
     final bytes = await EscPosReceiptBuilder.buildReceipt(
       lines: const ['Naqd pul - 1', 'Umumiy summa - 1'],
@@ -261,7 +279,7 @@ void main() {
     final feedIndex = bytes.lastIndexOf(0x64);
     expect(feedIndex, greaterThan(0));
     expect(bytes[feedIndex - 1], 0x1B);
-    expect(bytes[feedIndex + 1], 5);
+    expect(bytes[feedIndex + 1], 6);
     expect(bytes[feedIndex + 2], 0x1D); // GS
     expect(bytes[feedIndex + 3], 0x56); // V
     expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed

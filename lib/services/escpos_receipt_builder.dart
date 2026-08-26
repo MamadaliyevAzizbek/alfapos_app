@@ -71,29 +71,21 @@ class EscPosReceiptBuilder {
     final codePage = cfg.printerCodePage;
 
     bytes.addAll(List<int>.from(g.reset()));
-    bytes.addAll(List<int>.from(g.setGlobalCodeTable(codeTable)));
-    bytes.addAll(PrinterPaperProfile.fullWidthMarginBytes());
     final cutFeed = PrinterPaperProfile.feedBeforeCut(printerName);
 
     if (openCashDrawer) {
       bytes.addAll(g.drawer(pin: cashDrawerPin));
     }
 
-    if (cfg.showLogo &&
-        cfg.logoFilePath != null &&
-        cfg.logoFilePath!.isNotEmpty) {
-      final mm58 = paperSize == PaperSize.mm58;
-      final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
-      if (logoImage != null) {
-        bytes.addAll(_encodeLogo(g, logoImage));
-      } else {
-        debugPrint('[ChekLogo] rasm o‘qilmadi: ${cfg.logoFilePath}');
-      }
-    } else {
-      debugPrint(
-        '[ChekLogo] o‘tkazib yuborildi show=${cfg.showLogo} path=${cfg.logoFilePath}',
-      );
+    // Logo FAQAT reset dan keyin, GS W / code table DAN OLDIN.
+    // ESC * ishlatiladi (GS v 0 XP da yozuv bo‘lib chiqardi).
+    final logoBytes = await _logoBytes(cfg, paperSize: paperSize);
+    if (logoBytes.isNotEmpty) {
+      bytes.addAll(logoBytes);
     }
+
+    bytes.addAll(List<int>.from(g.setGlobalCodeTable(codeTable)));
+    bytes.addAll(PrinterPaperProfile.fullWidthMarginBytes());
 
     var contentStarted = false;
     for (final line in wrapped) {
@@ -115,6 +107,7 @@ class EscPosReceiptBuilder {
 
       if (ThermalReceiptBoldText.isBoldLine(line)) {
         final text = ThermalReceiptBoldText.unwrap(line);
+        // Mahsulot miqdori: qalin size1 (size2 juda katta edi).
         if (ReceiptStrikethroughText.containsMarker(text)) {
           bytes.addAll(
             _printMarkedLine(
@@ -135,6 +128,8 @@ class EscPosReceiptBuilder {
                 fontType: PosFontType.fontA,
                 align: PosAlign.left,
                 bold: true,
+                height: PosTextSize.size1,
+                width: PosTextSize.size1,
               ),
               maxCharsPerLine: maxWidth,
             ),
@@ -162,6 +157,7 @@ class EscPosReceiptBuilder {
 
       if (ThermalReceiptProductTitleText.isTitleLine(line)) {
         final text = ThermalReceiptProductTitleText.unwrap(line);
+        // Qalin size1 — size2 (~2×) juda katta edi; termalda o‘rtacha shu.
         bytes.addAll(
           g.textEncoded(
             EscPosTextCodec.encodeSync(text, codePage: codePage),
@@ -170,6 +166,8 @@ class EscPosReceiptBuilder {
               fontType: PosFontType.fontA,
               align: PosAlign.left,
               bold: true,
+              height: PosTextSize.size1,
+              width: PosTextSize.size1,
             ),
             maxCharsPerLine: maxWidth,
           ),
@@ -437,23 +435,66 @@ class EscPosReceiptBuilder {
     return 'CP866';
   }
 
-  /// GS v 0 raster: qora-oq logo, invert/ESC* xirasiz. Kutubxona `imageRaster` emas.
-  static List<int> _encodeLogo(Generator _, img.Image logo) {
+  /// GS v 0: reset dan keyin, margin dan oldin.
+  static Future<List<int>> _logoBytes(
+    ReceiptDesignConfig cfg, {
+    required PaperSize paperSize,
+  }) async {
+    if (!cfg.showLogo ||
+        cfg.logoFilePath == null ||
+        cfg.logoFilePath!.isEmpty) {
+      debugPrint(
+        '[ChekLogo] o‘tkazib yuborildi show=${cfg.showLogo} path=${cfg.logoFilePath}',
+      );
+      return const [];
+    }
+    final mm58 = paperSize == PaperSize.mm58;
+    final logoImage = await _loadLogoImage(cfg.logoFilePath!, mm58: mm58);
+    if (logoImage == null) {
+      debugPrint('[ChekLogo] rasm o‘qilmadi: ${cfg.logoFilePath}');
+      return const [];
+    }
+    return _encodeLogo(logoImage);
+  }
+
+  static List<int> _encodeLogo(img.Image logo) {
     try {
-      final raster = ThermalReceiptLogoFit.rasterGsV0(logo);
+      final dark = _countDarkPixels(logo);
+      if (dark <= 0) {
+        debugPrint(
+          '[ChekLogo] ESC* oq rasm (dark=0) ${logo.width}x${logo.height}',
+        );
+        return const [];
+      }
+      // GS v 0 XP da yozuv bo‘lib chiqardi — ESC * 24-dot.
+      final raster = ThermalReceiptLogoFit.rasterEscStar(logo);
       if (raster.isEmpty) return const [];
       final out = <int>[
+        27, 97, 1, // markaz
         ...raster,
+        27, 97, 0,
         ...PrinterPaperProfile.restoreCompactSpacingBytes(),
       ];
       debugPrint(
-        '[ChekLogo] GSv0 ${logo.width}x${logo.height} bytes=${out.length}',
+        '[ChekLogo] ESC* ${logo.width}x${logo.height} dark=$dark bytes=${out.length}',
       );
       return out;
     } catch (e) {
-      debugPrint('[ChekLogo] GSv0 o‘tkazib yuborildi: $e');
+      debugPrint('[ChekLogo] ESC* xato: $e');
       return const [];
     }
+  }
+
+  static int _countDarkPixels(img.Image src) {
+    var n = 0;
+    for (var y = 0; y < src.height; y++) {
+      for (var x = 0; x < src.width; x++) {
+        final p = src.getPixel(x, y);
+        final lum = (p.r * 299 + p.g * 587 + p.b * 114) / 1000;
+        if (lum < 168) n++;
+      }
+    }
+    return n;
   }
 
   static bool _isDateTimeLine(String text) =>
@@ -461,7 +502,8 @@ class EscPosReceiptBuilder {
 
   static Future<img.Image?> _loadLogoImage(String path,
       {required bool mm58}) async {
-    final key = '$path|${mm58 ? 58 : 80}';
+    final key =
+        '$path|${mm58 ? 58 : 80}|v3|h${ThermalReceiptLogoFit.height80}';
     if (_cachedLogoKey == key && _cachedLogoImage != null) {
       return _cachedLogoImage;
     }

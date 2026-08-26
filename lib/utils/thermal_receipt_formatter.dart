@@ -294,9 +294,9 @@ class ThermalReceiptFormatter {
       )) {
         lines.add(ThermalReceiptProductTitleText.line(nameLine));
       }
-      lines.add(ThermalReceiptProductTitleText.gapLine());
+      lines.add(ThermalReceiptHalfGap.line());
       if (d.isRestaurantLayout) {
-        _appendLeftLine(lines, _restaurantProductLine(p), bold: true);
+        lines.add(ThermalReceiptBoldText.line(_restaurantProductLine(p)));
       } else {
         final sumPart = _lineTotalSom(p.lineTotal, config.currencySuffix);
         final qtyPart = _productQtyLine(p, suffix: config.currencySuffix);
@@ -706,13 +706,13 @@ class ThermalReceiptFormatter {
   static List<String> _boldQtyRows(List<String> rows) {
     return [
       for (final row in rows)
-        if (ThermalReceiptBoldText.isBoldLine(row) ||
-            ThermalReceiptCompactText.isCompactBoldLine(row))
+        if (ThermalReceiptBoldText.isBoldLine(row) &&
+            !ThermalReceiptBoldText.isLargeBoldLine(row))
           row
-        else if (ThermalReceiptCompactText.isCompactLine(row))
-          ThermalReceiptCompactText.boldLine(
-            ThermalReceiptCompactText.unwrap(row),
-          )
+        else if (ThermalReceiptCompactText.isAnyCompactLine(row))
+          ThermalReceiptBoldText.line(ThermalReceiptCompactText.unwrap(row))
+        else if (ThermalReceiptBoldText.isLargeBoldLine(row))
+          ThermalReceiptBoldText.line(ThermalReceiptBoldText.unwrap(row))
         else
           ThermalReceiptBoldText.line(row),
     ];

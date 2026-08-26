@@ -39,9 +39,9 @@ void main() {
   test('fitted logo width is multiple of 8 for GS v 0', () {
     final out = ThermalReceiptLogoFit.fitToBox(solid(70, 50), 384, 256);
     expect(out.width % 8, 0);
-    final esc = ThermalReceiptLogoFit.rasterGsV0(out);
+    final esc = ThermalReceiptLogoFit.rasterEscStar(out);
     expect(esc, isNotEmpty);
-    expect(esc, containsAllInOrder([29, 118, 48, 0]));
+    expect(esc, containsAllInOrder([27, 42, 33]));
   });
 
   test('58mm box is smaller than 80mm', () {
@@ -64,8 +64,8 @@ void main() {
       color: img.ColorRgba8(0, 0, 0, 255),
     );
     final out = ThermalReceiptLogoFit.fit(canvas, mm58: false);
-    expect(out.width, greaterThanOrEqualTo(192));
-    expect(out.height, greaterThanOrEqualTo(192));
+    expect(out.width, greaterThanOrEqualTo(140));
+    expect(out.height, greaterThanOrEqualTo(140));
     var black = 0;
     for (var y = 0; y < out.height; y++) {
       for (var x = 0; x < out.width; x++) {
@@ -102,8 +102,8 @@ void main() {
     final decoded = img.decodeImage(file.readAsBytesSync());
     expect(decoded, isNotNull);
     final out = ThermalReceiptLogoFit.fit(decoded!, mm58: false);
-    expect(out.width, greaterThanOrEqualTo(300));
-    expect(out.height, greaterThanOrEqualTo(160));
+    expect(out.width, lessThanOrEqualTo(ThermalReceiptLogoFit.width80));
+    expect(out.height, lessThanOrEqualTo(ThermalReceiptLogoFit.height80));
     expect(out.width % 8, 0);
     var black = 0;
     for (var y = 0; y < out.height; y++) {
@@ -113,9 +113,9 @@ void main() {
       }
     }
     expect(black, greaterThan(2000));
-    final esc = ThermalReceiptLogoFit.rasterGsV0(out);
-    expect(esc, containsAllInOrder([29, 118, 48, 0]));
-    final ink = esc.skip(12).where((b) => b != 0).length;
+    final esc = ThermalReceiptLogoFit.rasterEscStar(out);
+    expect(esc, containsAllInOrder([27, 42, 33]));
+    final ink = esc.where((b) => b != 0 && b != 27 && b != 42 && b != 33 && b != 10).length;
     expect(ink, greaterThan(80));
   });
 }

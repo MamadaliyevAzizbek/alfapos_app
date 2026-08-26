@@ -7,13 +7,13 @@ import 'package:image/image.dart' as img;
 abstract class ThermalReceiptLogoFit {
   ThermalReceiptLogoFit._();
 
-  /// 80mm (~203 DPI): ~48×27 mm — o‘qilishi uchun yetarli, qog‘oz isrofi yo‘q.
+  /// 80mm: ixcham raster — katta GS v 0 ba'zi XP da matn (yozuv) bo‘lib chiqadi.
   static const int width80 = 384;
-  static const int height80 = 220;
+  static const int height80 = 160;
 
-  /// 58mm: ixchamroq.
+  /// 58mm.
   static const int width58 = 256;
-  static const int height58 = 144;
+  static const int height58 = 120;
 
   /// Sozlamalar / ekran preview (logical px).
   static const double previewWidth = 200;
@@ -166,19 +166,22 @@ abstract class ThermalReceiptLogoFit {
     return out;
   }
 
-  /// ESC/POS GS v 0 — growable ro‘yxat, kutubxona `List.filled` xatosiz.
+  /// ESC/POS GS v 0 — growable ro‘yxat; x = bayt kengligi (Epson).
+  /// Katta rastr / GS W dan keyin ba'zi XP da baytlar matn bo‘lib chiqadi.
   static List<int> rasterGsV0(img.Image src) {
     final width = src.width;
     final height = src.height;
     if (width <= 0 || height <= 0) return const [];
-    final widthBytes = (width + 7) ~/ 8;
+    if (width % 8 != 0) {
+      return rasterGsV0(_padWidthMultipleOf8(src));
+    }
+    final widthBytes = width ~/ 8;
     final packed = <int>[];
     for (var y = 0; y < height; y++) {
       for (var xb = 0; xb < widthBytes; xb++) {
         var byte = 0;
         for (var bit = 0; bit < 8; bit++) {
           final x = xb * 8 + bit;
-          if (x >= width) continue;
           final p = src.getPixel(x, y);
           final lum = (p.r * 299 + p.g * 587 + p.b * 114) / 1000;
           if (lum < _printThreshold) {
@@ -188,8 +191,8 @@ abstract class ThermalReceiptLogoFit {
         packed.add(byte);
       }
     }
+    // ESC a 1 yo‘q — ba'zi modelda GS v 0 dan oldin align rasterni buzadi.
     return <int>[
-      27, 97, 1, // ESC a 1 — markaz
       29, 118, 48, 0, // GS v 0 m=0
       widthBytes & 0xFF,
       (widthBytes >> 8) & 0xFF,
@@ -197,8 +200,46 @@ abstract class ThermalReceiptLogoFit {
       (height >> 8) & 0xFF,
       ...packed,
       10, // LF
-      27, 97, 0, // chapga qaytarish
     ];
+  }
+
+  /// ESC * m=33 (24-dot) — XP/Xprinter da GS v 0 emas, shu ishonchliroq.
+  /// Invert yo‘q: qora piksel = chop qora (kutubxona `image()` invert qiladi).
+  static List<int> rasterEscStar(img.Image src) {
+    final width = src.width;
+    final height = src.height;
+    if (width <= 0 || height <= 0) return const [];
+    final bands = (height + 23) ~/ 24;
+    final out = <int>[
+      27, 51, 0, // ESC 3 0 — qator oralig‘i 0 (rasm yopishmasin)
+    ];
+    for (var band = 0; band < bands; band++) {
+      final row0 = band * 24;
+      final slice = <int>[];
+      for (var x = 0; x < width; x++) {
+        for (var byteIdx = 0; byteIdx < 3; byteIdx++) {
+          var byte = 0;
+          for (var bit = 0; bit < 8; bit++) {
+            final y = row0 + byteIdx * 8 + bit;
+            if (y >= height) continue;
+            final p = src.getPixel(x, y);
+            final lum = (p.r * 299 + p.g * 587 + p.b * 114) / 1000;
+            if (lum < _printThreshold) {
+              byte |= 0x80 >> bit;
+            }
+          }
+          slice.add(byte);
+        }
+      }
+      out.addAll([
+        27, 42, 33, // ESC * 33
+        width & 0xFF,
+        (width >> 8) & 0xFF,
+        ...slice,
+        10, // LF
+      ]);
+    }
+    return out;
   }
 
   static img.Image fit(img.Image src, {required bool mm58}) {

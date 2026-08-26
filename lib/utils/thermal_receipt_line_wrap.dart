@@ -25,7 +25,8 @@ class ThermalReceiptLineWrap {
     if (ThermalReceiptCompactText.isAnyCompactLine(s)) {
       s = ThermalReceiptCompactText.unwrap(s);
     }
-    if (ThermalReceiptBoldText.isBoldLine(s)) {
+    if (ThermalReceiptBoldText.isLargeBoldLine(s) ||
+        ThermalReceiptBoldText.isBoldLine(s)) {
       s = ThermalReceiptBoldText.unwrap(s);
     }
     if (ThermalReceiptProductTitleText.isTitleLine(s)) {

@@ -3,13 +3,23 @@ abstract class ThermalReceiptBoldText {
   ThermalReceiptBoldText._();
 
   static const marker = '!BOLD!';
+  /// Mahsulot miqdori — printerda 2× baland (asl +1px emas, ESC/POS chegarasi).
+  static const largeMarker = '!BOLD_LG!';
 
   static String line(String text) => '$marker$text';
 
-  static bool isBoldLine(String line) => line.startsWith(marker);
+  static String largeLine(String text) => '$largeMarker$text';
 
-  static String unwrap(String line) =>
-      isBoldLine(line) ? line.substring(marker.length) : line;
+  static bool isLargeBoldLine(String line) => line.startsWith(largeMarker);
+
+  static bool isBoldLine(String line) =>
+      line.startsWith(marker) || isLargeBoldLine(line);
+
+  static String unwrap(String line) {
+    if (isLargeBoldLine(line)) return line.substring(largeMarker.length);
+    if (line.startsWith(marker)) return line.substring(marker.length);
+    return line;
+  }
 }
 
 /// Yarim qator bo'shliq (to'liq `feed(1)` emas).

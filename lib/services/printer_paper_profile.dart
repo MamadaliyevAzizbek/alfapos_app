@@ -29,11 +29,8 @@ abstract class PrinterPaperProfile {
     return _compactPatterns.any(n.contains);
   }
 
-  /// XP-80C pichoq; pastki bo'sh qog'oz kamaytirildi.
-  static int feedBeforeCut(String? printerName) {
-    if (isXprinter80(printerName)) return 5;
-    return 1;
-  }
+  /// Oxirgi matndan bo‘shliq qoldirib kesish (erta kesilmasin).
+  static int feedBeforeCut(String? printerName) => 6;
 
   /// ESC 3 n — 32 zich; 52 meta/mahsulot qatorlarini aniq ajratadi.
   static const int lineSpacingDots = 52;

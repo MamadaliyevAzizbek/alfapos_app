@@ -5,11 +5,11 @@ abstract class ThermalReceiptProductTitleText {
   static const marker = '!PRODUCT_TITLE!';
   static const gapMarker = '!PRODUCT_GAP!';
 
-  /// Ekran preview — asosiy matndan +3px.
-  static const double previewFontSize = 15;
+  /// Ekran preview — asosiy matndan biroz kattaroq (size2 emas).
+  static const double previewFontSize = 14;
 
   /// To‘lov ekrani preview.
-  static const double onScreenFontSize = 16;
+  static const double onScreenFontSize = 14;
 
   static String line(String text) => '$marker$text';
 

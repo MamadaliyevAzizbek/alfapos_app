@@ -332,7 +332,7 @@ class ReceiptWidget extends StatelessWidget {
               style: headerStyle.copyWith(
                 fontSize: ThermalReceiptProductTitleText.onScreenFontSize,
                 fontWeight: FontWeight.w800,
-                height: 1.2,
+                height: 1.15,
               ),
             ),
             const SizedBox(height: 2),
@@ -556,6 +556,7 @@ class ReceiptWidget extends StatelessWidget {
     final qtyStyle = textStyle.copyWith(
       fontSize: (textStyle.fontSize ?? 13) + 1,
       fontWeight: FontWeight.w800,
+      height: 1.25,
     );
     return Text(
       '$qty x ${_fmt(row.price)}=${_fmt(row.sum)}',
@@ -570,6 +571,7 @@ class ReceiptWidget extends StatelessWidget {
     final qtyStyle = textStyle.copyWith(
       fontSize: (textStyle.fontSize ?? 13) + 1,
       fontWeight: FontWeight.w800,
+      height: 1.25,
     );
     return Text('$qty x ${_fmt(row.price)} $som', style: qtyStyle);
   }
