@@ -265,6 +265,6 @@ void main() {
     expect(bytes[feedIndex + 2], 0x1D); // GS
     expect(bytes[feedIndex + 3], 0x56); // V
     expect(bytes[feedIndex + 4], 1); // partial cut, no extra 5-line feed
-    expect(bytes, containsAllInOrder([27, 51, 44]));
+    expect(bytes, containsAllInOrder([27, 51, 52]));
   });
 }

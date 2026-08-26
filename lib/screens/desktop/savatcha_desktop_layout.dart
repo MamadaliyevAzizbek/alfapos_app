@@ -7,6 +7,7 @@ import '../../models/product.dart';
 import '../../widgets/pos_editable_focus_scope.dart';
 import '../../utils/catalog_product_price_label.dart';
 import '../../utils/customer_group_discount.dart';
+import '../../utils/product_weight.dart';
 import '../../widgets/desktop_catalog_product_card.dart';
 import '../../widgets/restaurant_category_chips.dart';
 import '../../widgets/sales_shortcut_key_badge.dart';
@@ -1216,10 +1217,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     super.dispose();
   }
 
-  static String _qtyText(num q) {
-    if (q == q.roundToDouble()) return '${q.round()}';
-    return q.toString();
-  }
+  static String _qtyText(num q) => ProductWeight.formatQuantity(q);
 
   static num? _parseQty(String raw) {
     final t = raw.trim().replaceAll(' ', '').replaceAll(',', '.');

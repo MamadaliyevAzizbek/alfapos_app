@@ -45,6 +45,15 @@ void main() {
       expect(ProductWeight.formatQopReceiptQuantity(80, 40), '2 qop');
     });
 
+    test('formatQuantity strips trailing zeros like cart input', () {
+      expect(ProductWeight.formatQuantity(3.5), '3.5');
+      expect(ProductWeight.formatQuantity(3.500), '3.5');
+      expect(ProductWeight.formatQuantity(4), '4');
+      expect(ProductWeight.formatQuantity(1.25), '1.25');
+      expect(ProductWeight.trimQuantityDecimals('3.500 kg'), '3.5 kg');
+      expect(ProductWeight.trimQuantityDecimals('3.500'), '3.5');
+    });
+
     test('cartItemQuantityLabel uses default 40 kg when weight empty', () {
       final qopProduct = Product(
         id: '1',

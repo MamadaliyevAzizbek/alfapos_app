@@ -51,6 +51,7 @@ import '../services/sales_ui_scale_settings.dart';
 import '../services/sales_cart_profit_display_settings.dart';
 import '../utils/cart_stock_limit.dart';
 import '../utils/cash_register_utils.dart';
+import '../utils/product_weight.dart';
 import '../utils/sales_store_body.dart';
 import '../services/category_order_storage.dart';
 import '../services/desktop_sales_layout_settings.dart';
@@ -2709,10 +2710,7 @@ class _CartItemTileState extends State<_CartItemTile> {
     if (mounted) setState(() => _editing = false);
   }
 
-  static String _formatQuantity(num q) {
-    if (q == q.roundToDouble()) return q.toInt().toString();
-    return q.toString();
-  }
+  static String _formatQuantity(num q) => ProductWeight.formatQuantity(q);
 
   static String _formatUzs(int n) {
     final s = n.toString();

@@ -31,6 +31,28 @@ void main() {
     );
   });
 
+  test('empty title when no custom or branch — no Alfa market fallback', () {
+    final design = ReceiptDesignConfig.defaults.copyWith(
+      storeTitle: '',
+      useBranchNameAsTitle: false,
+    );
+    expect(
+      ReceiptStoreTitle.resolve(design: design, branchName: ''),
+      isEmpty,
+    );
+  });
+
+  test('Alfa market placeholder is ignored', () {
+    final design = ReceiptDesignConfig.defaults.copyWith(
+      storeTitle: 'Alfa market',
+      useBranchNameAsTitle: false,
+    );
+    expect(
+      ReceiptStoreTitle.resolve(design: design, branchName: ''),
+      isEmpty,
+    );
+  });
+
   test('standardFrom drops custom store title and keeps logo', () {
     final saved = ReceiptDesignConfig.defaults.copyWith(
       storeTitle: 'ssssss',

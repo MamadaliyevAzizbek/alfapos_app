@@ -35,8 +35,8 @@ abstract class PrinterPaperProfile {
     return 2;
   }
 
-  /// ESC 3 n — 32 ham zich; 44 qatorlarni aniq ajratadi.
-  static const int lineSpacingDots = 44;
+  /// ESC 3 n — 32 zich; 52 meta/mahsulot qatorlarini aniq ajratadi.
+  static const int lineSpacingDots = 52;
 
   /// Chop etish maydoni: chap margin 0, to‘liq 80mm kenglik (576 nuqta).
   static List<int> fullWidthMarginBytes() => const [

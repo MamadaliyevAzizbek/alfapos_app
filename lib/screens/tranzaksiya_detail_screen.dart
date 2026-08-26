@@ -908,7 +908,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   Widget build(BuildContext context) {
     if (widget.useDesktopFullscreenLayout) {
       final sess = SalesSessionProvider.instance;
-      final store = sess.branchName.isNotEmpty ? sess.branchName : 'Alfa market';
+      final store = sess.branchName.isNotEmpty ? sess.branchName : '';
 
       final allocated = _getAllocatedPaymentAmounts();
       final allocatedPayments = _paymentList

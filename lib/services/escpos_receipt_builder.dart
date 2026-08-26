@@ -316,9 +316,13 @@ class EscPosReceiptBuilder {
     PosTextSize height = PosTextSize.size1,
     PosTextSize width = PosTextSize.size1,
   }) {
+    final segments = ReceiptStrikethroughText.parseSegments(text);
+    if (segments.isEmpty) return const [];
     final bytes = <int>[];
-    for (final seg in ReceiptStrikethroughText.parseSegments(text)) {
+    for (var i = 0; i < segments.length; i++) {
+      final seg = segments[i];
       final enc = EscPosTextCodec.encodeSync(seg.text, codePage: codePage);
+      final isLast = i == segments.length - 1;
       bytes.addAll(
         g.textEncoded(
           enc,
@@ -330,7 +334,9 @@ class EscPosReceiptBuilder {
             height: height,
             width: width,
           ),
-          maxCharsPerLine: maxWidth,
+          // linesAfter: -1 → bo‘sh qator yo‘q; segmentlar bir qatorda qoladi.
+          linesAfter: isLast ? 0 : -1,
+          maxCharsPerLine: isLast ? maxWidth : null,
         ),
       );
     }

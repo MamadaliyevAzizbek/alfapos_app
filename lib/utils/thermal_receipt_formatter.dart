@@ -344,6 +344,8 @@ class ThermalReceiptFormatter {
     if (config.showDateTime) {
       center(_fmtDateTime(d.dateTime));
     }
+    // Sarlavha / sana bilan meta oralig‘i — yopishib ketmasin.
+    lines.add('');
 
     if (!d.isPrecheck &&
         d.isRestaurantLayout &&
@@ -399,6 +401,7 @@ class ThermalReceiptFormatter {
         lines.add(ThermalReceiptNoteText.line(part));
       }
     }
+    // Meta bilan mahsulotlar orasi.
     lines.add('');
   }
 
@@ -704,7 +707,8 @@ class ThermalReceiptFormatter {
         catalog.isNotEmpty &&
         catalog != price &&
         _looksNumeric(catalog.replaceAll(',', ''))) {
-      return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price $suf';
+      // Chapda so'm yo'q — o'ngdagi jami bilan bir qatorda sig'ishi uchun.
+      return '$qty x ${ReceiptStrikethroughText.wrap(catalog)} $price';
     }
     if (price.isNotEmpty && _looksNumeric(price.replaceAll(',', ''))) {
       return '$qty x $price $suf';
@@ -713,6 +717,8 @@ class ThermalReceiptFormatter {
   }
 
   static String _normalizeQtyUnit(String qty) {
-    return qty.replaceAll('×', 'x').replaceAll('’', "'");
+    return ProductWeight.trimQuantityDecimals(
+      qty.replaceAll('×', 'x').replaceAll('’', "'"),
+    );
   }
 }

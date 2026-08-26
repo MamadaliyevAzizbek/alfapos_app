@@ -10,6 +10,12 @@ class ReceiptStrikethroughText {
 
   static bool containsMarker(String line) => line.contains(marker);
 
+  /// Chop etish kengligi: § markerlar printerga yuborilmaydi.
+  static int visibleLength(String line) {
+    if (!line.contains(marker)) return line.length;
+    return line.replaceAll(marker, '').length;
+  }
+
   static List<({String text, bool strike})> parseSegments(String line) {
     if (!line.contains(marker)) {
       return [(text: line, strike: false)];

@@ -4,17 +4,27 @@ import '../models/receipt_design_config.dart';
 class ReceiptStoreTitle {
   ReceiptStoreTitle._();
 
+  static const _placeholderTitles = {
+    'alfa market',
+    'alfamarket',
+  };
+
   static String resolve({
     required ReceiptDesignConfig design,
     String branchName = '',
   }) {
-    if (!design.useBranchNameAsTitle) {
-      final custom = design.storeTitle.trim();
-      return custom.isEmpty ? 'Alfa market' : custom;
+    String pick(String raw) {
+      final t = raw.trim();
+      if (t.isEmpty) return '';
+      if (_placeholderTitles.contains(t.toLowerCase())) return '';
+      return t;
     }
-    final branch = branchName.trim();
+
+    if (!design.useBranchNameAsTitle) {
+      return pick(design.storeTitle);
+    }
+    final branch = pick(branchName);
     if (branch.isNotEmpty) return branch;
-    final fallback = design.storeTitle.trim();
-    return fallback.isEmpty ? 'Alfa market' : fallback;
+    return pick(design.storeTitle);
   }
 }

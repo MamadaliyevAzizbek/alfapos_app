@@ -21,10 +21,31 @@ abstract final class ProductWeight {
 
   static String formatKg(double kg) {
     if (kg <= 0) return '0 kg';
-    var s = kg.toStringAsFixed(3);
+    return '${formatQuantity(kg)} kg';
+  }
+
+  /// Savatcha / chek miqdori: 3.5 → "3.5", 3.500 → "3.5", 4.0 → "4".
+  static String formatQuantity(num q) {
+    if (q == q.roundToDouble()) return q.toInt().toString();
+    var s = q.toStringAsFixed(3);
     s = s.replaceFirst(RegExp(r'\.?0+$'), '');
-    if (s.isEmpty) return '0 kg';
-    return '$s kg';
+    if (s.isEmpty || s == '.') return '0';
+    return s;
+  }
+
+  /// API yoki matndan kelgan "3.500" / "3,500 kg" ni soddalashtirish.
+  static String trimQuantityDecimals(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return t;
+    final m = RegExp(
+      r'^([+-]?\d+(?:[.,]\d+)?)(.*)$',
+    ).firstMatch(t);
+    if (m == null) return t;
+    final numPart = m.group(1)!.replaceAll(',', '.');
+    final rest = m.group(2) ?? '';
+    final n = num.tryParse(numPart);
+    if (n == null) return t;
+    return '${formatQuantity(n)}$rest';
   }
 
   static double pieceCount(Product product, num quantity, {bool sellByPack = false}) {
@@ -89,13 +110,13 @@ abstract final class ProductWeight {
   }
 
   static String cartItemQuantityLabel(CartItem item) {
-    if (item.sellByPack) return '${_plainQuantity(item.quantity)} pachka';
+    if (item.sellByPack) return '${formatQuantity(item.quantity)} pachka';
     final p = item.product;
     if (Product.isQopUnit(p.unit)) {
       return formatQopReceiptQuantity(item.quantity, kgPerQopFor(p));
     }
     final unitLabel = Product.unitDisplayShort(p.unit);
-    return '${_plainQuantity(item.quantity)} $unitLabel';
+    return '${formatQuantity(item.quantity)} $unitLabel';
   }
 
   static String invoiceRowQuantityLabel(
@@ -120,20 +141,23 @@ abstract final class ProductWeight {
       );
     }
 
-    final qty = (row['quantity'] ?? row['qty'] ?? '').toString().trim();
-    if (qty.isEmpty) return '—';
-    if (unitRaw.isEmpty) return qty;
-    return '$qty $unitRaw';
+    final qtyRaw = (row['quantity'] ?? row['qty'] ?? '').toString().trim();
+    if (qtyRaw.isEmpty) return '—';
+    final qtyFmt = trimQuantityDecimals(qtyRaw.split(RegExp(r'\s+')).first);
+    if (unitRaw.isEmpty) {
+      // Agar API "3.500 kg" deb yuborsa — butun satrni soddalashtiramiz.
+      return trimQuantityDecimals(qtyRaw);
+    }
+    // "3.500 kg" ichida birlik bo'lsa — qayta yozmaslik.
+    if (RegExp(r'[a-zA-Zа-яА-ЯёЁ]').hasMatch(qtyFmt)) {
+      return qtyFmt;
+    }
+    return '$qtyFmt $unitRaw';
   }
 
   static num parseInvoiceQtyNum(Map<String, dynamic> r) {
     final raw = (r['quantity'] ?? r['qty'] ?? '1').toString().trim();
     final first = raw.split(RegExp(r'\s+')).first.replaceAll(',', '.');
     return num.tryParse(first) ?? 1;
-  }
-
-  static String _plainQuantity(num q) {
-    if (q == q.roundToDouble()) return q.toInt().toString();
-    return q.toString();
   }
 }

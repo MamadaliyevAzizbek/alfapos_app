@@ -3,6 +3,7 @@ import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_note_text.dart';
 import 'thermal_receipt_product_title_text.dart';
 import 'thermal_receipt_total_text.dart';
+import 'receipt_strikethrough_text.dart';
 
 /// 80mm termal printer uchun qator uzunligi (Font A).
 const int kThermalChars80mm = 48;
@@ -16,6 +17,19 @@ const int kReceiptPreviewChars = 42;
 /// Uzun matnni termal chek kengligiga mos qatorlarga bo‘lish.
 class ThermalReceiptLineWrap {
   ThermalReceiptLineWrap._();
+
+  /// Marker / compact prefixsiz ko‘rinadigan uzunlik.
+  static int printableLength(String line) {
+    var s = line;
+    if (ThermalReceiptCompactText.isAnyCompactLine(s)) {
+      s = ThermalReceiptCompactText.unwrap(s);
+    }
+    if (ThermalReceiptProductTitleText.isTitleLine(s)) {
+      s = ThermalReceiptProductTitleText.unwrap(s);
+    }
+    if (s.startsWith('^')) s = s.substring(1);
+    return ReceiptStrikethroughText.visibleLength(s);
+  }
 
   static List<String> wrapAll(
     List<String> lines, {
@@ -45,7 +59,8 @@ class ThermalReceiptLineWrap {
         out.add(fullSeparator(maxWidth, from: line));
         continue;
       }
-      if (_isRightAlignedAmountLine(line, maxWidth)) {
+      if (_isRightAlignedAmountLine(line, maxWidth) ||
+          printableLength(line) <= maxWidth) {
         out.add(line);
         continue;
       }
@@ -61,8 +76,10 @@ class ThermalReceiptLineWrap {
 
   /// Summa alohida qatorida — qayta bo‘linmasin.
   static bool _isRightAlignedAmountLine(String line, int width) {
-    if (line.length != width) return false;
-    final trimmed = line.trimLeft();
+    if (printableLength(line) != width) return false;
+    final trimmed = ReceiptStrikethroughText.containsMarker(line)
+        ? line.replaceAll(ReceiptStrikethroughText.marker, '').trimLeft()
+        : line.trimLeft();
     if (trimmed.isEmpty) return false;
     return RegExp(r'^[\d\s,.]+(\s*so.?m)?$', caseSensitive: false)
             .hasMatch(trimmed) ||
@@ -146,8 +163,13 @@ class ThermalReceiptLineWrap {
   }) {
     final gap = 1;
     final leftMax = (totalWidth - rightWidth - gap).clamp(8, totalWidth);
-    if (left.length + gap + right.length > totalWidth) return null;
-    return '${left.padRight(leftMax)}${' ' * gap}${right.padLeft(rightWidth)}';
+    final leftVis = ReceiptStrikethroughText.visibleLength(left);
+    final rightVis = ReceiptStrikethroughText.visibleLength(right);
+    if (leftVis > leftMax) return null;
+    if (leftVis + gap + rightVis > totalWidth) return null;
+    final leftPad = leftMax - leftVis;
+    final rightPad = (rightWidth - rightVis).clamp(0, rightWidth);
+    return '$left${' ' * leftPad}${' ' * gap}${' ' * rightPad}$right';
   }
 
   static ({int labelWidth, int valueWidth}) equalsColumnWidths(

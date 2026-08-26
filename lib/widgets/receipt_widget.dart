@@ -279,31 +279,39 @@ class ReceiptWidget extends StatelessWidget {
               ),
             ],
           ],
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             isPrecheck
                 ? "${design.receiptNumberLabel}: to'lov oldin"
                 : '${design.receiptNumberLabel}: $receiptNumber',
             style: textStyle,
           ),
+          const SizedBox(height: 2),
           Text('${design.sellerLabel}: $sellerName', style: textStyle),
           if (design.showSellerPhone &&
               sellerPhone != null &&
-              sellerPhone!.trim().isNotEmpty)
+              sellerPhone!.trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
             Text('${design.sellerPhoneLabel}: ${sellerPhone!.trim()}',
                 style: textStyle),
+          ],
           if ((clientName ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
             Text('${design.clientLabel}: ${clientName!.trim()}',
                 style: textStyle),
-            if ((clientPhone ?? '').trim().isNotEmpty)
+            if ((clientPhone ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 2),
               Text('${design.clientPhoneLabel}: ${clientPhone!.trim()}',
                   style: textStyle),
-            if ((clientAddress ?? '').trim().isNotEmpty)
+            ],
+            if ((clientAddress ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 2),
               Text('${design.clientAddressLabel}: ${clientAddress!.trim()}',
                   style: textStyle),
+            ],
           ],
           if ((description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               'Izoh: ${description!.trim()}',
               style: textStyle.copyWith(
@@ -415,10 +423,12 @@ class ReceiptWidget extends StatelessWidget {
   }
 
   static String _normalizeQty(String qty) {
-    return qty
-        .replaceAll('шт', 'dona')
-        .replaceAll('Шт', 'dona')
-        .replaceAll('×', 'x');
+    return ProductWeight.trimQuantityDecimals(
+      qty
+          .replaceAll('шт', 'dona')
+          .replaceAll('Шт', 'dona')
+          .replaceAll('×', 'x'),
+    );
   }
 
   static TextStyle _strikeStyle(TextStyle base) => base.copyWith(
