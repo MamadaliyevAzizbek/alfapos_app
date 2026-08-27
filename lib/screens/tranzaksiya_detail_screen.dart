@@ -13,6 +13,7 @@ import '../core/constants.dart';
 import '../core/theme.dart';
 import '../core/input_formatters.dart';
 import '../core/seller_preferences.dart';
+import '../utils/payment_checkout_math.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../providers/cart_provider.dart';
@@ -39,6 +40,8 @@ import '../services/printer_settings.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/restaurant_queue_number.dart';
 import '../services/sales_list_refresh.dart';
+import '../services/sold_receipt_cache.dart';
+import '../utils/sold_receipt_payload_builder.dart';
 import '../utils/sales_payment_types.dart';
 import '../utils/tolovsiz_payment.dart';
 import '../utils/hold_cart_action.dart';
@@ -92,7 +95,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   int? _discountUzs;
   String _description = '';
   bool _mixedPayment = false;
-  final Map<String, int> _paymentAmounts = {};
+  final Map<String, num> _paymentAmounts = {};
   /// API dan yuklangan to'lov turlari: [{id, name}]
   List<Map<String, dynamic>> _apiPaymentTypes = [];
   bool _paymentTypesLoading = true;
@@ -157,45 +160,55 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return trimmed;
   }
 
-  int get _totalRaw => widget.items.fold<int>(0, (s, e) => s + e.total);
+  num get _totalRaw => widget.items.fold<num>(0, (s, e) => s + e.total);
 
-  int get _totalAfterDiscount {
-    var t = _totalRaw;
+  num get _totalAfterDiscount {
+    var t = _totalRaw.toDouble();
     if (_discountPercent != null && _discountPercent! > 0) {
-      t = t - (t * _discountPercent! ~/ 100);
+      t = t - (t * _discountPercent! / 100);
     }
     if (_discountUzs != null && _discountUzs! > 0) {
       t = t - _discountUzs!;
     }
-    return t.clamp(0, 0x7FFFFFFF);
+    if (t < 0) t = 0;
+    return CartItem.quantizeLineTotal(t);
   }
 
-  int get _paidTotal =>
-      _paymentAmounts.values.fold<int>(0, (s, e) => s + e);
+  static bool _isZeroPaymentAmount(num v) => v.abs() < 0.001;
 
-  int get _allocatedPaidTotal =>
-      _getAllocatedPaymentAmounts().values.fold<int>(0, (s, e) => s + e);
+  num get _paidTotalExact =>
+      _paymentAmounts.values.fold<num>(0, (s, e) => s + e);
 
-  int get _remainingToPay {
+  num get _effectivePaidTotal =>
+      _mixedPayment ? _allocatedPaidTotal : _paidTotalExact;
+
+  bool _paymentCoversTotal(num paid) =>
+      PaymentCheckoutMath.coversTotal(paid: paid, total: _totalAfterDiscount);
+
+  num get _allocatedPaidTotal => PaymentCheckoutMath.sumValues(
+        _getAllocatedPaymentAmounts(),
+      );
+
+  num get _remainingToPay => PaymentCheckoutMath.remaining(
+        total: _totalAfterDiscount,
+        paid: _effectivePaidTotal,
+      );
+
+  num get _change {
     if (!_mixedPayment) {
-      return (_totalAfterDiscount - _paidTotal).clamp(0, 0x7FFFFFFF);
-    }
-    return (_totalAfterDiscount - _allocatedPaidTotal).clamp(0, 0x7FFFFFFF);
-  }
-
-  int get _change {
-    if (!_mixedPayment) {
-      return (_paidTotal - _totalAfterDiscount).clamp(0, 0x7FFFFFFF);
+      final rem = _paidTotalExact - _totalAfterDiscount;
+      return rem < 0 ? 0 : CartItem.quantizeLineTotal(rem.toDouble());
     }
     final cashKey = _cashPaymentKey();
     if (cashKey == null) return 0;
     final allocated = _getAllocatedPaymentAmounts();
     final nonCashAllocated = allocated.entries
         .where((e) => e.key != cashKey)
-        .fold<int>(0, (s, e) => s + e.value);
+        .fold<num>(0, (s, e) => s + e.value);
     final cashNeeded = (_totalAfterDiscount - nonCashAllocated).clamp(0, 0x7FFFFFFF);
     final cashEntered = _paymentAmounts[cashKey] ?? 0;
-    return (cashEntered - cashNeeded).clamp(0, 0x7FFFFFFF);
+    final rem = cashEntered - cashNeeded;
+    return rem < 0 ? 0 : rem;
   }
   int get _clientBalanceUzs {
     if (_client == null) return 0;
@@ -350,14 +363,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return keys;
   }
 
-  int _maxMixedPaymentForKey(String key) {
+  num _maxMixedPaymentForKey(String key) {
     if (_isCashPaymentById(key)) return 0x7FFFFFFF;
 
     final otherEntered = _paymentAmounts.entries
         .where((e) => e.key != key && e.value > 0)
-        .fold<int>(0, (s, e) => s + e.value);
+        .fold<num>(0, (s, e) => s + e.value);
 
-    var max = (_totalAfterDiscount - otherEntered).clamp(0, 0x7FFFFFFF);
+    var max = _totalAfterDiscount - otherEntered;
+    if (max < 0) max = 0;
     if (_isClientBalancePaymentById(key) &&
         !_isTolovsizPaymentById(key) &&
         max > _clientBalanceUzs) {
@@ -385,19 +399,22 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   /// Aralash to'lov o'chiq: bitta tur uchun kiritiladigan summa (balans chegarasi bilan).
-  int _singlePaymentAmountForKey(String key) {
+  num _singlePaymentAmountForKey(String key) {
     if (_isTolovsizPaymentById(key)) return _totalAfterDiscount;
     if (_isClientBalancePaymentById(key)) {
       if (_client == null || _clientBalanceUzs <= 0) return 0;
-      return _clientBalanceUzs < _totalAfterDiscount ? _clientBalanceUzs : _totalAfterDiscount;
+      return _clientBalanceUzs < _totalAfterDiscount
+          ? _clientBalanceUzs
+          : _totalAfterDiscount;
     }
     return _totalAfterDiscount;
   }
 
-  bool get _canCompletePayment =>
-      _paymentList.isNotEmpty &&
-      _remainingToPay == 0 &&
-      (_mixedPayment ? _allocatedPaidTotal > 0 : _paidTotal > 0);
+  bool get _canCompletePayment => PaymentCheckoutMath.canComplete(
+        totalAfterDiscount: _totalAfterDiscount,
+        paid: _effectivePaidTotal,
+      ) &&
+      _paymentList.isNotEmpty;
 
   String? get _activeSinglePaymentKey {
     if (_mixedPayment) return null;
@@ -416,7 +433,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return _paymentList.isEmpty ? null : _paymentList.first.key;
   }
 
-  void _notifyInsufficientClientBalance(int paidFromBalance) {
+  void _notifyInsufficientClientBalance(num paidFromBalance) {
     if (!mounted || paidFromBalance >= _totalAfterDiscount) return;
     AppNotify.warning(
       context,
@@ -750,16 +767,15 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   void _applyPaymentAmountInput(String key, String raw) {
-    final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
-    var amount = int.tryParse(digits) ?? 0;
+    num amount = parseFormattedSumDouble(raw) ?? 0;
+    if (amount < 0) amount = 0;
     if (_mixedPayment) {
-      if (amount > _maxMixedPaymentForKey(key)) {
-        amount = _maxMixedPaymentForKey(key);
-      }
+      final max = _maxMixedPaymentForKey(key);
+      if (amount > max) amount = max;
     } else if (_isClientBalancePaymentById(key) &&
         !_isTolovsizPaymentById(key) &&
         amount > _clientBalanceUzs) {
-      amount = _clientBalanceUzs;
+      amount = _clientBalanceUzs.toDouble();
     }
     setState(() {
       if (amount > 0) {
@@ -774,7 +790,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     final allocated = _getAllocatedPaymentAmounts();
     final salePreview = _tolovsizSalePreview(allocated);
     if (salePreview != null) return salePreview.creditPart.round();
-    return _getQarzAmountFromAllocated(allocated);
+    return _getQarzAmountFromAllocated(allocated).round();
   }
 
   Future<void> _loadSellerDisplayName() async {
@@ -798,39 +814,31 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   /// Chekda ko'rsatiladigan summalar: faqat yetishmayotgan summa (ortiqcha qaytim bo'lmaydi)
-  Map<String, int> _getAllocatedPaymentAmounts() {
-    final out = <String, int>{};
-    var remaining = _totalAfterDiscount;
-    for (final key in _paymentKeysInAllocationOrder()) {
-      final entered = _paymentAmounts[key] ?? 0;
-      if (entered <= 0 || remaining <= 0) continue;
-      var take = entered > remaining ? remaining : entered;
-      if (_isClientBalancePaymentById(key) &&
-          !_isTolovsizPaymentById(key) &&
-          take > _clientBalanceUzs) {
-        take = _clientBalanceUzs;
-      }
-      if (take <= 0) continue;
-      out[key] = take;
-      remaining -= take;
-    }
-    return out;
+  Map<String, num> _getAllocatedPaymentAmounts() {
+    return PaymentCheckoutMath.allocate(
+      entered: _paymentAmounts,
+      keyOrder: _paymentKeysInAllocationOrder(),
+      totalAfterDiscount: _totalAfterDiscount,
+      clientBalanceCap: _clientBalanceUzs,
+      isClientBalance: _isClientBalancePaymentById,
+      isTolovsiz: _isTolovsizPaymentById,
+    );
   }
 
-  int _otherPaidExcludingTolovsiz(Map<String, int> allocated) {
-    var sum = 0;
+  num _otherPaidExcludingTolovsiz(Map<String, num> allocated) {
+    var sum = 0.0;
     for (final e in allocated.entries) {
       if (_isTolovsizPaymentById(e.key)) continue;
-      sum += e.value;
+      sum += e.value.toDouble();
     }
     return sum;
   }
 
-  TolovsizPreview? _tolovsizSalePreview(Map<String, int> allocated) {
+  TolovsizPreview? _tolovsizSalePreview(Map<String, num> allocated) {
     if (!_tolovsizContextActive || widget.isReturnCheckout) return null;
-    var tolovsizAmount = 0;
+    var tolovsizAmount = 0.0;
     for (final e in allocated.entries) {
-      if (_isTolovsizPaymentById(e.key)) tolovsizAmount += e.value;
+      if (_isTolovsizPaymentById(e.key)) tolovsizAmount += e.value.toDouble();
     }
     if (tolovsizAmount <= 0) return null;
     final remaining = (_totalAfterDiscount - _otherPaidExcludingTolovsiz(allocated))
@@ -843,11 +851,11 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     );
   }
 
-  TolovsizReturnPreview? _tolovsizReturnPreview(Map<String, int> allocated) {
+  TolovsizReturnPreview? _tolovsizReturnPreview(Map<String, num> allocated) {
     if (!_tolovsizContextActive || !widget.isReturnCheckout) return null;
-    var tolovsizAmount = 0;
+    var tolovsizAmount = 0.0;
     for (final e in allocated.entries) {
-      if (_isTolovsizPaymentById(e.key)) tolovsizAmount += e.value;
+      if (_isTolovsizPaymentById(e.key)) tolovsizAmount += e.value.toDouble();
     }
     if (tolovsizAmount <= 0) return null;
     return TolovsizPayment.previewReturn(
@@ -864,7 +872,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return 'POS$raw';
   }
 
-  bool _usesTolovsizInAllocated(Map<String, int> allocated) =>
+  bool _usesTolovsizInAllocated(Map<String, num> allocated) =>
       TolovsizPayment.usesTolovsizInAllocated(allocated, _isTolovsizPaymentById);
 
   List<String> _invoiceReturnIdsForStore() {
@@ -873,7 +881,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return [id];
   }
 
-  String? _validateTolovsizBeforePay(Map<String, int> allocated) {
+  String? _validateTolovsizBeforePay(Map<String, num> allocated) {
     if (!_tolovsizContextActive) return null;
     var usesTolovsiz = false;
     for (final e in allocated.entries) {
@@ -902,7 +910,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     return null;
   }
 
-  static String _fmt(int n) => formatThousands(n);
+  static String _fmt(num n) => formatThousandsNum(n);
 
   @override
   Widget build(BuildContext context) {
@@ -944,7 +952,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
           onDescriptionChanged: (v) => setState(() => _description = v),
           paymentTypesLoading: _paymentTypesLoading,
           paymentList: _paymentListDisplay,
-          paymentAmounts: Map<String, int>.from(_paymentAmounts),
+          paymentAmounts: Map<String, num>.from(_paymentAmounts),
           mixedPayment: _mixedPayment,
           onMixedPaymentChanged: (v) {
             setState(() {
@@ -1055,14 +1063,14 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                     children: [
                       if (!_tabDetails) ...[
                         Text(
-                          _remainingToPay == 0
+                          _isZeroPaymentAmount(_remainingToPay)
                               ? "To'lash uchun: 0 UZS"
                               : "To'lash uchun: ${_fmt(_remainingToPay)} UZS",
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: _remainingToPay == 0 ? Colors.green : Colors.red,
+                            color: _isZeroPaymentAmount(_remainingToPay) ? Colors.green : Colors.red,
                           ),
                         ),
                         if (_change > 0) ...[
@@ -1499,7 +1507,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
               title: e.value,
               icon: iconForPaymentName(e.value),
               selected: selected,
-              amount: amount,
+              amount: amount.round(),
               balanceAmountUzs: (isBalancePayment && _client != null) ? _clientBalanceUzs : null,
               onTap: () => _selectSinglePayment(key),
               onRemove: null,
@@ -1625,8 +1633,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                           const SizedBox(height: 16),
                           TextField(
                             controller: controller,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [ThousandsInputFormatter()],
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [ThousandsInputFormatter(allowDecimal: true)],
                             scrollPadding: const EdgeInsets.only(bottom: 120),
                             onChanged: (_) => setDialogState(() {}),
                             decoration: InputDecoration(
@@ -1678,7 +1686,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                             saveLabel: Strings.qoShish,
                             onCancel: () => Navigator.pop(ctx),
                             onSave: () {
-                              final v = parseFormattedSum(controller.text);
+                              final v = parseFormattedSumDouble(controller.text);
                               if (v != null && v >= 0) {
                                 if (maxAllowed != null && v > maxAllowed) {
                                   AppNotify.warning(
@@ -1766,8 +1774,8 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                     TextField(
                       controller: controller,
                       autofocus: true,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [ThousandsInputFormatter()],
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [ThousandsInputFormatter(allowDecimal: true)],
                       onChanged: (_) => setDialogState(() {}),
                       decoration: InputDecoration(
                         labelText: 'Summa',
@@ -1808,7 +1816,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    final v = parseFormattedSum(controller.text);
+                    final v = parseFormattedSumDouble(controller.text);
                     if (v != null && v >= 0) {
                       if (maxAllowed != null && v > maxAllowed) {
                         AppNotify.warning(
@@ -1874,28 +1882,28 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
   }
 
   /// API dagi to'lov turi bo'yicha qarz summasi (faqat «Qarz» to'lov qatori).
-  int _getQarzAmountFromAllocated(Map<String, int> allocated) {
-    var sum = 0;
+  num _getQarzAmountFromAllocated(Map<String, num> allocated) {
+    var sum = 0.0;
     for (final e in _apiPaymentTypes) {
       if (!_isQarzPayment(e)) continue;
       final id = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0).toString();
-      sum += allocated[id] ?? 0;
+      sum += (allocated[id] ?? 0).toDouble();
     }
     return sum;
   }
 
   /// Mijoz balansidan to'langan summa.
-  int _getClientBalanceAmountFromAllocated(Map<String, int> allocated) {
-    var sum = 0;
+  num _getClientBalanceAmountFromAllocated(Map<String, num> allocated) {
+    var sum = 0.0;
     for (final e in _apiPaymentTypes) {
       if (!_isClientBalancePaymentType(e)) continue;
       final id = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0).toString();
-      sum += allocated[id] ?? 0;
+      sum += (allocated[id] ?? 0).toDouble();
     }
     return sum;
   }
 
-  int _computeStoreDueAmount(Map<String, int> allocated) {
+  num _computeStoreDueAmount(Map<String, num> allocated) {
     final salePreview = _tolovsizSalePreview(allocated);
     if (salePreview != null) return salePreview.creditPart.round();
     return computeStoreDueAmount(
@@ -1906,7 +1914,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
     );
   }
 
-  List<Map<String, dynamic>> _buildPaymentsForStore(Map<String, int> allocated) {
+  List<Map<String, dynamic>> _buildPaymentsForStore(Map<String, num> allocated) {
     return allocated.entries.map((entry) {
       final id = int.tryParse(entry.key) ?? 1;
       final meta = _paymentMetaById(entry.key);
@@ -1922,7 +1930,9 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       final paidRaw = widget.isReturnCheckout ? -entry.value.abs() : entry.value;
       final row = <String, dynamic>{
         'paymentID': id,
-        'paid': widget.isReturnCheckout ? paidRaw.toStringAsFixed(2) : paidRaw,
+        'paid': (paidRaw - paidRaw.roundToDouble()).abs() < 1e-9
+            ? (widget.isReturnCheckout ? paidRaw.toStringAsFixed(2) : paidRaw.round())
+            : paidRaw.toStringAsFixed(3),
       };
       final pt = meta != null ? _paymentTypeForApi(meta) : null;
       if (pt != null) row['paymentType'] = pt;
@@ -2034,7 +2044,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
     var paySucceeded = false;
     try {
-    if (_remainingToPay > 0) {
+    if (!_paymentCoversTotal(_effectivePaidTotal)) {
       if (mounted) {
         AppNotify.error(
           context,
@@ -2240,7 +2250,34 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
 
     final rid = receiptId!;
     paySucceeded = true;
-    final orderId = ThermalReceiptPrinter.orderIdFromStoreResponse(storeRes);
+    final orderId = ThermalReceiptPrinter.orderIdFromStoreResponse(storeRes) ??
+        int.tryParse(rid.replaceFirst(RegExp(r'^POS', caseSensitive: false), '').trim());
+    // Lokal kesh — savat hali toza; API 429 bo‘lsa ham chek ochiladi.
+    if (orderId != null && orderId > 0) {
+      final saleRow = SoldReceiptPayloadBuilder.buildSaleRow(
+        orderId: orderId,
+        invoiceId: rid,
+        subTotal: _totalRaw,
+        grandTotal: _totalAfterDiscount,
+        discountUzs: discountUzs,
+        items: List.from(widget.items),
+        customer: saleCustomer ?? _client,
+        sellerName: _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi',
+      );
+      final invoiceDetail = SoldReceiptPayloadBuilder.buildInvoiceDetail(
+        items: List.from(widget.items),
+        subTotal: _totalRaw,
+        grandTotal: _totalAfterDiscount,
+        discountUzs: discountUzs,
+        payments: paymentsApi,
+      );
+      unawaited(SoldReceiptCache.save(
+        orderId: orderId,
+        invoiceId: rid,
+        sale: saleRow,
+        invoiceDetail: invoiceDetail,
+      ));
+    }
     CartProvider.instance.clear();
     final sellerName =
         _sellerDisplayName.isNotEmpty ? _sellerDisplayName : 'Sotuvchi';
@@ -2319,7 +2356,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       productRows: productRows,
       paymentRows: const [],
       discount: discountUzs,
-      totalSum: _totalAfterDiscount,
+      totalSum: _totalAfterDiscount.round(),
       isPrecheck: true,
       isRestaurantLayout: _isRestaurantLayout,
       design: _receiptDesign,
@@ -2341,7 +2378,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       final label = _paymentList.firstWhere((m) => m.key == e.key, orElse: () => MapEntry(e.key, e.key)).value;
       return ReceiptPaymentRow(
         methodName: label,
-        sum: e.value,
+        sum: e.value.round(),
       );
     }).toList();
     final discountUzs = ReceiptRowBuilder.totalDiscountUzs(
@@ -2361,7 +2398,7 @@ class _TranzaksiyaDetailScreenState extends State<TranzaksiyaDetailScreen> {
       productRows: productRows,
       paymentRows: paymentRows,
       discount: discountUzs,
-      totalSum: _totalAfterDiscount,
+      totalSum: _totalAfterDiscount.round(),
       barcodeData: posNumber,
       queueNumber: queueNumber ?? _completedQueueNumber,
       isRestaurantLayout: _isRestaurantLayout,

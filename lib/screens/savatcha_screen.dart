@@ -942,13 +942,13 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     if (mounted) setState(() {});
   }
 
-  int get _cartRawTotal => _cart.items.fold<int>(0, (s, e) => s + e.total);
+  num get _cartRawTotal => _cart.items.fold<num>(0, (s, e) => s + e.total);
 
   int get _cartCatalogTotal => CartDiscountPercent.catalogLinesTotal(_cart.items);
 
-  int get _cartGrandTotal => _cartRawTotal;
+  num get _cartGrandTotal => _cartRawTotal;
 
-  int get _cartProfitTotal =>
+  num get _cartProfitTotal =>
       _cartGrandTotal - SalesStoreBody.estimateCostUzs(_cart.items);
 
   Widget _mobileCashRegisterBar() {
@@ -2069,14 +2069,16 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           sellByPack: item.sellByPack,
           salePriceOverride: item.salePriceOverride,
           unitPriceBaseForCartPercent: item.unitPriceBaseForCartPercent,
-          priceLocked: item.priceLocked || item.hasSalePriceOverride,
+          priceLocked: item.priceLocked || item.hasSalePriceOverride || item.lineTotalOverride != null,
+          lineTotalOverride: item.lineTotalOverride,
         )));
     assert(() {
       for (final item in _cart.items) {
         debugPrint(
           '[resumeHoldOrder] ${item.product.name} qty=${item.quantity} '
           'unit=${item.unitPriceForLine} override=${item.salePriceOverride} '
-          'locked=${item.priceLocked}',
+          'lineTotal=${item.lineTotalOverride} locked=${item.priceLocked} '
+          'total=${item.total}',
         );
       }
       return true;
@@ -2143,7 +2145,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
           sellByPack: item.sellByPack,
           salePriceOverride: item.salePriceOverride,
           unitPriceBaseForCartPercent: item.unitPriceBaseForCartPercent,
-          priceLocked: item.priceLocked || item.hasSalePriceOverride,
+          priceLocked: item.priceLocked || item.hasSalePriceOverride || item.lineTotalOverride != null,
+          lineTotalOverride: item.lineTotalOverride,
         )));
     _invoiceEditOrderId = resume.editOrderId;
     _invoiceEditReason = resume.editReason;
@@ -2361,8 +2364,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
   }
 
   Future<void> _openChergirmaScreen(BuildContext context) async {
-    final cartTotal = _cartGrandTotal;
-    if (cartTotal <= 0) {
+    final cartTotalInt = _cartGrandTotal.round();
+    if (_cartGrandTotal <= 0) {
       AppNotify.info(context, 'Savat bo\'sh');
       return;
     }
@@ -2371,7 +2374,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
       context,
       MaterialPageRoute(
         builder: (_) => ChergirmaScreen(
-          totalUzs: cartTotal,
+          totalUzs: cartTotalInt,
           distributeToCartLines: true,
         ),
       ),
@@ -2390,7 +2393,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
         _setCartDiscountPercent(r.value.clamp(-100, 100));
         break;
       case ChergirmaMode.discountUzs:
-        _applyPaymentDiscount(_cartGrandTotal - r.value);
+        _applyPaymentDiscount((_cartGrandTotal - r.value).round());
         break;
       case ChergirmaMode.customerPays:
         _applyPaymentDiscount(r.value);
@@ -2410,6 +2413,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
   Future<void> _showDesktopDiscountDialog(BuildContext context) async {
     final cartTotal = _cartGrandTotal;
+    final cartTotalInt = cartTotal.round();
     if (cartTotal <= 0) {
       AppNotify.info(context, 'Savat bo\'sh');
       return;
@@ -2419,7 +2423,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
     final valueController = TextEditingController(
       text: byPercent
           ? '${CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent)}'
-          : formatThousands(cartTotal),
+          : formatThousandsNum(cartTotal),
     );
 
     await showDialog<void>(
@@ -2435,11 +2439,11 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
 
             int? sumValue() => parseFormattedSum(valueController.text);
 
-            final paid = (sumValue() ?? cartTotal).clamp(0, cartTotal);
-            final sumDiscount = cartTotal - paid;
+            final paid = (sumValue() ?? cartTotalInt).clamp(0, cartTotalInt);
+            final sumDiscount = cartTotalInt - paid;
 
             final pct = percentValue() ?? 0;
-            final percentDiscount = CartDiscountPercent.previewDiscountUzs(cartTotal, pct);
+            final percentDiscount = CartDiscountPercent.previewDiscountUzs(cartTotalInt, pct);
 
             final previewDiscount = byPercent ? percentDiscount : sumDiscount;
 
@@ -2449,7 +2453,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                 return v != null && v >= 0 && v <= 100;
               }
               final v = sumValue();
-              return v != null && v >= 0 && v <= cartTotal;
+              return v != null && v >= 0 && v <= cartTotalInt;
             }
 
             void setUnit(bool percent) {
@@ -2459,7 +2463,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                     ? (_sales.cartDiscountPercent != 0
                         ? '${CartDiscountPercent.discountPercentToUi(_sales.cartDiscountPercent)}'
                         : '')
-                    : formatThousands(cartTotal);
+                    : formatThousandsNum(cartTotal);
               });
             }
 
@@ -2493,7 +2497,7 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                       children: [
                         const Text('Jami', style: TextStyle(color: AppTheme.textSecondary)),
                         Text(
-                          '${formatThousands(cartTotal)} so\'m',
+                          '${formatThousandsNum(cartTotal)} so\'m',
                           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                         ),
                       ],
@@ -2577,8 +2581,8 @@ class _SavatchaScreenState extends State<SavatchaScreen> with DesktopShellSyncMi
                           }
                           final amount = sumValue();
                           if (amount == null) return;
-                          if (amount < 0 || amount > cartTotal) {
-                            AppNotify.error(ctx, '0 dan $cartTotal gacha summa kiriting');
+                          if (amount < 0 || amount > cartTotalInt) {
+                            AppNotify.error(ctx, '0 dan $cartTotalInt gacha summa kiriting');
                             return;
                           }
                           Navigator.pop(ctx);
@@ -2918,7 +2922,7 @@ class _CartItemTileState extends State<_CartItemTile> {
       final dec = t == t.roundToDouble() ? 0 : 2;
       return '${t.toStringAsFixed(dec)} USD';
     }
-    return _formatUzs(item.total);
+    return '${formatThousandsNum(item.total)} UZS';
   }
 
   @override
@@ -3099,7 +3103,9 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
   void initState() {
     super.initState();
     _sellByPack = widget.item.sellByPack;
-    _priceCtrl = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
+    _priceCtrl = TextEditingController(
+      text: formatThousandsNum(widget.item.unitPriceForLine),
+    );
     _activePriceType = _detectActivePriceType();
   }
 
@@ -3120,8 +3126,8 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
   bool? get _sellByPackResult => _sellByPackChanged ? _sellByPack : null;
 
   String? _detectActivePriceType() {
-    final current = parseFormattedSum(_priceCtrl.text)?.toDouble() ??
-        widget.item.unitPriceDisplay.toDouble();
+    final current = parseFormattedSumDouble(_priceCtrl.text) ??
+        widget.item.unitPriceForLine;
     const types = [
       CustomerGroupDiscount.selling,
       CustomerGroupDiscount.wholesale,
@@ -3144,7 +3150,7 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
     final price = CustomerGroupDiscount.catalogUnitPriceForItem(_probe, priceType);
     setState(() {
       _activePriceType = priceType;
-      _priceCtrl.text = formatThousands(price.round());
+      _priceCtrl.text = formatThousandsNum(price);
     });
   }
 
@@ -3153,7 +3159,7 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
     setState(() => _sellByPack = sellByPack);
     final type = _activePriceType ?? CustomerGroupDiscount.selling;
     final price = CustomerGroupDiscount.catalogUnitPriceForItem(_probe, type);
-    _priceCtrl.text = formatThousands(price.round());
+    _priceCtrl.text = formatThousandsNum(price);
     setState(() => _activePriceType = type);
   }
 
@@ -3177,14 +3183,14 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
   }
 
   void _save() {
-    final v = parseFormattedSum(_priceCtrl.text);
+    final v = parseFormattedSumDouble(_priceCtrl.text);
     if (v == null || v < 0) {
       AppNotify.info(context, "To'g'ri narx kiriting");
       return;
     }
     Navigator.pop(
       context,
-      _CartLinePriceResult.saved(v.toDouble(), sellByPack: _sellByPackResult),
+      _CartLinePriceResult.saved(v, sellByPack: _sellByPackResult),
     );
   }
 
@@ -3225,7 +3231,7 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
               ),
               const SizedBox(height: 2),
               Text(
-                formatThousands(price.round()),
+                formatThousandsNum(price),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -3269,9 +3275,9 @@ class _CartLinePriceEditSheetState extends State<_CartLinePriceEditSheet> {
         const SizedBox(height: 14),
         TextField(
           controller: _priceCtrl,
-          keyboardType: TextInputType.number,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           autofocus: true,
-          inputFormatters: [ThousandsInputFormatter()],
+          inputFormatters: [ThousandsInputFormatter(allowDecimal: true)],
           onChanged: (_) => _syncActiveFromField(),
           decoration: _fieldDecoration(unitHint, suffix: Strings.som),
         ),

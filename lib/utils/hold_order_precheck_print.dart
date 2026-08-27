@@ -45,7 +45,7 @@ class HoldOrderPrecheckPrint {
     final sellerPhone = results[2] as String?;
     final isRestaurantLayout = results[3] == DesktopSalesLayoutMode.restaurant;
 
-    final raw = resume.items.fold<int>(0, (s, e) => s + e.total);
+    final raw = resume.items.fold<num>(0, (s, e) => s + e.total);
     final total = _resolveGrandTotal(raw, resume);
     final client = resume.customer;
 
@@ -65,7 +65,7 @@ class HoldOrderPrecheckPrint {
         items: resume.items,
         totalAfterDiscount: total,
       ),
-      totalSum: total,
+      totalSum: total.round(),
       isPrecheck: true,
       isRestaurantLayout: isRestaurantLayout,
       queueNumber:
@@ -81,12 +81,12 @@ class HoldOrderPrecheckPrint {
     );
   }
 
-  static int _resolveGrandTotal(int raw, HoldOrderResume resume) {
+  static num _resolveGrandTotal(num raw, HoldOrderResume resume) {
     final fromApi = resume.grandTotal;
     if (fromApi != null && fromApi > 0) return fromApi;
     final pct = resume.discountPercent;
     if (pct != null && pct != 0) {
-      return (raw * (100 + pct) / 100).round();
+      return raw * (100 + pct) / 100;
     }
     return raw;
   }

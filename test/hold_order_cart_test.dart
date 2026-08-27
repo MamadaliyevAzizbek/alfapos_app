@@ -1,3 +1,4 @@
+import 'package:alfapos_app/models/cart_item.dart';
 import 'package:alfapos_app/utils/hold_order_cart.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -185,6 +186,93 @@ void main() {
       expect(resume.items.first.product.id, '2');
     });
 
+    test('restores lineTotalOverride for kerakli summa rounding (50000 vs 49995)', () {
+      final resume = HoldOrderCart.parse({
+        'orderID': 10122,
+        'grandTotal': 50000,
+        'cart': [
+          {
+            'productID': 101629,
+            'quantity': 4.545,
+            'price': 11000,
+            'discount': 0,
+            'calculatedPrice': 50000,
+            'soldUnitPrice': 11000,
+            'productTitle': 'GRANULA  37 / 1.6',
+            'orderType': 'sales',
+            'cartItemNote': 'alfapos_sold_unit=11000;alfapos_line_total=50000',
+          },
+        ],
+      });
+      expect(resume, isNotNull);
+      expect(resume!.items.single.quantity, 4.545);
+      expect(resume.items.single.unitPriceDisplay, 11000);
+      expect((11000 * 4.545).round(), 49995);
+      expect(resume.items.single.lineTotalOverride, 50000);
+      expect(resume.items.single.total, 50000);
+    });
+
+    test('restores lineTotalOverride from calculatedPrice without note', () {
+      final resume = HoldOrderCart.parse({
+        'orderID': 2,
+        'grandTotal': 50000,
+        'cart': [
+          {
+            'productID': 9,
+            'quantity': 4.545,
+            'price': 11000,
+            'discount': 0,
+            'calculatedPrice': 50000,
+            'productTitle': 'Granula',
+            'orderType': 'sales',
+          },
+        ],
+      });
+      expect(resume!.items.single.total, 50000);
+      expect(resume.items.single.lineTotalOverride, 50000);
+    });
+
+    test('ignores broken calculatedPrice discount residue on invoice edit', () {
+      // Real bug: editable-order calculatedPrice=22 (chegirma), qty×narx≈50000.
+      final resume = HoldOrderCart.parse({
+        'orderID': 10139,
+        'grandTotal': 149976,
+        'cart': [
+          {
+            'productID': 1,
+            'quantity': 5.556,
+            'price': 9000,
+            'discount': 22,
+            'calculatedPrice': 22,
+            'soldUnitPrice': 8999,
+            'productTitle': 'GRANULA (Yangi) 32 / 6',
+            'orderType': 'sales',
+          },
+          {
+            'productID': 2,
+            'quantity': 4.545,
+            'price': 22000,
+            'discount': 14,
+            'calculatedPrice': 99978,
+            'soldUnitPrice': 21997,
+            'productTitle': 'GRANULA 37 / 1.6',
+            'orderType': 'sales',
+            'cartItemNote': 'alfapos_sold_unit=21997;alfapos_line_total=99978',
+          },
+        ],
+      });
+      expect(resume, isNotNull);
+      final a = resume!.items[0];
+      expect(a.unitPriceDisplay, 8999);
+      expect(a.lineTotalOverride, isNull);
+      expect(a.total, CartItem.quantizeLineTotal(8999 * 5.556));
+      expect(a.total, greaterThan(1000));
+
+      final b = resume.items[1];
+      expect(b.lineTotalOverride, 99978);
+      expect(b.total, 99978);
+    });
+
     test('restores markup above catalog via grandTotal surplus', () {
       // Real POS10056 / order 420094 editable-order payload (company 99).
       final resume = HoldOrderCart.parse({
@@ -232,7 +320,7 @@ void main() {
         resume!.items.map((e) => e.unitPriceDisplay.round()).toList(),
         [5000, 5000, 5000],
       );
-      expect(resume.items.fold<int>(0, (s, e) => s + e.total), 15000);
+      expect(resume.items.fold<num>(0, (s, e) => s + e.total), 15000);
       expect(resume.items[1].priceLocked, isTrue);
     });
 
@@ -280,7 +368,7 @@ void main() {
         resume!.items.map((e) => e.unitPriceDisplay.round()).toList(),
         [5000, 5000, 5000],
       );
-      expect(resume.items.fold<int>(0, (s, e) => s + e.total), 15000);
+      expect(resume.items.fold<num>(0, (s, e) => s + e.total), 15000);
     });
   });
 }

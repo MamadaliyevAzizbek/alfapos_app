@@ -78,7 +78,7 @@ class HoldOrderPrecheckExcelExport {
       final seller = results[1] as String;
       final sellerPhone = results[2] as String?;
 
-      final raw = resume.items.fold<int>(0, (s, e) => s + e.total);
+      final raw = resume.items.fold<num>(0, (s, e) => s + e.total);
       final total = _resolveGrandTotal(raw, resume);
       final client = resume.customer;
       final receiptNumber = _receiptLabel(hold, resume) ?? 'chek';
@@ -255,12 +255,12 @@ class HoldOrderPrecheckExcelExport {
     return target;
   }
 
-  static int _resolveGrandTotal(int raw, HoldOrderResume resume) {
+  static num _resolveGrandTotal(num raw, HoldOrderResume resume) {
     final fromApi = resume.grandTotal;
     if (fromApi != null && fromApi > 0) return fromApi;
     final pct = resume.discountPercent;
     if (pct != null && pct != 0) {
-      return (raw * (100 + pct) / 100).round();
+      return raw * (100 + pct) / 100;
     }
     return raw;
   }
@@ -289,7 +289,7 @@ class HoldOrderPrecheckExcelExport {
     required String storeTitle,
     required String receiptNumber,
     required List<CartItem> items,
-    int total = 0,
+    num total = 0,
   }) {
     return _buildSpreadsheetXml(
       storeTitle: storeTitle,
@@ -314,7 +314,7 @@ class HoldOrderPrecheckExcelExport {
     String? description,
     String? branchName,
     required List<CartItem> items,
-    required int total,
+    required num total,
   }) {
     const tableHeaders = [
       '№',
@@ -460,14 +460,17 @@ class HoldOrderPrecheckExcelExport {
     return v;
   }
 
-  static String _fmtComma(int n) {
-    final s = n.toString();
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-      buf.write(s[i]);
+  static String _fmtComma(num n) {
+    if ((n - n.roundToDouble()).abs() < 1e-9) {
+      final s = n.abs().round().toString();
+      final buf = StringBuffer();
+      for (var i = 0; i < s.length; i++) {
+        if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+        buf.write(s[i]);
+      }
+      return n < 0 ? '-${buf.toString()}' : buf.toString();
     }
-    return buf.toString();
+    return n.toString();
   }
 
   static String _fmtDate(DateTime dt) {

@@ -12,15 +12,15 @@ class ReceiptRowBuilder {
   static ReceiptRow fromCartItem(CartItem item) {
     final p = item.product;
     final catalogUnit = item.defaultLineUnitPrice.round();
-    final actualUnit = item.unitPriceDisplay;
+    final actualUnit = item.unitPriceForLine;
     final catalogSum = (item.defaultLineUnitPrice * item.quantity).round();
     final actualSum = item.total;
 
     return ReceiptRow(
       productName: p.name,
       quantityStr: ProductWeight.cartItemQuantityLabel(item),
-      price: actualUnit,
-      sum: actualSum,
+      price: actualUnit.round(),
+      sum: actualSum is int ? actualSum : actualSum.round(),
       catalogPrice: actualUnit < catalogUnit ? catalogUnit : null,
       catalogSum: actualSum < catalogSum ? catalogSum : null,
       lineWeightKg: ProductWeight.lineKgFromCartItem(item),
@@ -39,11 +39,11 @@ class ReceiptRowBuilder {
   /// Qator + savatcha chegirmasi: katalog jami − to'langan jami.
   static int totalDiscountUzs({
     required List<CartItem> items,
-    required int totalAfterDiscount,
+    required num totalAfterDiscount,
   }) {
     final catalog = catalogSubtotalFromCart(items);
     final diff = catalog - totalAfterDiscount;
-    return diff > 0 ? diff : 0;
+    return diff > 0 ? diff.round() : 0;
   }
 
   static ReceiptRow fromInvoiceRow(Map<String, dynamic> r) {
@@ -130,6 +130,36 @@ class ReceiptRowBuilder {
     if (vid != null && vid != 0) {
       for (final p in prov.items) {
         if (p.variantId == vid) return p;
+      }
+    }
+
+    // invoice-details ko‘pincha productID bermaydi — title orqali katalog birligini olish.
+    return _catalogProductByTitle(r);
+  }
+
+  static Product? _catalogProductByTitle(Map<String, dynamic> r) {
+    final title = (r['title'] ??
+            r['product_title'] ??
+            r['productTitle'] ??
+            r['name'] ??
+            '')
+        .toString()
+        .trim();
+    if (title.isEmpty) return null;
+    final lb = title.toLowerCase();
+    final prov = ProductsProvider.instance;
+    for (final cand in prov.items) {
+      if (cand.name.trim().toLowerCase() == lb) return cand;
+    }
+    for (final cand in prov.items) {
+      final n = cand.name.trim().toLowerCase();
+      if (n.length < 2) continue;
+      if (lb == n ||
+          lb.startsWith(n) ||
+          n.startsWith(lb) ||
+          lb.contains(n) ||
+          n.contains(lb)) {
+        return cand;
       }
     }
     return null;

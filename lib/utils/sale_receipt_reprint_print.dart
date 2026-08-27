@@ -3,12 +3,16 @@ import 'dart:io';
 import '../core/input_formatters.dart';
 import '../core/seller_preferences.dart';
 import '../models/receipt_design_config.dart';
+import '../providers/clients_provider.dart';
+import '../providers/products_provider.dart';
 import '../providers/sales_session_provider.dart';
+import '../services/api_service.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/printer_settings.dart';
 import '../services/receipt_design_storage.dart';
 import '../services/thermal_receipt_printer.dart';
 import '../utils/receipt_row_builder.dart';
+import '../utils/sales_return_flow.dart';
 import '../widgets/receipt_widget.dart';
 import 'hold_orders_response.dart';
 
@@ -26,7 +30,14 @@ class SaleReceiptReprintPrint {
       );
     }
 
-    final data = _collect(sale, invoiceDetail);
+    try {
+      await ProductsProvider.instance.warmFromCache();
+    } catch (_) {}
+    try {
+      await ClientsProvider.instance.warmFromCache();
+    } catch (_) {}
+
+    final data = await _collect(sale, invoiceDetail);
     if (data.invoiceProductRows.isEmpty) {
       final orderId = getOrderIdFromSale(sale);
       if (orderId != null) {
@@ -60,6 +71,8 @@ class SaleReceiptReprintPrint {
       sellerPhone: sellerPhone,
       branchName: SalesSessionProvider.instance.branchName.trim(),
       clientName: data.clientName.isEmpty ? null : data.clientName,
+      clientPhone: data.clientPhone,
+      clientAddress: data.clientAddress,
       description: data.description,
       productRows: ReceiptRowBuilder.fromInvoiceRows(data.invoiceProductRows),
       paymentRows: data.paymentRows,
@@ -79,7 +92,10 @@ class SaleReceiptReprintPrint {
     );
   }
 
-  static _ReprintData _collect(Map<String, dynamic> sale, Map<String, dynamic> inv) {
+  static Future<_ReprintData> _collect(
+    Map<String, dynamic> sale,
+    Map<String, dynamic> inv,
+  ) async {
     final invoiceId = sale['invoice_id'] ?? sale['order_id'] ?? sale['id'];
     final idStr = invoiceId?.toString() ?? '—';
     final posTitle = idStr.startsWith('POS') ? idStr : 'POS$idStr';
@@ -88,10 +104,7 @@ class SaleReceiptReprintPrint {
     DateTime dt = DateTime.tryParse(dateRaw.toString().replaceFirst(' ', 'T')) ?? DateTime.now();
 
     final sellerName = (sale['created_by'] ?? inv['created_by'] ?? 'Sotuvchi').toString();
-    final customer = sale['customer'] ?? inv['customer'];
-    final clientName = customer is String
-        ? customer
-        : (customer is Map ? (customer['name'] ?? '').toString() : '');
+    final client = await _resolveClient(sale, inv);
 
     List<dynamic> datarows = inv['datarows'] as List<dynamic>? ??
         inv['data'] as List<dynamic>? ??
@@ -133,12 +146,112 @@ class SaleReceiptReprintPrint {
       posTitle: posTitle,
       dateTime: dt,
       sellerName: sellerName,
-      clientName: clientName.trim(),
+      clientName: client.name,
+      clientPhone: client.phone,
+      clientAddress: client.address,
       description: _saleNote(sale, inv),
       invoiceProductRows: parsed.productRows,
       paymentRows: _paymentReceiptRows(payments),
       discountUzs: discountUzs,
       totalUzs: totalUzs,
+    );
+  }
+
+  /// Sotuvdan keyin chekda mijoz to‘liq; reprintda API faqat ism (yoki customer_id) beradi.
+  static Future<({String name, String? phone, String? address})> _resolveClient(
+    Map<String, dynamic> sale,
+    Map<String, dynamic> inv,
+  ) async {
+    var name = '';
+    var phone = '';
+    var address = '';
+
+    void applyFromMap(Map<String, dynamic> m) {
+      final n = (m['name'] ?? m['full_name'] ?? m['fullName'] ?? '').toString().trim();
+      if (n.isNotEmpty) {
+        name = n;
+      } else {
+        final first = (m['first_name'] ?? m['firstName'] ?? '').toString().trim();
+        final last = (m['last_name'] ?? m['lastName'] ?? '').toString().trim();
+        final joined = '$first $last'.trim();
+        if (joined.isNotEmpty) name = joined;
+      }
+      final p = (m['phone_number'] ?? m['phone'] ?? m['mobile'] ?? '')
+          .toString()
+          .trim();
+      if (p.isNotEmpty && phone.isEmpty) phone = p;
+      final a = (m['address'] ?? m['client_address'] ?? '').toString().trim();
+      if (a.isNotEmpty && address.isEmpty) address = a;
+    }
+
+    for (final src in [sale, inv]) {
+      final customer = src['customer'] ?? src['client'];
+      if (customer is String && customer.trim().isNotEmpty) {
+        if (name.isEmpty) name = customer.trim();
+      } else if (customer is Map) {
+        applyFromMap(Map<String, dynamic>.from(customer));
+      }
+      final topPhone = (src['customer_phone'] ??
+              src['client_phone'] ??
+              src['phone_number'] ??
+              '')
+          .toString()
+          .trim();
+      if (topPhone.isNotEmpty && phone.isEmpty) phone = topPhone;
+      final topAddress =
+          (src['customer_address'] ?? src['client_address'] ?? '').toString().trim();
+      if (topAddress.isNotEmpty && address.isEmpty) address = topAddress;
+    }
+
+    final customerId = SalesReturnFlow.customerIdFromSale(
+      sale,
+      invoiceDetail: inv,
+    );
+    if (customerId != null) {
+      Client? cached = ClientsProvider.instance.getById(customerId.toString());
+      final needDetails = name.isEmpty || phone.isEmpty || address.isEmpty;
+      if (cached == null || needDetails) {
+        try {
+          final res = await ContactsApi.getCustomer(customerId);
+          final raw = res['customer'] ?? res['data'] ?? res;
+          if (raw is Map) {
+            cached = Client.fromApiJson(Map<String, dynamic>.from(raw));
+          }
+        } catch (_) {}
+      }
+      if (cached != null) {
+        if (name.isEmpty && cached.name.trim().isNotEmpty) {
+          name = cached.name.trim();
+        }
+        final cachedPhone = (cached.phone ?? '').trim();
+        if (phone.isEmpty && cachedPhone.isNotEmpty) phone = cachedPhone;
+        final cachedAddress = (cached.address ?? '').trim();
+        if (address.isEmpty && cachedAddress.isNotEmpty) address = cachedAddress;
+      }
+    } else if (name.isNotEmpty && (phone.isEmpty || address.isEmpty)) {
+      try {
+        final matches = ClientsProvider.instance.search(name);
+        final exact = matches.where(
+          (c) => c.name.trim().toLowerCase() == name.toLowerCase(),
+        );
+        final c = exact.isNotEmpty
+            ? exact.first
+            : (matches.length == 1 ? matches.first : null);
+        if (c != null) {
+          final cachedPhone = (c.phone ?? '').trim();
+          if (phone.isEmpty && cachedPhone.isNotEmpty) phone = cachedPhone;
+          final cachedAddress = (c.address ?? '').trim();
+          if (address.isEmpty && cachedAddress.isNotEmpty) {
+            address = cachedAddress;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return (
+      name: name.trim(),
+      phone: phone.isEmpty ? null : phone,
+      address: address.isEmpty ? null : address,
     );
   }
 
@@ -224,6 +337,8 @@ class _ReprintData {
   final DateTime dateTime;
   final String sellerName;
   final String clientName;
+  final String? clientPhone;
+  final String? clientAddress;
   final String? description;
   final List<Map<String, dynamic>> invoiceProductRows;
   final List<ReceiptPaymentRow> paymentRows;
@@ -235,6 +350,8 @@ class _ReprintData {
     required this.dateTime,
     required this.sellerName,
     required this.clientName,
+    this.clientPhone,
+    this.clientAddress,
     this.description,
     required this.invoiceProductRows,
     required this.paymentRows,

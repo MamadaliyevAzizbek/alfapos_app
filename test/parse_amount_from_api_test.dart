@@ -27,5 +27,14 @@ void main() {
       expect(parseAmountFromApiDouble('1.234,56'), 1234.56);
       expect(parseAmountFromApiDouble('10,5'), 10.5);
     });
+
+    test('0.687 and 0,687 stay fractional (not thousands)', () {
+      expect(parseAmountFromApiDouble('0.687'), 0.687);
+      expect(parseAmountFromApiDouble('0,687'), 0.687);
+      expect(parseFormattedSumDouble('0.687'), 0.687);
+      expect(parseFormattedSumDouble('0,687'), 0.687);
+      expect(formatThousandsNum(0.687), '0.687');
+      expect(formatThousandsNum(21997.5), '21 997.5');
+    });
   });
 }

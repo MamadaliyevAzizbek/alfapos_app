@@ -2,8 +2,13 @@ import 'package:alfapos_app/core/input_formatters.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-TextEditingValue _fmt(String oldText, String newText, int newCursor) {
-  final formatter = ThousandsInputFormatter();
+TextEditingValue _fmt(
+  String oldText,
+  String newText,
+  int newCursor, {
+  bool allowDecimal = false,
+}) {
+  final formatter = ThousandsInputFormatter(allowDecimal: allowDecimal);
   return formatter.formatEditUpdate(
     TextEditingValue(text: oldText, selection: TextSelection.collapsed(offset: oldText.length)),
     TextEditingValue(text: newText, selection: TextSelection.collapsed(offset: newCursor)),
@@ -37,5 +42,29 @@ void main() {
     final result = _fmt('300', '', 0);
     expect(result.text, '');
     expect(result.selection.end, 0);
+  });
+
+  test('allowDecimal keeps 0.687 and does not turn into 0 687', () {
+    final result = _fmt('0.', '0.687', 5, allowDecimal: true);
+    expect(result.text, '0.687');
+    expect(parseFormattedSumDouble(result.text), 0.687);
+  });
+
+  test('allowDecimal accepts comma as decimal separator', () {
+    final result = _fmt('0,', '0,687', 5, allowDecimal: true);
+    expect(result.text, '0,687');
+    expect(parseFormattedSumDouble(result.text), 0.687);
+  });
+
+  test('allowDecimal formats thousands with fraction', () {
+    final result = _fmt('21997', '21997.5', 7, allowDecimal: true);
+    expect(result.text, '21 997.5');
+    expect(parseFormattedSumDouble(result.text), 21997.5);
+  });
+
+  test('integer mode still strips decimal point', () {
+    final result = _fmt('0', '0.687', 5);
+    expect(result.text, '0 687');
+    expect(parseFormattedSum(result.text), 687);
   });
 }

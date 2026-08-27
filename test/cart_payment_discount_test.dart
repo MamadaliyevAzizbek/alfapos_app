@@ -20,17 +20,17 @@ void main() {
     for (final i in items) {
       CartDiscountPercent.initNewItem(i);
     }
-    final before = items.fold<int>(0, (s, e) => s + e.total);
+    final before = items.fold<num>(0, (s, e) => s + e.total);
     expect(before, 212000);
 
     CartPaymentDiscount.applyCustomerPayment(items, 200000);
 
-    final after = items.fold<int>(0, (s, e) => s + e.total);
+    final after = items.fold<num>(0, (s, e) => s + e.total);
     expect(after, 200000);
     expect(before - after, 12000);
 
     final lineDiscounts = items.map((e) => e.salesStoreLinePricing.lineDiscount).toList();
-    expect(lineDiscounts.fold<int>(0, (a, b) => a + b), 12000);
+    expect(lineDiscounts.fold<num>(0, (a, b) => a + b), 12000);
   });
 
   test('applyCustomerPayment with multiple quantities', () {
@@ -43,6 +43,6 @@ void main() {
     }
     const paid = 150000;
     CartPaymentDiscount.applyCustomerPayment(items, paid);
-    expect(items.fold<int>(0, (s, e) => s + e.total), paid);
+    expect(items.fold<num>(0, (s, e) => s + e.total), paid);
   });
 }

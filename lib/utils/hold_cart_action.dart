@@ -13,8 +13,8 @@ class HoldCartAction {
   static Future<bool> savePausedCart({
     required BuildContext context,
     required List<CartItem> cartItems,
-    required int subTotal,
-    required int grandTotal,
+    required num subTotal,
+    required num grandTotal,
     int? customerId,
     int? orderId,
     String? invoiceId,

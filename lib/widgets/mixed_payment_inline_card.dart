@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/input_formatters.dart';
 import '../core/theme.dart';
@@ -7,7 +8,7 @@ import '../core/theme.dart';
 class MixedPaymentInlineCard extends StatefulWidget {
   final String title;
   final IconData icon;
-  final int amount;
+  final num amount;
   final int? balanceUzs;
   final bool compact;
   final bool desktopLarge;
@@ -39,23 +40,15 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
   void initState() {
     super.initState();
     _focus = FocusNode();
-    _focus.addListener(_onFocusChanged);
     _controller = TextEditingController(text: _textForAmount(widget.amount));
-  }
-
-  void _onFocusChanged() {
-    if (!_focus.hasFocus || widget.onActivate == null || widget.amount > 0) return;
-    widget.onActivate!();
   }
 
   @override
   void didUpdateWidget(covariant MixedPaymentInlineCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.amount != widget.amount) {
+    if ((oldWidget.amount - widget.amount).abs() > 1e-9 && !_focus.hasFocus) {
       final next = _textForAmount(widget.amount);
-      final currentDigits = _controller.text.replaceAll(RegExp(r'[^\d]'), '');
-      final nextDigits = next.replaceAll(RegExp(r'[^\d]'), '');
-      if (currentDigits != nextDigits) {
+      if (_controller.text != next) {
         _controller.value = TextEditingValue(
           text: next,
           selection: TextSelection.collapsed(offset: next.length),
@@ -66,13 +59,13 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
 
   @override
   void dispose() {
-    _focus.removeListener(_onFocusChanged);
     _focus.dispose();
     _controller.dispose();
     super.dispose();
   }
 
-  String _textForAmount(int amount) => amount > 0 ? formatThousands(amount) : '';
+  String _textForAmount(num amount) =>
+      amount > 0 ? formatThousandsNum(amount) : '';
 
   @override
   Widget build(BuildContext context) {
@@ -148,8 +141,8 @@ class _MixedPaymentInlineCardState extends State<MixedPaymentInlineCard> {
           TextField(
             controller: _controller,
             focusNode: _focus,
-            keyboardType: TextInputType.number,
-            inputFormatters: [ThousandsInputFormatter()],
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [ThousandsInputFormatter(allowDecimal: true)],
             textAlign: TextAlign.center,
             style: fieldStyle,
             decoration: InputDecoration(

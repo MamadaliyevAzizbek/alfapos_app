@@ -1,7 +1,7 @@
 name: alfapos_app
 description: Alfapos - POS tizimi (Flutter).
 publish_to: none
-version: 1.0.63+79
+version: 1.0.64+80
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

@@ -58,7 +58,7 @@ class CatalogProductPriceLabel {
     double usdRate = 12600,
     bool showUsdEquivalent = false,
   }) {
-    final somText = formatThousands(som.round());
+    final somText = formatThousandsNum(som);
     if (!showUsdEquivalent || usdRate <= 0) return somText;
     return '$somText (\$${_formatUsd(som / usdRate)})';
   }

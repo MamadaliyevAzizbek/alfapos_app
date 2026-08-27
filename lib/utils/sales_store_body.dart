@@ -10,6 +10,14 @@ class SalesStoreBody {
       final isPack = item.sellByPack && p.canSellByPack;
       final linePricing = item.salesStoreLinePricing;
       final soldUnit = item.unitPriceForLine;
+      final lineTotal = linePricing.lineTotal;
+      final recomputed =
+          CartItem.quantizeLineTotal(soldUnit * item.quantity.toDouble());
+      final hasLineTotalLock = item.lineTotalOverride != null ||
+          (lineTotal - recomputed).abs() >= 0.001;
+      final noteNeeded = includeCartItemNote ||
+          (soldUnit - item.defaultLineUnitPrice).abs() > 0.5 ||
+          hasLineTotalLock;
       return {
         'productID': int.tryParse(p.id) ?? 0,
         'variantID': p.variantId ?? 1,
@@ -18,15 +26,17 @@ class SalesStoreBody {
         'productTitle': p.name,
         'variantTitle': 'default_variant',
         'orderType': 'sales',
-        'discount': linePricing.lineDiscount,
+        'discount': _soldUnitPayload(linePricing.lineDiscount),
         'taxID': null,
-        'calculatedPrice': linePricing.lineTotal,
+        'calculatedPrice': _soldUnitPayload(lineTotal),
         // Backend markup (katalogdan qimmat) ni saqlamaydi — hold/done uchun zaxira.
-        'soldUnitPrice': soldUnit.round(),
-        // Holdda majburiy; done da ham yozamiz — tahrirlashda markup tiklansin.
-        'cartItemNote': includeCartItemNote ||
-                (soldUnit - item.defaultLineUnitPrice).abs() > 0.5
-            ? soldUnitNote(soldUnit)
+        'soldUnitPrice': _soldUnitPayload(soldUnit),
+        // Holdda majburiy; done/markup/kerakli-summa da ham yozamiz.
+        'cartItemNote': noteNeeded
+            ? cartItemNote(
+                soldUnit,
+                lineTotal: hasLineTotalLock ? lineTotal : null,
+              )
             : '',
         if (isPack) 'isPackage': true,
         if (isPack) 'unitsPerPackage': p.quantityPerPack,
@@ -34,14 +44,47 @@ class SalesStoreBody {
     }).toList();
   }
 
-  /// Hold `cartItemNote` — davom ettirishda chegirmali birlik narxini tiklash.
-  static String soldUnitNote(num soldUnit) =>
-      'alfapos_sold_unit=${soldUnit.round()}';
+  /// Hold/done `cartItemNote` — birlik narxi va (ixtiyoriy) qator summasi.
+  static String cartItemNote(num soldUnit, {num? lineTotal}) {
+    final parts = <String>['alfapos_sold_unit=${formatSoldUnitNote(soldUnit)}'];
+    if (lineTotal != null && lineTotal > 0) {
+      parts.add('alfapos_line_total=${formatSoldUnitNote(lineTotal)}');
+    }
+    return parts.join(';');
+  }
+
+  /// Kasrli birlik narxi (0.687) yaxlitlanmasin.
+  static String formatSoldUnitNote(num soldUnit) {
+    final d = soldUnit.toDouble();
+    if ((d - d.roundToDouble()).abs() < 1e-9) return d.round().toString();
+    return d
+        .toStringAsFixed(6)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  static num _soldUnitPayload(num soldUnit) {
+    final d = soldUnit.toDouble();
+    if ((d - d.roundToDouble()).abs() < 1e-9) return d.round();
+    return d;
+  }
+
+  /// Eski chaqiriqlar uchun.
+  static String soldUnitNote(num soldUnit, {num? lineTotal}) =>
+      cartItemNote(soldUnit, lineTotal: lineTotal);
 
   static double? parseSoldUnitNote(String? note) {
     if (note == null || note.trim().isEmpty) return null;
     final match =
         RegExp(r'alfapos_sold_unit=(-?\d+(?:[.,]\d+)?)').firstMatch(note);
+    if (match == null) return null;
+    return double.tryParse(match.group(1)!.replaceAll(',', '.'));
+  }
+
+  static num? parseLineTotalNote(String? note) {
+    if (note == null || note.trim().isEmpty) return null;
+    final match =
+        RegExp(r'alfapos_line_total=(-?\d+(?:[.,]\d+)?)').firstMatch(note);
     if (match == null) return null;
     return double.tryParse(match.group(1)!.replaceAll(',', '.'));
   }
@@ -61,8 +104,8 @@ class SalesStoreBody {
 
   static Map<String, dynamic> build({
     required List<CartItem> items,
-    required int subTotal,
-    required int grandTotal,
+    required num subTotal,
+    required num grandTotal,
     required String status,
     int discountPercent = 0,
     int? customerId,
@@ -75,8 +118,8 @@ class SalesStoreBody {
     int? editOrderId,
     String? editReason,
     List<Map<String, dynamic>>? payments,
-    int dueAmount = 0,
-    int? profit,
+    num dueAmount = 0,
+    num? profit,
     String? note,
   }) {
     final discountUzs = subTotal - grandTotal;

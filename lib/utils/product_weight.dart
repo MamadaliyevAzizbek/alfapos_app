@@ -144,15 +144,16 @@ abstract final class ProductWeight {
     final qtyRaw = (row['quantity'] ?? row['qty'] ?? '').toString().trim();
     if (qtyRaw.isEmpty) return '—';
     final qtyFmt = trimQuantityDecimals(qtyRaw.split(RegExp(r'\s+')).first);
-    if (unitRaw.isEmpty) {
-      // Agar API "3.500 kg" deb yuborsa — butun satrni soddalashtiramiz.
-      return trimQuantityDecimals(qtyRaw);
-    }
     // "3.500 kg" ichida birlik bo'lsa — qayta yozmaslik.
     if (RegExp(r'[a-zA-Zа-яА-ЯёЁ]').hasMatch(qtyFmt)) {
       return qtyFmt;
     }
-    return '$qtyFmt $unitRaw';
+    final resolvedUnit = unit.toString().trim();
+    if (resolvedUnit.isEmpty) {
+      // API birlik bermasa ham qty satrida ("3.500 kg") bo‘lishi mumkin.
+      return trimQuantityDecimals(qtyRaw);
+    }
+    return '$qtyFmt ${Product.unitDisplayShort(resolvedUnit)}';
   }
 
   static num parseInvoiceQtyNum(Map<String, dynamic> r) {

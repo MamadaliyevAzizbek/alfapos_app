@@ -46,7 +46,7 @@ class CartPaymentDiscount {
       CartDiscountPercent.syncBaseFromCurrent(item);
     }
 
-    final lineTotals = items.map((e) => e.total).toList();
+    final lineTotals = items.map((e) => e.total.round()).toList();
     final cartTotal = lineTotals.fold<int>(0, (a, b) => a + b);
     if (cartTotal <= 0) return;
 
@@ -74,7 +74,7 @@ class CartPaymentDiscount {
   }
 
   static void _fixRoundingDrift(List<CartItem> items, int targetTotal) {
-    var sum = items.fold<int>(0, (s, e) => s + e.total);
+    var sum = items.fold<int>(0, (s, e) => s + e.total.round());
     var diff = targetTotal - sum;
     if (diff == 0 || items.isEmpty) return;
 
@@ -83,17 +83,17 @@ class CartPaymentDiscount {
     final qty = item.quantity.toDouble();
     if (qty <= 0) return;
 
-    final adjustedLine = item.total + diff;
+    final adjustedLine = item.total.round() + diff;
     if (adjustedLine < 0) return;
     item.salePriceOverride = adjustedLine / qty;
 
-    sum = items.fold<int>(0, (s, e) => s + e.total);
+    sum = items.fold<int>(0, (s, e) => s + e.total.round());
     diff = targetTotal - sum;
     if (diff != 0 && items.length > 1) {
       final first = items.first;
       final q = first.quantity.toDouble();
       if (q > 0) {
-        first.salePriceOverride = (first.total + diff) / q;
+        first.salePriceOverride = (first.total.round() + diff) / q;
       }
     }
   }

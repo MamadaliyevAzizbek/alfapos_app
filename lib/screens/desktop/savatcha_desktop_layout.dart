@@ -91,9 +91,9 @@ class SavatchaDesktopLayout extends StatelessWidget {
   final VoidCallback? onLogout;
   final String cashRegisterLabel;
   final String sellerName;
-  final int cartGrandTotal;
+  final num cartGrandTotal;
   final int cartCatalogTotal;
-  final int cartProfitTotal;
+  final num cartProfitTotal;
   final bool showCartProfit;
   final int cartDiscountPercent;
   final double usdExchangeRate;
@@ -212,7 +212,7 @@ class SavatchaDesktopLayout extends StatelessWidget {
   String _shortcutLabel(SalesShortcutAction action) =>
       SalesKeyboardShortcutsSettings.resolveKeyLabel(shortcutKeys, action);
 
-  int get _cartRawTotal => cartItems.fold<int>(0, (s, e) => s + e.total);
+  num get _cartRawTotal => cartItems.fold<num>(0, (s, e) => s + e.total);
 
   String _cartProfitPercentLabel() {
     if (cartGrandTotal <= 0) return 'F: 0%';
@@ -771,12 +771,21 @@ class SavatchaDesktopLayout extends StatelessWidget {
             usdRate: usdExchangeRate,
             onToggleExpand: () => onToggleCartExpand(line),
             onCollapse: onCollapseCartExpand,
-            onIncrement: () => onIncrement(line),
-            onDecrement: () => onDecrement(line),
+            onIncrement: () {
+              line.clearLineTotalOverride();
+              onIncrement(line);
+            },
+            onDecrement: () {
+              line.clearLineTotalOverride();
+              onDecrement(line);
+            },
             onRemove: () => onRemoveCartItem(line),
             onQuantityChanged: (q) => onCartQuantityChanged(line, q),
             onUnitPriceChanged: (p) => onCartUnitPriceChanged(line, p),
-            onSellByPackChanged: (pack) => onCartSellByPackChanged(line, pack),
+            onSellByPackChanged: (pack) {
+              line.clearLineTotalOverride();
+              onCartSellByPackChanged(line, pack);
+            },
             onSuspendCatalogSearchRefocus: onSuspendCatalogSearchRefocus,
             accent: _accent,
           );
@@ -1211,8 +1220,9 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   void initState() {
     super.initState();
     _qtyController = TextEditingController(text: _qtyText(widget.item.quantity));
-    _priceController = TextEditingController(text: formatThousands(widget.item.unitPriceDisplay));
-    _sumController = TextEditingController(text: formatThousands(widget.item.total));
+    _priceController =
+        TextEditingController(text: formatThousandsNum(widget.item.unitPriceForLine));
+    _sumController = TextEditingController(text: formatThousandsNum(widget.item.total));
     _qtyFocusNode = FocusNode();
     _priceFocusNode = FocusNode();
     _sumFocusNode = FocusNode();
@@ -1266,7 +1276,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   void _startInlinePriceEdit() {
     if (_inlineQtyEditing) _closeInlineQtyEdit();
     widget.onSuspendCatalogSearchRefocus?.call();
-    _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+    _priceController.text = formatThousandsNum(widget.item.unitPriceForLine);
     setState(() => _inlinePriceEditing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _priceFocusNode.requestFocus();
@@ -1293,11 +1303,11 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       if (_qtyController.text != q) _qtyController.text = q;
     }
     if (!_priceFocusNode.hasFocus) {
-      final p = formatThousands(widget.item.unitPriceDisplay);
+      final p = formatThousandsNum(widget.item.unitPriceForLine);
       if (_priceController.text != p) _priceController.text = p;
     }
     if (!_sumFocusNode.hasFocus) {
-      final s = formatThousands(widget.item.total);
+      final s = formatThousandsNum(widget.item.total);
       if (_sumController.text != s) _sumController.text = s;
     }
   }
@@ -1330,7 +1340,10 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
       if (resetIfInvalid) _qtyController.text = _qtyText(widget.item.quantity);
       return;
     }
-    if (q == widget.item.quantity) return;
+    // Ko‘rsatilgan miqdor o‘zgarmagan bo‘lsa (masalan 4.545) — kerakli summa
+    // override ini o‘chirmaymiz. Aks holda blur da 50 000 → 49 995 bo‘lardi.
+    if (_qtyText(q) == _qtyText(widget.item.quantity)) return;
+    widget.item.clearLineTotalOverride();
     widget.onQuantityChanged(q);
     // Ombor cheklovi miqdorni qisqartirishi mumkin — maydon fokusda bo‘lgani
     // uchun `didUpdateWidget` uni yangilamaydi, shuning uchun o‘zimiz sinxronlaymiz.
@@ -1346,32 +1359,35 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   void _commitQuantity() => _applyQuantityInput(_qtyController.text, resetIfInvalid: true);
 
   /// Mijoz berayotgan summadan miqdorni hisoblash: miqdor = summa / birlik narxi.
+  /// Kilo 3 xonaga yaxlitlanadi, lekin yozilgan summa o‘zgarmaydi.
   void _applySumToQuantity(String raw) {
     final sum = parseFormattedSum(raw);
     if (sum == null || sum <= 0) return;
-    final unit = widget.item.unitPriceDisplay;
+    final unit = widget.item.unitPriceForLine;
     if (unit <= 0) return;
-    final qty = double.parse((sum / unit).toStringAsFixed(3));
-    if (qty <= 0) return;
-    if ((qty - widget.item.quantity).abs() < 1e-9) return;
-    widget.onQuantityChanged(qty);
+    widget.item.applyTargetSum(sum);
+    // Provider/stream yangilanishi (miqdor o‘zgarganda).
+    widget.onQuantityChanged(widget.item.quantity);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Stock sync override ni yo‘qotgan bo‘lishi mumkin — qayta qo‘yamiz.
+      widget.item.lineTotalOverride = sum;
       final applied = _qtyText(widget.item.quantity);
       if (_qtyController.text != applied) {
         _qtyController.text = applied;
       }
       if (!_sumFocusNode.hasFocus) {
-        final s = formatThousands(widget.item.total);
+        final s = formatThousandsNum(widget.item.total);
         if (_sumController.text != s) _sumController.text = s;
       }
+      setState(() {});
     });
   }
 
   void _moveFromQuantityToPrice() {
     _qtyToPriceFocusTransition = true;
     _commitQuantity();
-    _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+    _priceController.text = formatThousandsNum(widget.item.unitPriceForLine);
     setState(() {
       _inlineQtyEditing = false;
       _inlinePriceEditing = true;
@@ -1487,33 +1503,42 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
   }
 
   void _applyPriceInput(String raw, {bool resetIfInvalid = false}) {
-    final v = parseFormattedSum(raw);
+    final v = parseFormattedSumDouble(raw);
     if (v == null || v < 0) {
-      if (resetIfInvalid) _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+      if (resetIfInvalid) {
+        _priceController.text = formatThousandsNum(widget.item.unitPriceForLine);
+      }
       return;
     }
-    final def = widget.item.defaultLineUnitPrice.round();
-    final override = v == def ? null : v.toDouble();
-    final current = widget.item.salePriceOverride?.round();
-    final next = override?.round();
-    if (current != next) widget.onUnitPriceChanged(override);
+    final def = widget.item.defaultLineUnitPrice.toDouble();
+    final override = (v - def).abs() < 1e-9 ? null : v;
+    final current = widget.item.salePriceOverride;
+    final changed = current == null
+        ? override != null
+        : override == null || (current - override).abs() >= 1e-9;
+    if (changed) {
+      widget.item.clearLineTotalOverride();
+      widget.onUnitPriceChanged(override);
+    }
   }
 
   void _commitPrice() => _applyPriceInput(_priceController.text, resetIfInvalid: true);
 
   void _selectCatalogPriceType(String priceType) {
     final catalogPrice = CustomerGroupDiscount.catalogUnitPriceForItem(widget.item, priceType);
-    final def = widget.item.defaultLineUnitPrice.round();
-    final v = catalogPrice.round();
-    final override = v == def ? null : catalogPrice.toDouble();
+    final def = widget.item.defaultLineUnitPrice.toDouble();
+    final override =
+        (catalogPrice.toDouble() - def).abs() < 1e-9 ? null : catalogPrice.toDouble();
+    final priceChanged = (widget.item.unitPriceForLine - catalogPrice).abs() >= 1e-9;
+    if (priceChanged) widget.item.clearLineTotalOverride();
     widget.onUnitPriceChanged(override);
     if (!_priceFocusNode.hasFocus) {
-      _priceController.text = formatThousands(widget.item.unitPriceDisplay);
+      _priceController.text = formatThousandsNum(widget.item.unitPriceForLine);
     }
   }
 
   bool _isActiveCatalogPrice(num catalogPrice) {
-    return (widget.item.unitPriceDisplay - catalogPrice).abs() < 0.5;
+    return (widget.item.unitPriceForLine - catalogPrice).abs() < 0.5;
   }
 
   String? _activeCatalogPriceType() {
@@ -1568,7 +1593,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
     final maxW = tight ? 180.0 : 220.0;
     final displayText = _inlinePriceEditing
         ? _priceController.text
-        : formatThousands(widget.item.unitPriceDisplay);
+        : formatThousandsNum(widget.item.unitPriceForLine);
     final fieldW = _fieldWidthForText(
       displayText,
       fontSize: 15,
@@ -1584,8 +1609,8 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
         child: TextField(
           controller: _priceController,
           focusNode: _priceFocusNode,
-          keyboardType: TextInputType.number,
-          inputFormatters: [ThousandsInputFormatter()],
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [ThousandsInputFormatter(allowDecimal: true)],
           textAlign: TextAlign.right,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           decoration: InputDecoration(
@@ -1624,7 +1649,7 @@ class _DesktopCartLineState extends State<_DesktopCartLine> {
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: tight ? 4 : 6, vertical: 4),
           child: _oneLineAmount(
-            _displaySom(widget.item.unitPriceDisplay),
+            _displaySom(widget.item.unitPriceForLine),
             fontSize: tight ? 13 : 14,
           ),
         ),

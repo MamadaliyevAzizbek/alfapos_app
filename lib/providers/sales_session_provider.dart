@@ -873,8 +873,8 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<Map<String, dynamic>?> holdCart({
     required List<CartItem> cartItems,
-    required int subTotal,
-    required int grandTotal,
+    required num subTotal,
+    required num grandTotal,
     int? customerId,
     int? orderId,
     String? invoiceId,
@@ -899,8 +899,8 @@ class SalesSessionProvider extends ChangeNotifier {
 
   Future<Map<String, dynamic>?> _holdCartImpl({
     required List<CartItem> cartItems,
-    required int subTotal,
-    required int grandTotal,
+    required num subTotal,
+    required num grandTotal,
     int? customerId,
     int? orderId,
     String? invoiceId,

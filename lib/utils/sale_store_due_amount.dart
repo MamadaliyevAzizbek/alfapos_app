@@ -1,16 +1,16 @@
 /// POST /sales/store `dueAmount` — aralash to'lovda qarz qoldig'i.
 int computeStoreDueAmount({
-  required int grandTotal,
+  required num grandTotal,
   required List<Map<String, dynamic>> paymentTypes,
-  required Map<String, int> allocated,
+  required Map<String, num> allocated,
   required bool Function(Map<String, dynamic> e) isQarzPayment,
 }) {
-  var paidNonQarz = 0;
-  var qarzLineTotal = 0;
+  var paidNonQarz = 0.0;
+  var qarzLineTotal = 0.0;
   for (final e in paymentTypes) {
     final id = (e['id'] is int ? e['id'] as int : int.tryParse(e['id']?.toString() ?? '0') ?? 0)
         .toString();
-    final amt = allocated[id] ?? 0;
+    final amt = (allocated[id] ?? 0).toDouble();
     if (amt <= 0) continue;
     if (isQarzPayment(e)) {
       qarzLineTotal += amt;
@@ -18,6 +18,8 @@ int computeStoreDueAmount({
       paidNonQarz += amt;
     }
   }
-  if (qarzLineTotal > 0) return qarzLineTotal;
-  return (grandTotal - paidNonQarz).clamp(0, 0x7FFFFFFF);
+  if (qarzLineTotal > 0) return qarzLineTotal.round();
+  final due = grandTotal.toDouble() - paidNonQarz;
+  if (due <= 0) return 0;
+  return due.round();
 }

@@ -17,6 +17,7 @@ import '../utils/sales_return_flow.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/invoice_edit_flow.dart';
 import '../utils/product_weight.dart';
+import '../services/sales_list_refresh.dart';
 
 /// API dan kelgan chek batafsil — to'liq chek ko'rinishi (Hisobotlar, Tranzaksiyalar, Mijoz detali).
 class ApiChekDetailScreen extends StatefulWidget {
@@ -139,14 +140,17 @@ class _ApiChekDetailScreenState extends State<ApiChekDetailScreen> {
   }
 
   Future<void> _startEditSale(Map<String, dynamic>? invoiceDetail) async {
+    // Dropdowndagi bilan bir xil oqim: sabab → editable-order → savat.
+    // Detail ekrani push<bool> bilan ochilgan — yopishda faqat bool.
     final ok = await InvoiceEditFlow.startFullEdit(
       context,
       widget.sale,
       invoiceDetail: invoiceDetail,
       popCurrentRoute: true,
     );
-    // startFullEdit o‘zi pop + sotuv bo‘limiga o‘tadi.
-    if (!ok && mounted) return;
+    if (ok) {
+      SalesListRefresh.notifyChanged();
+    }
   }
 
   @override

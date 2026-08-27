@@ -87,15 +87,15 @@ class DesktopPaymentScreen extends StatelessWidget {
 class DesktopPaymentLayout extends StatefulWidget {
   final List<CartItem> items;
   final Client? client;
-  final int totalRaw;
-  final int totalAfterDiscount;
+  final num totalRaw;
+  final num totalAfterDiscount;
   final String sellerName;
   final String storeName;
   final String description;
   final ValueChanged<String> onDescriptionChanged;
   final bool paymentTypesLoading;
   final List<MapEntry<String, String>> paymentList;
-  final Map<String, int> paymentAmounts;
+  final Map<String, num> paymentAmounts;
   final bool mixedPayment;
   final ValueChanged<bool> onMixedPaymentChanged;
   final String? selectedPaymentKey;
@@ -106,8 +106,8 @@ class DesktopPaymentLayout extends StatefulWidget {
   final ValueChanged<String> onClearPayment;
   final TextEditingController amountController;
   final ValueChanged<String> onAmountChanged;
-  final int remainingToPay;
-  final int changeAmount;
+  final num remainingToPay;
+  final num changeAmount;
   final int clientBalanceUzs;
   final bool canComplete;
   final bool submitting;
@@ -119,9 +119,9 @@ class DesktopPaymentLayout extends StatefulWidget {
   final VoidCallback onPrint;
   final VoidCallback onPrintPrecheck;
   final int debtAmount;
-  final List<MapEntry<String, int>> allocatedPayments;
+  final List<MapEntry<String, num>> allocatedPayments;
   final bool isReturnCheckout;
-  final int returnRefundDue;
+  final num returnRefundDue;
   final bool returnCreditUsesGeneralDebt;
   final int tolovsizPreviewBalancePart;
   final int tolovsizPreviewCreditPart;
@@ -299,9 +299,9 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
     );
   }
 
-  List<MapEntry<String, int>> get _paymentFooterRows {
+  List<MapEntry<String, num>> get _paymentFooterRows {
     if (widget.allocatedPayments.isNotEmpty) return widget.allocatedPayments;
-    final rows = <MapEntry<String, int>>[];
+    final rows = <MapEntry<String, num>>[];
     for (final e in widget.paymentList) {
       final amt = widget.paymentAmounts[e.key] ?? 0;
       if (amt > 0) rows.add(MapEntry(e.value, amt));
@@ -333,8 +333,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             children: [
               _cell(item.product.name),
               _cell(ProductWeight.cartItemQuantityLabel(item)),
-              _cell(formatThousands(item.unitPriceDisplay)),
-              _cell(formatThousands(item.total)),
+              _cell(formatThousandsNum(item.unitPriceForLine)),
+              _cell(formatThousandsNum(item.total)),
             ],
           );
         }),
@@ -343,14 +343,14 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
             _cell(''),
             _cell(''),
             _cell(pay.key),
-            _cell(formatThousands(pay.value))
+            _cell(formatThousandsNum(pay.value))
           ]),
         TableRow(
           children: [
             _cell(''),
             _cell(''),
             _cell('Umumiy', bold: true),
-            _cell(formatThousands(widget.totalAfterDiscount), bold: true),
+            _cell(formatThousandsNum(widget.totalAfterDiscount), bold: true),
           ],
         ),
       ],
@@ -402,8 +402,8 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
     }
 
     final headerTitle = widget.isReturnCheckout
-        ? 'Qaytarish ${formatThousands(widget.returnRefundDue)}'
-        : 'Umumiy ${formatThousands(widget.totalAfterDiscount)}';
+        ? 'Qaytarish ${formatThousandsNum(widget.returnRefundDue)}'
+        : 'Umumiy ${formatThousandsNum(widget.totalAfterDiscount)}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -528,7 +528,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                           children: [
                             if (widget.remainingToPay > 0)
                               Text(
-                                "Qolgan: ${formatThousands(widget.remainingToPay)}",
+                                "Qolgan: ${formatThousandsNum(widget.remainingToPay)}",
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -538,7 +538,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                             if (widget.changeAmount > 0) ...[
                               const SizedBox(width: 16),
                               Text(
-                                "Qaytim: ${formatThousands(widget.changeAmount)}",
+                                "Qaytim: ${formatThousandsNum(widget.changeAmount)}",
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -720,7 +720,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                     size: 72, color: Colors.green.shade600),
                 const SizedBox(height: 20),
                 Text(
-                  'Umumiy ${formatThousands(widget.totalAfterDiscount)} UZS',
+                  'Umumiy ${formatThousandsNum(widget.totalAfterDiscount)} UZS',
                   style: const TextStyle(
                       fontSize: 20, fontWeight: FontWeight.w700),
                 ),
@@ -838,9 +838,10 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
   /// Bitta to'lov: summa avtomatik — pastdagi tugmadan tur tanlanadi (input yo'q).
   Widget _buildSinglePaymentMethodBanner(String selectedName) {
     final key = widget.selectedPaymentKey;
-    final amount = key != null
+    final rawAmount = key != null
         ? (widget.paymentAmounts[key] ?? widget.totalAfterDiscount)
         : widget.totalAfterDiscount;
+    final amount = rawAmount.round();
     final isBalance = _isBalanceName(selectedName);
     final insufficient = isBalance && amount < widget.totalAfterDiscount;
     return Container(
@@ -869,7 +870,7 @@ class _DesktopPaymentLayoutState extends State<DesktopPaymentLayout> {
                 const SizedBox(height: 4),
                 Text(
                   insufficient
-                      ? "Mijoz balansidan: ${formatThousands(amount)} UZS — qolgan ${formatThousands(widget.totalAfterDiscount - amount)} UZS to'lanmadi"
+                      ? "Mijoz balansidan: ${formatThousands(amount)} UZS — qolgan ${formatThousandsNum(widget.totalAfterDiscount - amount)} UZS to'lanmadi"
                       : "To'liq summa: ${formatThousands(amount)} UZS",
                   style: TextStyle(
                     fontSize: 14,

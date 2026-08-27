@@ -204,7 +204,7 @@ class InvoiceEditFlow {
         // ignore: avoid_print
         print(
           '[invoiceEdit] grand=$grand '
-          'sum=${hold.items.fold<int>(0, (s, e) => s + e.total)}',
+          'sum=${hold.items.fold<num>(0, (s, e) => s + e.total)}',
         );
         return true;
       }());
@@ -216,7 +216,8 @@ class InvoiceEditFlow {
       final nav = Navigator.of(context);
       final shouldPop = popCurrentRoute && nav.canPop();
       if (shouldPop) {
-        nav.pop('invoice_edit');
+        // ApiChekDetailScreen push<bool> bilan ochiladi — faqat bool qaytaramiz.
+        nav.pop(true);
       }
 
       // 1) Sidebar → Sotuv bo‘limi

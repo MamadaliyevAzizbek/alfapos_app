@@ -1,7 +1,10 @@
-import 'api_service.dart';
+import 'dart:async';
 
-/// Hisobot / tranzaksiya / chek — filtrli, keshga yozilmaydi.
-/// Ekranlar ReportsApi ni to‘g‘ridan chaqirmaydi.
+import 'api_service.dart';
+import 'sold_receipt_cache.dart';
+
+/// Hisobot / tranzaksiya / chek — filtrli.
+/// Sotilgan chek batafsili lokal kesh bilan zaxiralanadi (429 / offline).
 class ReportsRepository {
   ReportsRepository._();
   static final ReportsRepository instance = ReportsRepository._();
@@ -29,8 +32,66 @@ class ReportsRepository {
     return ReportsApi.getReceivingReport(body: body);
   }
 
-  Future<Map<String, dynamic>> getInvoiceDetails(int orderId) {
-    return ReportsApi.getInvoiceDetails(orderId);
+  /// Avval lokal (429 yo‘q); yo‘q bo‘lsa API. Muvaffaqiyatli API → keshga yoziladi.
+  Future<Map<String, dynamic>> getInvoiceDetails(
+    int orderId, {
+    Map<String, dynamic>? saleHint,
+    bool preferLocalFirst = true,
+  }) async {
+    if (preferLocalFirst) {
+      final local = await SoldReceiptCache.getDetail(orderId);
+      if (local != null && _detailLooksComplete(local)) return local;
+    }
+
+    try {
+      final remote = await ReportsApi.getInvoiceDetails(orderId);
+      if (_detailLooksComplete(remote)) {
+        final sale = saleHint ??
+            await SoldReceiptCache.getSale(orderId) ??
+            {'id': orderId, 'order_id': orderId};
+        unawaited(SoldReceiptCache.saveFromApi(
+          orderId: orderId,
+          sale: sale,
+          invoiceDetail: remote,
+        ));
+        return remote;
+      }
+      final local = await SoldReceiptCache.getDetail(orderId);
+      if (local != null) return local;
+      return remote;
+    } catch (_) {
+      final local = await SoldReceiptCache.getDetail(orderId);
+      if (local != null) return local;
+      rethrow;
+    }
+  }
+
+  static bool _detailLooksComplete(Map<String, dynamic> detail) {
+    final rows = detail['datarows'] ?? detail['data'] ?? detail['items'];
+    if (rows is! List || rows.isEmpty) return false;
+    for (final r in rows) {
+      if (r is! Map) continue;
+      final m = Map<String, dynamic>.from(r);
+      final title = (m['title'] ?? m['name'] ?? '').toString().trim().toLowerCase();
+      const skip = {
+        'sub total',
+        'tax',
+        'total',
+        'discount',
+        'chegirma',
+        'umumiy',
+        'umumiy summa',
+        'soliq',
+      };
+      if (skip.contains(title)) continue;
+      if (m.containsKey('quantity') ||
+          m.containsKey('qty') ||
+          m.containsKey('price') ||
+          m.containsKey('unit_price')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<Map<String, dynamic>> getSalesAllDetails({required Map<String, dynamic> body}) {

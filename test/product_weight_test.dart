@@ -75,6 +75,31 @@ void main() {
         '2.5 kg',
       );
     });
+
+    test('invoiceRowQuantityLabel uses catalog unit when API omits unit', () {
+      final kgProduct = Product(id: '2', name: 'Olma', priceUzs: 500, unit: 'kg');
+      final shtProduct = Product(id: '3', name: 'Non', priceUzs: 4000, unit: 'sht');
+      expect(
+        ProductWeight.invoiceRowQuantityLabel(
+          {'title': 'Olma', 'quantity': '2.500'},
+          catalogProduct: kgProduct,
+        ),
+        '2.5 kg',
+      );
+      expect(
+        ProductWeight.invoiceRowQuantityLabel(
+          {'title': 'Non', 'quantity': '3'},
+          catalogProduct: shtProduct,
+        ),
+        '3 sht',
+      );
+      expect(
+        ProductWeight.invoiceRowQuantityLabel(
+          {'title': 'X', 'quantity': '1.000', 'unit': 'l'},
+        ),
+        '1 l',
+      );
+    });
   });
 
   test('receipt shows per-line and total weight', () {

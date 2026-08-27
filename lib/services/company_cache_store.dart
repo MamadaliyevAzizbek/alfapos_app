@@ -16,6 +16,7 @@ class CompanyCacheStore {
   static const categories = 'alfapos_categories_v1';
   static const clients = 'alfapos_clients_v1';
   static const expenses = 'alfapos_expenses_v1';
+  static const soldReceipts = 'alfapos_sold_receipts_v1';
 
   static Future<String> key(String baseKey) => companyStorageKey(baseKey);
 
@@ -67,5 +68,6 @@ class CompanyCacheStore {
     await prefs.remove('${categories}_at');
     await remove(clients);
     await remove(expenses);
+    await remove(soldReceipts);
   }
 }

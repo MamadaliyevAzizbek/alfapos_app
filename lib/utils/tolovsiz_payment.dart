@@ -102,7 +102,7 @@ class TolovsizPayment {
   }
 
   static bool usesTolovsizInAllocated(
-    Map<String, int> allocated,
+    Map<String, num> allocated,
     bool Function(String paymentId) isTolovsizById,
   ) {
     for (final e in allocated.entries) {
@@ -135,12 +135,12 @@ class TolovsizPayment {
   static Map<String, dynamic> buildStorePaymentRow({
     required int paymentTypeId,
     required String paymentName,
-    required int amount,
+    required num amount,
     required bool isReturn,
   }) {
     final paid = isReturn ? -amount.abs() : amount.abs();
     return {
-      'paid': paid.toStringAsFixed(2),
+      'paid': paid.toStringAsFixed(3),
       'paymentID': paymentTypeId,
       'paymentName': paymentName,
       'paymentType': 'tolovsiz',

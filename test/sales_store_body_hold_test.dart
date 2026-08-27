@@ -101,4 +101,47 @@ void main() {
     expect(cart.first['soldUnitPrice'], 5000);
     expect(cart.first['cartItemNote'], 'alfapos_sold_unit=5000');
   });
+
+  test('hold body keeps kerakli summa line total in note', () {
+    final items = [
+      CartItem(
+        product: Product(id: '9', name: 'Granula', priceUzs: 11000, variantId: 1),
+        quantity: 4.545,
+        lineTotalOverride: 50000,
+        priceLocked: true,
+      ),
+    ];
+    final body = SalesStoreBody.build(
+      items: items,
+      subTotal: 50000,
+      grandTotal: 50000,
+      status: 'hold',
+    );
+    final cart = body['cart'] as List;
+    expect(cart.first['calculatedPrice'], 50000);
+    expect(cart.first['quantity'], 4.545);
+    expect(cart.first['cartItemNote'], contains('alfapos_line_total=50000'));
+    expect(body['grandTotal'], 50000);
+  });
+
+  test('fractional sold unit 0.687 is kept in note and payload', () {
+    final items = [
+      CartItem(
+        product: Product(id: '7', name: 'Granula', priceUzs: 21997, variantId: 1),
+        quantity: 1,
+        salePriceOverride: 0.687,
+        priceLocked: true,
+      ),
+    ];
+    final body = SalesStoreBody.build(
+      items: items,
+      subTotal: 1,
+      grandTotal: 1,
+      status: 'hold',
+    );
+    final cart = body['cart'] as List;
+    expect(cart.first['soldUnitPrice'], 0.687);
+    expect(cart.first['cartItemNote'], 'alfapos_sold_unit=0.687');
+    expect(SalesStoreBody.parseSoldUnitNote(cart.first['cartItemNote'] as String), 0.687);
+  });
 }

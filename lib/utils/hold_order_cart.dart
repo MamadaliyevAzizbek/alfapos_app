@@ -325,8 +325,8 @@ class HoldOrderCart {
     bool allowAllCatalogMarkup = false,
   }) {
     if (grandTotal == null || grandTotal <= 0 || items.isEmpty) return;
-    final current = items.fold<int>(0, (s, e) => s + e.total);
-    final surplus = grandTotal - current;
+    final current = items.fold<num>(0, (s, e) => s + e.total);
+    final surplus = grandTotal - current.round();
     if (surplus <= 1) return;
 
     final belowCatalog = items.where((item) {
@@ -433,9 +433,9 @@ class HoldOrderCart {
     final unitsPerPackage =
         _int(m['unitsPerPackage'] ?? m['units_per_package']) ?? 1;
 
-    final soldFromNote = SalesStoreBody.parseSoldUnitNote(
-      (m['cartItemNote'] ?? m['cart_item_note'] ?? '').toString(),
-    );
+    final noteRaw = (m['cartItemNote'] ?? m['cart_item_note'] ?? '').toString();
+    final soldFromNote = SalesStoreBody.parseSoldUnitNote(noteRaw);
+    final lineTotalFromNote = SalesStoreBody.parseLineTotalNote(noteRaw);
     final soldUnit = soldFromNote ??
         _soldUnitPriceFromLine(
           m,
@@ -449,7 +449,7 @@ class HoldOrderCart {
       'discount=${m['discount'] ?? m['line_discount'] ?? m['lineDiscount']} '
       'calculated=${m['calculatedPrice'] ?? m['calculated_price'] ?? m['line_total']} '
       'total=${m['total'] ?? m['sum']} '
-      'noteUnit=$soldFromNote soldUnit=$soldUnit',
+      'noteUnit=$soldFromNote lineTotalNote=$lineTotalFromNote soldUnit=$soldUnit',
     );
 
     Product? catalog;
@@ -483,6 +483,13 @@ class HoldOrderCart {
     final hasCustomSold = soldFromNote != null ||
         (catalogUnit - soldUnit).abs() > 0.01;
     final double? override = hasCustomSold ? soldUnit : null;
+    final lineTotalOverride = _lineTotalOverrideFromMap(
+      m,
+      quantity: quantity,
+      soldUnit: soldUnit,
+      fromNote: lineTotalFromNote,
+      allowTotalFallback: allowTotalFallback,
+    );
 
     return CartItem(
       product: product,
@@ -491,10 +498,88 @@ class HoldOrderCart {
       salePriceOverride: override,
       unitPriceBaseForCartPercent: soldUnit,
       // Tiklangan sotuv narxi — mijoz tanlash/qayta hisoblash o‘chirmasin.
-      priceLocked: hasCustomSold,
+      priceLocked: hasCustomSold || lineTotalOverride != null,
+      lineTotalOverride: lineTotalOverride,
     );
   }
 
+  /// «Kerakli summa»: qty yaxlitlanganda qty×narx ≠ calculatedPrice (50000 vs 49995).
+  /// Diqqat: backend ba’zan `calculatedPrice` ni faqat chegirma (22) qilib yuboradi —
+  /// uni qator summasi deb olmaslik kerak (tahrirlashda 22 ko‘rinib qolardi).
+  static int? _lineTotalOverrideFromMap(
+    Map<String, dynamic> m, {
+    required num quantity,
+    required double soldUnit,
+    num? fromNote,
+    bool allowTotalFallback = false,
+  }) {
+    if (fromNote != null && fromNote > 0) return fromNote.round();
+
+    final qty = quantity <= 0 ? 1.0 : quantity.toDouble();
+    final recomputed = CartItem.quantizeLineTotal(soldUnit * qty).round();
+
+    final discount =
+        _num(m['discount'] ?? m['line_discount'] ?? m['lineDiscount']) ?? 0;
+    final calculated = _num(
+      m['calculatedPrice'] ??
+          m['calculated_price'] ??
+          m['line_total'] ??
+          m['lineTotal'] ??
+          m['lineTotalAmount'],
+    );
+    // Backend ba’zan calculatedPrice ni faqat chegirma summasi qilib yuboradi.
+    final calculatedUsable = calculated != null &&
+        calculated > 0 &&
+        !(discount > 0 && (calculated - discount).abs() < 0.5);
+
+    if (calculatedUsable) {
+      final c = calculated.round();
+      if (_looksLikePlausibleLineTotal(
+        lineTotal: c,
+        soldUnit: soldUnit,
+        quantity: qty,
+        recomputed: recomputed,
+      )) {
+        return c;
+      }
+    }
+
+    if (allowTotalFallback) {
+      final displayed = _num(m['total'] ?? m['sum']);
+      if (displayed != null && displayed > 0) {
+        final t = displayed.round();
+        if (_looksLikePlausibleLineTotal(
+          lineTotal: t,
+          soldUnit: soldUnit,
+          quantity: qty,
+          recomputed: recomputed,
+        )) {
+          return t;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// qty×narx dan farq qiladigan haqiqiy qator summasi (kerakli summa) ni
+  /// buzilgan chegirma qoldig‘idan (masalan 22) ajratish.
+  static bool _looksLikePlausibleLineTotal({
+    required int lineTotal,
+    required double soldUnit,
+    required double quantity,
+    required int recomputed,
+  }) {
+    if (lineTotal <= 0 || recomputed <= 0) return false;
+    if ((lineTotal - recomputed).abs() < 1) return false; // override shart emas
+    // Kerakli summa ko‘pincha yaxlitlash tufayli biroz yuqoriroq (50000 > 49995).
+    if (lineTotal > recomputed) return true;
+    // Pastroq summa (chegirma) — lekin 1 donadan kam yoki ~5% dan kam bo‘lmasin.
+    if (quantity >= 1 && soldUnit > 0 && lineTotal + 0.5 < soldUnit) {
+      return false;
+    }
+    if (lineTotal < recomputed * 0.05) return false;
+    return true;
+  }
   /// API `price` = katalog; haqiqiy sotuv = note / soldUnitPrice / calculatedPrice / discount.
   static double _soldUnitPriceFromLine(
     Map<String, dynamic> m,

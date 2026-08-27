@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../core/api_sync_throttle.dart';
 import '../core/app_notify.dart';
@@ -10,12 +12,14 @@ import '../services/api_service.dart';
 import '../services/desktop_sales_layout_settings.dart';
 import '../services/reports_repository.dart';
 import '../services/sales_list_refresh.dart';
+import '../services/sold_receipt_cache.dart';
 import '../utils/current_employee_sales_filter.dart';
 import '../utils/hold_orders_response.dart';
 import '../utils/invoice_edit_flow.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/kitchen_status.dart';
 import '../utils/platform_layout.dart';
+import '../utils/sale_customer_label.dart';
 import '../utils/tv_orders_response.dart';
 import 'api_chek_detail_screen.dart';
 import 'desktop/desktop_shell_scope.dart';
@@ -45,6 +49,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   final _searchController = TextEditingController();
   String _searchQuery = '';
   List<Map<String, dynamic>> _apiSales = [];
+  /// customer_id → ism (API "Mijoz" yuborsa ham asl ism).
+  Map<String, String> _customerNamesById = {};
   bool _apiLoading = false;
   String? _apiError;
   int? _employeeFilterUserId;
@@ -231,11 +237,22 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                 ))
             .toList();
       }
+      mapped = await SoldReceiptCache.mergeIntoSalesList(mapped);
       _apiSales = mapped;
       _apiError = null;
       ApiSyncThrottle.markRan(SalesListRefresh.throttleKey);
+      // UI darhol chiqsin, ismlar fonida to‘ldiriladi.
+      unawaited(_enrichCustomerNames(mapped));
+    } else {
+      // 429 / tarmoq: lokal sotilgan cheklar bilan ko‘rsatamiz.
+      final localOnly = await SoldReceiptCache.listSalesOnly();
+      if (localOnly.isNotEmpty) {
+        _apiSales = localOnly;
+        _apiError = null;
+        unawaited(_enrichCustomerNames(localOnly));
+      }
     }
-    // 429 / tarmoq: avvalgi ro‘yxatni o‘chirmaymiz va throttle belgilamaymiz.
+    // 429 / tarmoq + lokal yo‘q: avvalgi ro‘yxatni o‘chirmaymiz.
     if (_desktop) {
       final mode = await DesktopSalesLayoutSettings.getMode();
       _isRestaurantDesktop = mode == DesktopSalesLayoutMode.restaurant;
@@ -246,6 +263,14 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       _isRestaurantDesktop = false;
     }
     if (mounted) setState(() => _apiLoading = false);
+  }
+
+  Future<void> _enrichCustomerNames(List<Map<String, dynamic>> sales) async {
+    final names = await SaleCustomerLabel.resolveNamesForSales(sales);
+    if (!mounted || names.isEmpty) return;
+    setState(() {
+      _customerNamesById = {..._customerNamesById, ...names};
+    });
   }
 
   Future<void> _overlayKitchenFieldsFromKitchenOrders() async {
@@ -482,6 +507,10 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                       return _DesktopSaleRow(
                         sale: sale,
                         index: index,
+                        customerName: SaleCustomerLabel.displayName(
+                          sale,
+                          resolvedById: _customerNamesById,
+                        ),
                         showKitchenQueue: _showKitchenQueue,
                         kitchenBusy: _statusBusyOrderId != null &&
                             (_statusBusyOrderId ==
@@ -668,6 +697,10 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                         final showDateEdit = canShowInvoiceDateEditButton(sale);
                         return _ApiSaleTile(
                           sale: sale,
+                          customerName: SaleCustomerLabel.displayName(
+                            sale,
+                            resolvedById: _customerNamesById,
+                          ),
                           showEditButton: showEdit,
                           showDateEditButton: showDateEdit,
                           onTap: () => _showApiSaleDetail(context, sale),
@@ -689,35 +722,44 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     Map<String, dynamic> detail = {};
     String? loadError;
     try {
-      detail = await ReportsRepository.instance.getInvoiceDetails(orderId);
+      detail = await ReportsRepository.instance.getInvoiceDetails(
+        orderId,
+        saleHint: sale,
+      );
     } catch (e) {
       loadError = e.toString().replaceFirst('Exception: ', '');
-      try {
-        final now = DateTime.now();
-        final to = now.toIso8601String().substring(0, 10);
-        final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
-        final invoice = (sale['invoice_id'] ?? sale['order_id'] ?? sale['id'] ?? '').toString();
-        detail = await ReportsRepository.instance.getSalesAllDetails(
-          body: ReportsRepository.salesAllDetailsBody(
-            from: from,
-            to: to,
-            rowLimit: 200,
-            rowOffset: 0,
-            searchValue: invoice,
-          ),
-        );
-      } catch (_) {
-        detail = {};
+      final local = await SoldReceiptCache.getDetail(orderId);
+      if (local != null) {
+        detail = local;
+        loadError = null;
+      } else {
+        try {
+          final now = DateTime.now();
+          final to = now.toIso8601String().substring(0, 10);
+          final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
+          final invoice = (sale['invoice_id'] ?? sale['order_id'] ?? sale['id'] ?? '').toString();
+          detail = await ReportsRepository.instance.getSalesAllDetails(
+            body: ReportsRepository.salesAllDetailsBody(
+              from: from,
+              to: to,
+              rowLimit: 200,
+              rowOffset: 0,
+              searchValue: invoice,
+            ),
+          );
+        } catch (_) {
+          detail = {};
+        }
       }
     }
     if (!context.mounted) return;
-    final returned = await Navigator.push<bool>(
+    final returned = await Navigator.push<Object?>(
       context,
       MaterialPageRoute(
         builder: (_) => ApiChekDetailScreen(sale: sale, invoiceDetail: detail, invoiceLoadError: loadError),
       ),
     );
-    if (returned == true && mounted) {
+    if ((returned == true || returned == 'invoice_edit') && mounted) {
       SalesListRefresh.notifyChanged();
     }
   }
@@ -811,6 +853,7 @@ void _showSaleActionsSheet(
 class _DesktopSaleRow extends StatelessWidget {
   final Map<String, dynamic> sale;
   final int index;
+  final String customerName;
   final VoidCallback onTap;
   final bool showKitchenQueue;
   final bool kitchenBusy;
@@ -823,6 +866,7 @@ class _DesktopSaleRow extends StatelessWidget {
   const _DesktopSaleRow({
     required this.sale,
     required this.index,
+    required this.customerName,
     required this.onTap,
     this.showKitchenQueue = false,
     this.kitchenBusy = false,
@@ -839,14 +883,7 @@ class _DesktopSaleRow extends StatelessWidget {
     final idStr = id.toString();
     final chek = idStr.startsWith('POS') ? idStr : 'POS$idStr';
     final totalInt = parseAmountFromApi(sale['total'] ?? sale['grand_total'] ?? sale['total_amount'] ?? sale['sum']);
-    String customer = '—';
-    final c = sale['customer'];
-    if (c is String && c.trim().isNotEmpty) {
-      customer = c;
-    } else if (c is Map) {
-      final n = (c['name'] ?? c['first_name'] ?? '').toString().trim();
-      if (n.isNotEmpty) customer = n;
-    }
+    final customer = customerName.trim().isEmpty ? '—' : customerName.trim();
     final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
     final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '—';
     final bg = index.isEven ? Colors.white : const Color(0xFFFAFBFC);
@@ -982,6 +1019,7 @@ class _DesktopSaleRow extends StatelessWidget {
 
 class _ApiSaleTile extends StatelessWidget {
   final Map<String, dynamic> sale;
+  final String customerName;
   final VoidCallback onTap;
   final bool showEditButton;
   final bool showDateEditButton;
@@ -990,6 +1028,7 @@ class _ApiSaleTile extends StatelessWidget {
 
   const _ApiSaleTile({
     required this.sale,
+    required this.customerName,
     required this.onTap,
     this.showEditButton = false,
     this.showDateEditButton = false,
@@ -1002,10 +1041,7 @@ class _ApiSaleTile extends StatelessWidget {
     final id = sale['order_id'] ?? sale['invoice_id'] ?? sale['id'] ?? '—';
     final idStr = id.toString();
     final totalInt = parseAmountFromApi(sale['total'] ?? sale['grand_total'] ?? sale['total_amount'] ?? sale['sum']);
-    String customer = '';
-    final c = sale['customer'];
-    if (c is String) customer = c;
-    else if (c is Map) customer = (c['name'] ?? c['first_name'] ?? '').toString();
+    final customer = customerName.trim();
     final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
     final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '';
 
@@ -1016,7 +1052,7 @@ class _ApiSaleTile extends StatelessWidget {
     final chekId = idStr.startsWith('POS') ? idStr : 'POS$idStr';
     final subtitle = [
       if (dateStr.isNotEmpty) dateStr,
-      if (customer.isNotEmpty) customer,
+      if (customer.isNotEmpty && customer != '—') customer,
     ].join(' • ');
     final showMenu = showEditButton || showDateEditButton;
 
