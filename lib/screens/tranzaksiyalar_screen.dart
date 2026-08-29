@@ -31,6 +31,7 @@ import '../widgets/throttled_refresh_indicator.dart';
 class TranzaksiyalarScreen extends StatefulWidget {
   final int tabIndex;
   final int currentIndex;
+
   /// Desktop POS: faqat joriy login xodimining cheklari.
   final bool filterByCurrentEmployee;
 
@@ -45,10 +46,12 @@ class TranzaksiyalarScreen extends StatefulWidget {
   State<TranzaksiyalarScreen> createState() => _TranzaksiyalarScreenState();
 }
 
-class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with DesktopShellSyncMixin {
+class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen>
+    with DesktopShellSyncMixin {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   List<Map<String, dynamic>> _apiSales = [];
+
   /// customer_id → ism (API "Mijoz" yuborsa ham asl ism).
   Map<String, String> _customerNamesById = {};
   bool _apiLoading = false;
@@ -58,6 +61,11 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   bool _isRestaurantDesktop = false;
   int? _statusBusyOrderId;
   int _seenSalesListRevision = 0;
+  static const _salesPageSize = 10;
+  int _salesOffset = 0;
+  bool _salesHasMore = true;
+  bool _loadingMoreSales = false;
+  DateTime? _lastVisibleSalesLoadAt;
 
   /// Tab/panel ochilganda qayta so‘rov — 429 dan himoya (2 daqiqa emas).
   static const _visibleRefreshMinInterval = Duration(seconds: 8);
@@ -78,9 +86,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     SalesListRefresh.revision.addListener(_onSalesListRevision);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isVisible) {
-        _load(force: true);
-      } else {
-        _load(force: false);
+        _refreshWhenVisible();
       }
     });
   }
@@ -108,22 +114,41 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   @override
   void didUpdateWidget(covariant TranzaksiyalarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final becameVisible =
-        oldWidget.currentIndex != widget.tabIndex && widget.currentIndex == widget.tabIndex;
+    final becameVisible = oldWidget.currentIndex != widget.tabIndex &&
+        widget.currentIndex == widget.tabIndex;
     if (becameVisible) {
-      _load(force: true);
+      _refreshWhenVisible();
     }
+  }
+
+  void _refreshWhenVisible() {
+    final last = _lastVisibleSalesLoadAt;
+    if (last == null ||
+        DateTime.now().difference(last) >= _visibleRefreshMinInterval) {
+      // Ekran boshqa tabda oldindan yuklangan bo‘lsa ham, ochilganda yangi
+      // birinchi sahifani olishga ruxsat beramiz.
+      ApiSyncThrottle.invalidate(SalesListRefresh.throttleKey);
+    }
+    _load(force: true);
   }
 
   /// Chek ID bo'yicha qidirish: POS10033, 10033 — invoice_id yoki id ga moslashtiradi
   static bool _chekMatchesSearch(Map<String, dynamic> sale, String query) {
-    final q = query.trim().replaceFirst(RegExp(r'^POS', caseSensitive: false), '').trim();
+    final q = query
+        .trim()
+        .replaceFirst(RegExp(r'^POS', caseSensitive: false), '')
+        .trim();
     if (q.isEmpty) return true;
-    final invId = (sale['invoice_id'] ?? sale['invoiceId'] ?? '').toString().trim();
+    final invId =
+        (sale['invoice_id'] ?? sale['invoiceId'] ?? '').toString().trim();
     final orderId = (sale['order_id'] ?? sale['id'] ?? '').toString().trim();
-    final invNorm = invId.replaceFirst(RegExp(r'^POS', caseSensitive: false), '').trim();
+    final invNorm =
+        invId.replaceFirst(RegExp(r'^POS', caseSensitive: false), '').trim();
     final orderNorm = orderId.trim();
-    if (invNorm.contains(q) || invId.toLowerCase().contains(query.trim().toLowerCase())) return true;
+    if (invNorm.contains(q) ||
+        invId.toLowerCase().contains(query.trim().toLowerCase())) {
+      return true;
+    }
     if (orderNorm.contains(q) || orderId.contains(query.trim())) return true;
     return false;
   }
@@ -135,6 +160,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
 
   Future<void>? _loadInFlight;
   bool _loadInFlightForced = false;
+  bool _refreshAfterLoad = false;
 
   Future<void> _load({bool force = false}) async {
     if (_loadInFlight != null) {
@@ -143,12 +169,17 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       if (force && !_loadInFlightForced) {
         await _loadInFlight;
         if (!mounted) return;
+        // Yumshoq preload tugagach throttle yangi chekni yashirib qo‘ymasligi
+        // uchun kuchli yangilashni qaytadan ruxsat qilamiz.
+        ApiSyncThrottle.invalidate(SalesListRefresh.throttleKey);
         return _load(force: true);
       }
+      if (force) _refreshAfterLoad = true;
       return _loadInFlight;
     }
 
-    final minInterval = force ? _visibleRefreshMinInterval : const Duration(minutes: 2);
+    final minInterval =
+        force ? _visibleRefreshMinInterval : const Duration(minutes: 2);
     if (!ApiSyncThrottle.shouldRun(SalesListRefresh.throttleKey, minInterval)) {
       return;
     }
@@ -156,30 +187,62 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     final future = _loadApiSales();
     _loadInFlight = future;
     _loadInFlightForced = force;
+    var rerunAfterLoad = false;
     try {
       await future;
     } finally {
       if (identical(_loadInFlight, future)) {
         _loadInFlight = null;
         _loadInFlightForced = false;
+        rerunAfterLoad = _refreshAfterLoad;
+        _refreshAfterLoad = false;
       }
+    }
+    if (rerunAfterLoad && mounted) {
+      ApiSyncThrottle.invalidate(SalesListRefresh.throttleKey);
+      unawaited(_load(force: true));
     }
     if (!mounted) return;
     setState(() {});
   }
 
   @override
-  Future<void> onDesktopShellSync() => _load(force: true);
+  Future<void> onDesktopShellSync() =>
+      _isVisible ? _load(force: true) : Future<void>.value();
 
   /// POST /api/v1/reports/sales — so'nggi 30 kun yoki searchValue bo'lsa qidiruv
-  Future<void> _loadApiSales({String? searchValue}) async {
+  Future<void> _loadApiSales({
+    String? searchValue,
+    bool append = false,
+  }) async {
+    if (append) {
+      if (_loadingMoreSales ||
+          _apiLoading ||
+          !_salesHasMore ||
+          _loadInFlight != null) {
+        return;
+      }
+      _loadingMoreSales = true;
+    } else if (_loadingMoreSales) {
+      return;
+    }
     setState(() {
       _apiError = null;
-      _apiLoading = true;
+      if (!append) {
+        _apiLoading = true;
+        _salesOffset = 0;
+        _salesHasMore = true;
+      }
     });
+    if (!append && _isVisible) {
+      _lastVisibleSalesLoadAt = DateTime.now();
+    }
     final now = DateTime.now();
     final to = now.toIso8601String().substring(0, 10);
-    final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
+    final from = now
+        .subtract(const Duration(days: 30))
+        .toIso8601String()
+        .substring(0, 10);
 
     int? employeeId;
     String sellerName = '';
@@ -195,8 +258,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       final body = ReportsRepository.salesListBody(
         from: from,
         to: to,
-        rowLimit: 200,
-        rowOffset: 0,
+        rowLimit: _salesPageSize,
+        rowOffset: append ? _salesOffset : 0,
         columnKey: 'id',
         columnSortedBy: 'DESC',
         employeeId: employeeId,
@@ -211,14 +274,18 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     }
 
     if (res != null) {
-      List<dynamic> rows = res['datarows'] as List<dynamic>? ?? res['data'] as List<dynamic>? ?? [];
+      List<dynamic> rows = res['datarows'] as List<dynamic>? ??
+          res['data'] as List<dynamic>? ??
+          [];
       if (rows.isEmpty && res['data'] is Map) {
         final inner = res['data'] as Map;
-        rows = inner['datarows'] as List<dynamic>? ?? inner['rows'] as List<dynamic>? ?? [];
+        rows = inner['datarows'] as List<dynamic>? ??
+            inner['rows'] as List<dynamic>? ??
+            [];
       }
       var mapped = rows
-          .where((e) => e is Map)
-          .map((e) => Map<String, dynamic>.from(e as Map))
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
       mapped = mapped.where((m) {
         final id = m['invoice_id'] ?? m['order_id'] ?? m['id'];
@@ -233,27 +300,50 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
             .where((m) => CurrentEmployeeSalesFilter.saleBelongsToUser(
                   m,
                   userId: _employeeFilterUserId,
-                  sellerName: sellerName.isNotEmpty ? sellerName : _employeeFilterName,
+                  sellerName:
+                      sellerName.isNotEmpty ? sellerName : _employeeFilterName,
                 ))
             .toList();
       }
-      mapped = await SoldReceiptCache.mergeIntoSalesList(mapped);
-      _apiSales = mapped;
+      if (append) {
+        final existingKeys = _apiSales.map(_saleKey).toSet();
+        _apiSales = [
+          ..._apiSales,
+          ...mapped.where((sale) => !existingKeys.contains(_saleKey(sale))),
+        ];
+      } else {
+        // Server muvaffaqiyatli javob berganda faqat serverdagi sahifani
+        // ko‘rsatamiz. Lokal kesh faqat serverga ulanish imkoni bo‘lmaganda
+        // zaxira sifatida ishlatiladi.
+        _apiSales = mapped.take(_salesPageSize).toList();
+      }
+      _salesOffset += _salesPageSize;
+      final rawCount = res['count'] ??
+          res['total'] ??
+          (res['data'] is Map
+              ? (res['data'] as Map)['count'] ?? (res['data'] as Map)['total']
+              : null);
+      final totalCount = int.tryParse(rawCount?.toString() ?? '');
+      _salesHasMore = totalCount != null
+          ? _salesOffset < totalCount
+          : mapped.length >= _salesPageSize;
       _apiError = null;
-      ApiSyncThrottle.markRan(SalesListRefresh.throttleKey);
+      if (!append) ApiSyncThrottle.markRan(SalesListRefresh.throttleKey);
       // UI darhol chiqsin, ismlar fonida to‘ldiriladi.
-      unawaited(_enrichCustomerNames(mapped));
-    } else {
+      unawaited(_enrichCustomerNames(_apiSales));
+    } else if (!append) {
       // 429 / tarmoq: lokal sotilgan cheklar bilan ko‘rsatamiz.
       final localOnly = await SoldReceiptCache.listSalesOnly();
       if (localOnly.isNotEmpty) {
-        _apiSales = localOnly;
+        _apiSales = localOnly.take(_salesPageSize).toList();
+        _salesOffset = _apiSales.length;
+        _salesHasMore = false;
         _apiError = null;
-        unawaited(_enrichCustomerNames(localOnly));
+        unawaited(_enrichCustomerNames(_apiSales));
       }
     }
     // 429 / tarmoq + lokal yo‘q: avvalgi ro‘yxatni o‘chirmaymiz.
-    if (_desktop) {
+    if (_desktop && res != null) {
       final mode = await DesktopSalesLayoutSettings.getMode();
       _isRestaurantDesktop = mode == DesktopSalesLayoutMode.restaurant;
       if (_isRestaurantDesktop) {
@@ -262,7 +352,30 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     } else {
       _isRestaurantDesktop = false;
     }
-    if (mounted) setState(() => _apiLoading = false);
+    if (mounted) {
+      setState(() {
+        _apiLoading = false;
+        _loadingMoreSales = false;
+      });
+    } else {
+      _loadingMoreSales = false;
+    }
+  }
+
+  static String _saleKey(Map<String, dynamic> sale) => (sale['id'] ??
+          sale['order_id'] ??
+          sale['orderId'] ??
+          sale['invoice_id'] ??
+          sale['invoiceId'] ??
+          '')
+      .toString()
+      .trim()
+      .toLowerCase();
+
+  Future<void> _loadMoreSales() async {
+    if (_loadingMoreSales || !_salesHasMore || _loadInFlight != null) return;
+    await _loadApiSales(append: true);
+    if (mounted) setState(() {});
   }
 
   Future<void> _enrichCustomerNames(List<Map<String, dynamic>> sales) async {
@@ -282,22 +395,26 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       if (snap.orders.isEmpty) return;
       final byId = {for (final o in snap.orders) o.orderId: o};
       _apiSales = _apiSales.map((sale) {
-        final id = HoldOrdersResponse.resolveOrderId(sale) ?? getOrderIdFromSale(sale);
+        final id =
+            HoldOrdersResponse.resolveOrderId(sale) ?? getOrderIdFromSale(sale);
         final kitchen = id == null ? null : byId[id];
         if (kitchen == null) return sale;
         return {
           ...sale,
           if (kitchen.queueNumber != null) 'queueNumber': kitchen.queueNumber,
-          if (kitchen.kitchenStatus != null) 'kitchenStatus': kitchen.kitchenStatus!.apiValue,
+          if (kitchen.kitchenStatus != null)
+            'kitchenStatus': kitchen.kitchenStatus!.apiValue,
           if (kitchen.tableName != null) 'tableName': kitchen.tableName,
         };
       }).toList();
     } catch (_) {}
   }
 
-  Future<void> _setKitchenStatus(Map<String, dynamic> sale, KitchenStatus status) async {
+  Future<void> _setKitchenStatus(
+      Map<String, dynamic> sale, KitchenStatus status) async {
     if (_statusBusyOrderId != null) return;
-    final orderId = HoldOrdersResponse.resolveOrderId(sale) ?? getOrderIdFromSale(sale);
+    final orderId =
+        HoldOrdersResponse.resolveOrderId(sale) ?? getOrderIdFromSale(sale);
     setState(() => _statusBusyOrderId = orderId);
     try {
       final res = await SalesSessionProvider.instance.updateKitchenStatus(
@@ -307,7 +424,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
       if (!mounted) return;
       setState(() {
         _apiSales = _apiSales.map((row) {
-          final id = HoldOrdersResponse.resolveOrderId(row) ?? getOrderIdFromSale(row);
+          final id =
+              HoldOrdersResponse.resolveOrderId(row) ?? getOrderIdFromSale(row);
           if (id != orderId) return row;
           return HoldOrdersResponse.applyKitchenStatusUpdate(row, res);
         }).toList();
@@ -351,7 +469,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                       style: const TextStyle(fontSize: 15),
                       decoration: InputDecoration(
                         hintText: "Chek ID (POS10033 yoki 10033)",
-                        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primary),
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            color: AppTheme.primary),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
                                 icon: const Icon(Icons.clear_rounded),
@@ -371,7 +490,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(color: AppTheme.divider),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                       ),
                     ),
                   ),
@@ -388,15 +508,18 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                   ),
                 if (count > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEFF6FF),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.25)),
+                      border: Border.all(
+                          color: AppTheme.primary.withValues(alpha: 0.25)),
                     ),
                     child: Text(
                       '$count ta chek',
-                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, color: AppTheme.primary),
                     ),
                   ),
               ],
@@ -407,7 +530,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(10),
@@ -415,14 +539,19 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.person_outline_rounded, color: Colors.blue.shade800, size: 20),
+                    Icon(Icons.person_outline_rounded,
+                        color: Colors.blue.shade800, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _employeeFilterName.isNotEmpty && _employeeFilterName != 'Sotuvchi'
+                        _employeeFilterName.isNotEmpty &&
+                                _employeeFilterName != 'Sotuvchi'
                             ? "Faqat sizning cheklaringiz: $_employeeFilterName"
                             : "Faqat sizning cheklaringiz",
-                        style: TextStyle(fontSize: 13, color: Colors.blue.shade900, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.blue.shade900,
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -453,12 +582,15 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
   Widget _buildDesktopTable() {
     final list = _filteredSales;
     if (_apiLoading && _apiSales.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+      return const Center(
+          child: CircularProgressIndicator(color: AppTheme.primary));
     }
     if (list.isEmpty) {
       return Center(
         child: Text(
-          _searchQuery.trim().isEmpty ? "Sotuvlar yo'q" : "«$_searchQuery» bo'yicha chek topilmadi",
+          _searchQuery.trim().isEmpty
+              ? "Sotuvlar yo'q"
+              : "«$_searchQuery» bo'yicha chek topilmadi",
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
       );
@@ -478,21 +610,28 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
             children: [
               Container(
                 color: const Color(0xFFF8FAFC),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 child: Row(
                   children: [
-                    const Expanded(flex: 2, child: Text('SANA', style: _thStyle)),
-                    const Expanded(flex: 3, child: Text('CHEK', style: _thStyle)),
-                    const Expanded(flex: 3, child: Text('MIJOZ', style: _thStyle)),
+                    const Expanded(
+                        flex: 2, child: Text('SANA', style: _thStyle)),
+                    const Expanded(
+                        flex: 3, child: Text('CHEK', style: _thStyle)),
+                    const Expanded(
+                        flex: 3, child: Text('MIJOZ', style: _thStyle)),
                     if (_showKitchenQueue)
-                      const Expanded(flex: 5, child: Text('STATUS', style: _thStyle)),
+                      const Expanded(
+                          flex: 5, child: Text('STATUS', style: _thStyle)),
                     const Expanded(
                       flex: 2,
-                      child: Text('SUMMA', style: _thStyle, textAlign: TextAlign.end),
+                      child: Text('SUMMA',
+                          style: _thStyle, textAlign: TextAlign.end),
                     ),
                     const SizedBox(
                       width: 72,
-                      child: Text('AMAL', style: _thStyle, textAlign: TextAlign.center),
+                      child: Text('AMAL',
+                          style: _thStyle, textAlign: TextAlign.center),
                     ),
                   ],
                 ),
@@ -533,6 +672,7 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                   ),
                 ),
               ),
+              if (_salesHasMore) _buildLoadMoreButton(),
             ],
           ),
         ),
@@ -556,14 +696,16 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
             if (count > 0) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppTheme.cardBg,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   '$count',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -577,7 +719,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(10),
@@ -585,14 +728,19 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.person_outline_rounded, color: Colors.blue.shade800, size: 20),
+                    Icon(Icons.person_outline_rounded,
+                        color: Colors.blue.shade800, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _employeeFilterName.isNotEmpty && _employeeFilterName != 'Sotuvchi'
+                        _employeeFilterName.isNotEmpty &&
+                                _employeeFilterName != 'Sotuvchi'
                             ? "Faqat sizning cheklaringiz: $_employeeFilterName"
                             : "Faqat sizning cheklaringiz",
-                        style: TextStyle(fontSize: 13, color: Colors.blue.shade900, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.blue.shade900,
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -600,13 +748,16 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
               ),
             ),
           Padding(
-            padding: EdgeInsets.fromLTRB(16, _filterByEmployee ? 12 : 16, 16, 0),
+            padding:
+                EdgeInsets.fromLTRB(16, _filterByEmployee ? 12 : 16, 16, 0),
             child: TextField(
               controller: _searchController,
               onChanged: (v) => setState(() => _searchQuery = v),
               decoration: InputDecoration(
-                hintText: "Chek ID bo'yicha qidirish (masalan: POS10033 yoki 10033)",
-                prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primary, size: 22),
+                hintText:
+                    "Chek ID bo'yicha qidirish (masalan: POS10033 yoki 10033)",
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: AppTheme.primary, size: 22),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded),
@@ -617,7 +768,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                       )
                     : null,
                 border: const OutlineInputBorder(),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ),
           ),
@@ -632,12 +784,14 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline_rounded, color: Colors.orange.shade700, size: 20),
+                    Icon(Icons.info_outline_rounded,
+                        color: Colors.orange.shade700, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         "API dan savdolar yuklanmadi. Sana yoki tarmoqni tekshiring.",
-                        style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.orange.shade900),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -649,7 +803,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
           if (_apiLoading && _apiSales.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+              child: Center(
+                  child: CircularProgressIndicator(color: AppTheme.primary)),
             ),
           Expanded(
             child: count == 0 && !_apiLoading
@@ -679,7 +834,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
-                            color: AppTheme.textSecondary.withValues(alpha: 0.9),
+                            color:
+                                AppTheme.textSecondary.withValues(alpha: 0.9),
                           ),
                         ),
                       ],
@@ -690,8 +846,12 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                     child: ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _filteredSales.length,
+                      itemCount:
+                          _filteredSales.length + (_salesHasMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index >= _filteredSales.length) {
+                          return _buildLoadMoreButton();
+                        }
                         final sale = _filteredSales[index];
                         final showEdit = canShowInvoiceEditButton(sale);
                         final showDateEdit = canShowInvoiceDateEditButton(sale);
@@ -704,8 +864,12 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
                           showEditButton: showEdit,
                           showDateEditButton: showDateEdit,
                           onTap: () => _showApiSaleDetail(context, sale),
-                          onEdit: showEdit ? () => _startEditSale(context, sale) : null,
-                          onEditDate: showDateEdit ? () => _editSaleDate(context, sale) : null,
+                          onEdit: showEdit
+                              ? () => _startEditSale(context, sale)
+                              : null,
+                          onEditDate: showDateEdit
+                              ? () => _editSaleDate(context, sale)
+                              : null,
                         );
                       },
                     ),
@@ -716,7 +880,28 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     );
   }
 
-  void _showApiSaleDetail(BuildContext context, Map<String, dynamic> sale) async {
+  Widget _buildLoadMoreButton() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      child: Center(
+        child: OutlinedButton.icon(
+          onPressed: _loadingMoreSales ? null : _loadMoreSales,
+          icon: _loadingMoreSales
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.expand_more_rounded),
+          label:
+              Text(_loadingMoreSales ? 'Yuklanmoqda...' : 'Yana 10 ta yuklash'),
+        ),
+      ),
+    );
+  }
+
+  void _showApiSaleDetail(
+      BuildContext context, Map<String, dynamic> sale) async {
     final orderId = getOrderIdFromSale(sale);
     if (orderId == null) return;
     Map<String, dynamic> detail = {};
@@ -736,8 +921,13 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
         try {
           final now = DateTime.now();
           final to = now.toIso8601String().substring(0, 10);
-          final from = now.subtract(const Duration(days: 30)).toIso8601String().substring(0, 10);
-          final invoice = (sale['invoice_id'] ?? sale['order_id'] ?? sale['id'] ?? '').toString();
+          final from = now
+              .subtract(const Duration(days: 30))
+              .toIso8601String()
+              .substring(0, 10);
+          final invoice =
+              (sale['invoice_id'] ?? sale['order_id'] ?? sale['id'] ?? '')
+                  .toString();
           detail = await ReportsRepository.instance.getSalesAllDetails(
             body: ReportsRepository.salesAllDetailsBody(
               from: from,
@@ -756,7 +946,8 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     final returned = await Navigator.push<Object?>(
       context,
       MaterialPageRoute(
-        builder: (_) => ApiChekDetailScreen(sale: sale, invoiceDetail: detail, invoiceLoadError: loadError),
+        builder: (_) => ApiChekDetailScreen(
+            sale: sale, invoiceDetail: detail, invoiceLoadError: loadError),
       ),
     );
     if ((returned == true || returned == 'invoice_edit') && mounted) {
@@ -764,12 +955,14 @@ class _TranzaksiyalarScreenState extends State<TranzaksiyalarScreen> with Deskto
     }
   }
 
-  Future<void> _startEditSale(BuildContext context, Map<String, dynamic> sale) async {
+  Future<void> _startEditSale(
+      BuildContext context, Map<String, dynamic> sale) async {
     final ok = await InvoiceEditFlow.startFullEdit(context, sale);
     if (ok) SalesListRefresh.notifyChanged();
   }
 
-  Future<void> _editSaleDate(BuildContext context, Map<String, dynamic> sale) async {
+  Future<void> _editSaleDate(
+      BuildContext context, Map<String, dynamic> sale) async {
     final ok = await InvoiceEditFlow.editSaleDate(context, sale);
     if (ok) SalesListRefresh.notifyChanged();
   }
@@ -808,7 +1001,8 @@ void _showSaleActionsSheet(
                   color: AppTheme.primaryLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.edit_rounded, color: AppTheme.primary, size: 22),
+                child: const Icon(Icons.edit_rounded,
+                    color: AppTheme.primary, size: 22),
               ),
               title: const Text('Chekni tahrirlash'),
               titleTextStyle: const TextStyle(
@@ -830,7 +1024,8 @@ void _showSaleActionsSheet(
                   color: AppTheme.primaryLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 22),
+                child: const Icon(Icons.calendar_month_rounded,
+                    color: AppTheme.primary, size: 22),
               ),
               title: const Text('Sanani tahrirlash'),
               titleTextStyle: const TextStyle(
@@ -882,14 +1077,26 @@ class _DesktopSaleRow extends StatelessWidget {
     final id = sale['order_id'] ?? sale['invoice_id'] ?? sale['id'] ?? '—';
     final idStr = id.toString();
     final chek = idStr.startsWith('POS') ? idStr : 'POS$idStr';
-    final totalInt = parseAmountFromApi(sale['total'] ?? sale['grand_total'] ?? sale['total_amount'] ?? sale['sum']);
+    final totalInt = parseAmountFromApi(sale['total'] ??
+        sale['grand_total'] ??
+        sale['total_amount'] ??
+        sale['sum']);
     final customer = customerName.trim().isEmpty ? '—' : customerName.trim();
-    final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
-    final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '—';
+    final dateRaw = sale['created_at'] ??
+        sale['date'] ??
+        sale['invoice_date'] ??
+        sale['order_date'] ??
+        '';
+    final dateStr = dateRaw.toString().length >= 10
+        ? dateRaw.toString().substring(0, 10)
+        : '—';
     final bg = index.isEven ? Colors.white : const Color(0xFFFAFBFC);
-    final queue = showKitchenQueue ? HoldOrdersResponse.resolveQueueNumber(sale) : null;
-    final table = showKitchenQueue ? HoldOrdersResponse.resolveTableLabel(sale) : null;
-    final kitchen = showKitchenQueue ? HoldOrdersResponse.resolveKitchenStatus(sale) : null;
+    final queue =
+        showKitchenQueue ? HoldOrdersResponse.resolveQueueNumber(sale) : null;
+    final table =
+        showKitchenQueue ? HoldOrdersResponse.resolveTableLabel(sale) : null;
+    final kitchen =
+        showKitchenQueue ? HoldOrdersResponse.resolveKitchenStatus(sale) : null;
 
     return Material(
       color: bg,
@@ -904,7 +1111,9 @@ class _DesktopSaleRow extends StatelessWidget {
             children: [
               Expanded(
                 flex: 2,
-                child: Text(dateStr, style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary)),
+                child: Text(dateStr,
+                    style: const TextStyle(
+                        fontSize: 15, color: AppTheme.textSecondary)),
               ),
               Expanded(
                 flex: 3,
@@ -913,11 +1122,14 @@ class _DesktopSaleRow extends StatelessWidget {
                     if (queue != null) ...[
                       Text(
                         '$queue. ',
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700),
                       ),
                     ],
                     Flexible(
-                      child: Text(chek, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      child: Text(chek,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),
@@ -937,7 +1149,8 @@ class _DesktopSaleRow extends StatelessWidget {
                     if (table != null) ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE8EAF6),
                           borderRadius: BorderRadius.circular(20),
@@ -972,7 +1185,10 @@ class _DesktopSaleRow extends StatelessWidget {
                 child: Text(
                   '${formatThousands(totalInt)} UZS',
                   textAlign: TextAlign.end,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary),
                 ),
               ),
               SizedBox(
@@ -988,7 +1204,8 @@ class _DesktopSaleRow extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                             side: const BorderSide(color: AppTheme.divider),
                           ),
-                          icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 22),
+                          icon: Icon(Icons.more_vert_rounded,
+                              color: Colors.grey.shade700, size: 22),
                           onSelected: (value) {
                             if (value == 'edit') onEdit?.call();
                             if (value == 'date') onEditDate?.call();
@@ -1006,7 +1223,8 @@ class _DesktopSaleRow extends StatelessWidget {
                               ),
                           ],
                         )
-                      : Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+                      : Icon(Icons.chevron_right_rounded,
+                          color: Colors.grey.shade400),
                 ),
               ),
             ],
@@ -1040,10 +1258,19 @@ class _ApiSaleTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final id = sale['order_id'] ?? sale['invoice_id'] ?? sale['id'] ?? '—';
     final idStr = id.toString();
-    final totalInt = parseAmountFromApi(sale['total'] ?? sale['grand_total'] ?? sale['total_amount'] ?? sale['sum']);
+    final totalInt = parseAmountFromApi(sale['total'] ??
+        sale['grand_total'] ??
+        sale['total_amount'] ??
+        sale['sum']);
     final customer = customerName.trim();
-    final dateRaw = sale['created_at'] ?? sale['date'] ?? sale['invoice_date'] ?? sale['order_date'] ?? '';
-    final dateStr = dateRaw.toString().length >= 10 ? dateRaw.toString().substring(0, 10) : '';
+    final dateRaw = sale['created_at'] ??
+        sale['date'] ??
+        sale['invoice_date'] ??
+        sale['order_date'] ??
+        '';
+    final dateStr = dateRaw.toString().length >= 10
+        ? dateRaw.toString().substring(0, 10)
+        : '';
 
     final isEdited = sale['is_invoice_edited'] == 1 ||
         sale['is_invoice_edited'] == true ||
@@ -1075,8 +1302,11 @@ class _ApiSaleTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    isEdited ? Icons.edit_note_rounded : Icons.receipt_long_rounded,
-                    color: isEdited ? Colors.blue.shade700 : Colors.teal.shade700,
+                    isEdited
+                        ? Icons.edit_note_rounded
+                        : Icons.receipt_long_rounded,
+                    color:
+                        isEdited ? Colors.blue.shade700 : Colors.teal.shade700,
                     size: 18,
                   ),
                 ),
@@ -1103,7 +1333,8 @@ class _ApiSaleTile extends StatelessWidget {
                           if (isEdited) ...[
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
                               decoration: BoxDecoration(
                                 color: Colors.blue.shade50,
                                 borderRadius: BorderRadius.circular(5),
@@ -1155,7 +1386,8 @@ class _ApiSaleTile extends StatelessWidget {
                       tooltip: 'Amallar',
                       padding: EdgeInsets.zero,
                       visualDensity: VisualDensity.compact,
-                      icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade700, size: 20),
+                      icon: Icon(Icons.more_vert_rounded,
+                          color: Colors.grey.shade700, size: 20),
                       onPressed: () => _showSaleActionsSheet(
                         context,
                         showEdit: showEditButton,

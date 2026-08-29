@@ -41,7 +41,7 @@ class BarcodeLabelTsplBuilder {
     final headerYMul = isShop ? 2 : (labelH >= 200 ? 2 : 1);
     final headerCharW = isShop ? _f2w : _f3w;
     final headerH = (isShop ? _f2h : _f3h) * headerYMul;
-    final headerY = 8;
+    const headerY = 8;
 
     final barcodeType = _tsplBarcodeType(code);
     final barcodeData = _tsplBarcodeData(code, barcodeType);
@@ -75,6 +75,9 @@ class BarcodeLabelTsplBuilder {
     cmd('SPEED 3');
     cmd('DIRECTION 0');
     cmd('REFERENCE 0,0');
+    // Xprinter defaulti ko‘pincha CP437 bo‘ladi. CP1251 bo‘lmasa ruscha
+    // belgilar TEXT maydonida ko‘rinmay qoladi; inglizcha esa chiqaveradi.
+    cmd('CODEPAGE 1251');
     cmd('CLS');
 
     // 1) Narx yoki do‘kon nomi

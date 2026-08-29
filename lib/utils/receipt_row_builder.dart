@@ -54,15 +54,28 @@ class ReceiptRowBuilder {
       catalogProduct: _catalogProductForInvoiceRow(r),
     );
     final catalogUnit = parseAmountFromApi(r['price'] ?? r['unit_price'] ?? 0);
-    var lineTotal = parseAmountFromApi(r['total'] ?? r['calculatedPrice'] ?? r['sum'] ?? 0);
+    final rawLineTotal = parseAmountFromApi(
+        r['total'] ?? r['calculatedPrice'] ?? r['sum'] ?? 0);
     final lineDiscount = parseAmountFromApi(r['discount'] ?? 0);
     final qtyNum = _invoiceQtyNum(r);
+    final explicitUnit = _invoiceUnitPrice(r);
 
     var actualUnit = catalogUnit;
-    if (lineTotal > 0 && qtyNum > 0) {
-      actualUnit = (lineTotal / qtyNum).round();
+    var lineTotal = rawLineTotal;
+    if (explicitUnit != null && explicitUnit > 0 && qtyNum > 0) {
+      // Ayrim API javoblari haqiqiy sotuv birlik narxini alohida beradi.
+      actualUnit = explicitUnit.round();
+      lineTotal = (explicitUnit * qtyNum).round().clamp(0, 0x7FFFFFFF);
     } else if (lineDiscount > 0 && qtyNum > 0 && catalogUnit > 0) {
-      lineTotal = (catalogUnit * qtyNum - lineDiscount).round().clamp(0, 0x7FFFFFFF);
+      final catalogTotal = (catalogUnit * qtyNum).round();
+      final discountTotal = (catalogTotal - lineDiscount).clamp(0, 0x7FFFFFFF);
+      // Backend ba'zan `total`/`calculatedPrice`ga katalog summasini
+      // qo'yadi. Bunday paytda qator chegirmasini yo'qotmaymiz.
+      final totalLooksCatalog =
+          rawLineTotal <= 0 || (rawLineTotal - catalogTotal).abs() <= 1;
+      lineTotal = totalLooksCatalog ? discountTotal : rawLineTotal;
+      actualUnit = (lineTotal / qtyNum).round();
+    } else if (lineTotal > 0 && qtyNum > 0) {
       actualUnit = (lineTotal / qtyNum).round();
     } else if (catalogUnit > 0 && qtyNum > 0) {
       lineTotal = (catalogUnit * qtyNum).round();
@@ -98,6 +111,23 @@ class ReceiptRowBuilder {
 
   static num _invoiceQtyNum(Map<String, dynamic> r) =>
       ProductWeight.parseInvoiceQtyNum(r);
+
+  static num? _invoiceUnitPrice(Map<String, dynamic> r) {
+    for (final key in [
+      'soldUnitPrice',
+      'sold_unit_price',
+      'unitSalePrice',
+      'unit_sale_price',
+      'actualUnitPrice',
+      'actual_unit_price',
+      'salePrice',
+      'sale_price',
+    ]) {
+      final value = parseAmountFromApi(r[key]);
+      if (value > 0) return value;
+    }
+    return null;
+  }
 
   static Product? _catalogProductForInvoiceRow(Map<String, dynamic> r) {
     final prov = ProductsProvider.instance;

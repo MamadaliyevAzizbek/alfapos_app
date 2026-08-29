@@ -17,6 +17,7 @@ import '../utils/sales_return_flow.dart';
 import '../utils/invoice_edit_utils.dart';
 import '../utils/invoice_edit_flow.dart';
 import '../utils/product_weight.dart';
+import '../utils/receipt_row_builder.dart';
 import '../services/sales_list_refresh.dart';
 
 /// API dan kelgan chek batafsil — to'liq chek ko'rinishi (Hisobotlar, Tranzaksiyalar, Mijoz detali).
@@ -888,8 +889,10 @@ class _CartItemRow extends StatelessWidget {
     );
 
     final price = _amount(row['price'] ?? row['unit_price'] ?? 0);
-    final qtyNum = ProductWeight.parseInvoiceQtyNum(row);
-    final sum = _amount(row['total'] ?? row['calculatedPrice'] ?? row['sum'] ?? (price * qtyNum.round()));
+    final receiptRow = ReceiptRowBuilder.fromInvoiceRow(row);
+    final sum = receiptRow.sum > 0
+        ? receiptRow.sum
+        : _amount(row['total'] ?? row['calculatedPrice'] ?? row['sum'] ?? price);
 
     final codeLine = _displayCodeLine(row);
     final barcodeShown = codeLine.isNotEmpty ? codeLine : '—';
