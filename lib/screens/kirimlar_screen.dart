@@ -17,6 +17,7 @@ import 'kirim_savat_screen.dart'
     show ReceiveCartEditValues, ReceiveCartItemEditSheet;
 import 'kirim_tarix_screen.dart';
 import 'kirim_yakunlash_screen.dart';
+import 'yangi_tovar_screen.dart';
 import '../models/receive_cart_item.dart';
 import '../services/receive_draft_storage.dart';
 import 'scanner_screen.dart' show showCompactScanner;
@@ -189,6 +190,28 @@ class _KirimlarScreenState extends State<KirimlarScreen>
       if (barcode == null || barcode.isEmpty || !mounted) return;
       await _onBarcode(barcode);
     });
+  }
+
+  Future<void> _openNewProduct() async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const YangiTovarScreen()),
+    );
+    if (!mounted) return;
+
+    // Yangi mahsulot ProductsProvider ga saqlangan bo‘ladi. Kirim oynasida
+    // qolamiz va keyingi qidiruv yangi katalog bilan bajariladi.
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {
+      _query = '';
+      _products = [];
+      _productsError = null;
+    });
+    if (saved == true) {
+      await ProductsProvider.instance.warmFromCache();
+      if (mounted) setState(() {});
+    }
   }
 
   void _addProduct(Product p, {num quantity = 1}) {
@@ -365,6 +388,20 @@ class _KirimlarScreenState extends State<KirimlarScreen>
                       child: const Padding(
                         padding: EdgeInsets.all(11),
                         child: Icon(Icons.qr_code_scanner_rounded,
+                            color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: AppTheme.primary,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: _openNewProduct,
+                      borderRadius: BorderRadius.circular(10),
+                      child: const Padding(
+                        padding: EdgeInsets.all(11),
+                        child: Icon(Icons.add_rounded,
                             color: Colors.white, size: 22),
                       ),
                     ),
