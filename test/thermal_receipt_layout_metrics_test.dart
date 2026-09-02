@@ -1,6 +1,8 @@
 import 'package:alfapos_app/utils/thermal_receipt_formatter.dart';
 import 'package:alfapos_app/utils/thermal_receipt_layout_metrics.dart';
 import 'package:alfapos_app/utils/thermal_receipt_large_text.dart';
+import 'package:alfapos_app/utils/thermal_receipt_bold_text.dart';
+import 'package:alfapos_app/widgets/receipt_lines_preview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -68,5 +70,16 @@ void main() {
       lines: [...baseLines, ThermalReceiptLargeText.line('42')],
     );
     expect(withQueue, greaterThan(base + 20));
+  });
+
+  testWidgets('half gap marker renders as spacing, not visible text',
+      (tester) async {
+    await tester.pumpWidget(
+      const ReceiptLinesPreview(
+        lines: [ThermalReceiptHalfGap.marker],
+      ),
+    );
+
+    expect(find.text(ThermalReceiptHalfGap.marker), findsNothing);
   });
 }

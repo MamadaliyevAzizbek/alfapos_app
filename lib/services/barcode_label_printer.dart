@@ -117,6 +117,8 @@ class BarcodeLabelPrinter {
         tspl,
         host: endpoint.host,
         port: endpoint.port,
+        waitForRelayAck:
+            await NetworkPrinterSettings.usesComputerRelay(),
       );
     }
 

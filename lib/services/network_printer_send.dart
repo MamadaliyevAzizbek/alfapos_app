@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'thermal_print_result.dart';
@@ -14,6 +15,7 @@ class NetworkPrinterSend {
     required String host,
     required int port,
     Duration timeout = defaultTimeout,
+    bool waitForRelayAck = false,
   }) async {
     final h = host.trim();
     if (h.isEmpty) {
@@ -26,9 +28,37 @@ class NetworkPrinterSend {
     Socket? socket;
     try {
       socket = await Socket.connect(h, port, timeout: timeout);
+      if (waitForRelayAck) {
+        // Relay payload tugaganini socket.close'siz ham bilishi uchun uzunlik
+        // prefiksi yuboriladi; javobda relay OK yoki ERR qaytaradi.
+        socket.add(utf8.encode('ALFAPOS_RELAY_V1 ${bytes.length}\n'));
+      }
       socket.add(bytes);
       await socket.flush();
-      await socket.close();
+      if (waitForRelayAck) {
+        // Relay avval USB printerga yuboradi, keyin OK yoki ERR qaytaradi.
+        // Shunda mobil ilova faqat TCP qabul qilingani uchun muvaffaqiyat
+        // ko‘rsatmaydi.
+        final reply = await socket
+            .map((data) => data.toList())
+            .transform(utf8.decoder)
+            .join()
+            .timeout(timeout);
+        final line = reply.trim();
+        if (!line.startsWith('OK ')) {
+          return ThermalPrintResult.fail(
+            line.startsWith('ERR ')
+                ? line.substring(4).trim()
+                : 'Kompyuter relay printerga yubora olmadi',
+          );
+        }
+        final relayMsg = line.length > 3 ? line.substring(3).trim() : '';
+        if (relayMsg.isNotEmpty) {
+          return ThermalPrintResult.ok(relayMsg);
+        }
+      } else {
+        await socket.close();
+      }
       return ThermalPrintResult.ok('Chek yuborildi ($h:$port)');
     } on SocketException catch (e) {
       return ThermalPrintResult.fail(_friendlySocketError(e, h, port));

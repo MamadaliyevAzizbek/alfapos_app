@@ -1,4 +1,5 @@
 import 'thermal_receipt_compact_text.dart';
+import 'thermal_receipt_bold_text.dart';
 import 'thermal_receipt_large_text.dart';
 import 'thermal_receipt_logo_fit.dart';
 import 'thermal_receipt_total_text.dart';
@@ -20,6 +21,10 @@ abstract class ThermalReceiptLayoutMetrics {
     if (showLogo) height += logoBlockHeight;
 
     for (final line in lines) {
+      if (ThermalReceiptHalfGap.isHalfGap(line)) {
+        height += 3;
+        continue;
+      }
       if (line.isEmpty) {
         height += 6;
         continue;

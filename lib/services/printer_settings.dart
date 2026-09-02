@@ -267,6 +267,7 @@ class PrinterSettings {
       pulse,
       host: endpoint.host,
       port: endpoint.port,
+      waitForRelayAck: await NetworkPrinterSettings.usesComputerRelay(),
     );
   }
 

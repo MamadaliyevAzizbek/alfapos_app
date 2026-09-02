@@ -1,7 +1,7 @@
 name: alfapos_app
 description: Alfapos - POS tizimi (Flutter).
 publish_to: none
-version: 1.0.66+82
+version: 1.0.67+83
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  mobile_scanner: ^7.2.0
+  mobile_scanner: ^7.4.0
   shared_preferences: ^2.2.2
   http: ^1.2.0
   http_parser: ^4.1.0
@@ -58,6 +58,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/fonts/NotoSans-Regular.ttf
     - Untitled-1-01.png
     - Untitled-1-03.png
     - Untitled-1-08.png
@@ -65,3 +66,7 @@ flutter:
     - assets/branding/alfapos_logo.png
     - assets/branding/alfapos_sidebar_logo.png
     - scripts/windows_raw_print.ps1
+  fonts:
+    - family: AlfaPosLabelCyrillic
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf

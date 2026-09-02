@@ -267,6 +267,7 @@ class ThermalReceiptPrinter {
         png,
         host: endpoint.host,
         port: endpoint.port,
+        waitForRelayAck: true,
       );
     }
 
