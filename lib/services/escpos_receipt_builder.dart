@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -15,6 +16,7 @@ import '../utils/thermal_receipt_line_wrap.dart';
 import '../utils/thermal_receipt_logo_fit.dart';
 import '../utils/thermal_receipt_note_text.dart';
 import '../utils/thermal_receipt_product_title_text.dart';
+import '../utils/thermal_bitmap.dart';
 import 'printer_paper_profile.dart';
 
 /// API dan parse qilingan matn qatorlarini ESC/POS ga aylantirish.
@@ -42,6 +44,30 @@ class EscPosReceiptBuilder {
     final profile = await _profile();
     final g = Generator(paperSize, profile, spaceBetweenRows: 0);
     return <int>[...g.reset(), ...g.drawer(pin: cashDrawerPin)];
+  }
+
+  /// Mobil relay PNG chekini Windows/macOS RAW printerga yuborish uchun ESC/POS.
+  static Future<List<int>> buildReceiptFromPng(
+    Uint8List pngBytes, {
+    String? printerName,
+    PaperSize paperSize = PaperSize.mm80,
+  }) async {
+    final profile = await _profile();
+    final g = Generator(paperSize, profile, spaceBetweenRows: 0);
+    final bitmap = prepareThermalBitmap(pngBytes);
+    final decoded = img.decodeImage(bitmap);
+    if (decoded == null) {
+      throw StateError('Chek rasmini o\'qib bo\'lmadi');
+    }
+
+    final bytes = <int>[
+      ...g.reset(),
+      ...PrinterPaperProfile.fullWidthMarginBytes(),
+      ...g.image(decoded),
+      ...g.feed(PrinterPaperProfile.feedBeforeCut(printerName)),
+      ...PrinterPaperProfile.minimalCutBytes(),
+    ];
+    return bytes;
   }
 
   static Future<List<int>> buildFromLines(

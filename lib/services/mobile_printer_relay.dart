@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'escpos_receipt_builder.dart';
 import 'mobile_printer_relay_settings.dart';
 import 'printer_settings.dart';
 import 'raw_printer_send.dart';
@@ -227,6 +228,10 @@ class MobilePrinterRelay {
     String printer,
   ) async {
     final png = Uint8List.fromList(bytes);
+    if (Platform.isWindows) {
+      return _sendPngViaEscPos(png, printer);
+    }
+
     if (LabelLpPrint.looksLikeLabel(png)) {
       return LabelLpPrint.printPng(png, printer);
     }
@@ -245,5 +250,20 @@ class MobilePrinterRelay {
       return ThermalPrintResult.ok('Chek yuborildi ($printer)');
     }
     return ThermalPrintResult.fail('lp xato: ${result.stderr}');
+  }
+
+  static Future<ThermalPrintResult> _sendPngViaEscPos(
+    Uint8List png,
+    String printer,
+  ) async {
+    try {
+      final escpos = await EscPosReceiptBuilder.buildReceiptFromPng(
+        png,
+        printerName: printer,
+      );
+      return RawPrinterSend.send(escpos, printerName: printer);
+    } catch (e) {
+      return ThermalPrintResult.fail('Chek rastr xatosi: $e');
+    }
   }
 }
